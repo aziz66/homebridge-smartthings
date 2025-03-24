@@ -93,7 +93,7 @@ won't be able to see those values again.
 
 ### 3. install the plugin
 
-Use your favorite terminal to install the plugin, go inside the project folder and run the following command, Starting by installing the plugin:
+Download the plugin files in your homebridge machine, once downloaded Use your favorite terminal to install the plugin, you need to be inside the project folder and run the following command, Starting by installing the plugin:
 ```
 npm install -g
 ```
