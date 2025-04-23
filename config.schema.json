@@ -1,0 +1,121 @@
+{
+  "pluginAlias": "HomeBridgeSmartThings",
+  "pluginType": "platform",
+  "singular": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "required": true,
+        "default": "Smartthings Plug (IK)"
+      },
+      "BaseURL": {
+        "title": "Base URL",
+        "type": "string",
+        "required": true,
+        "default": "https://api.smartthings.com/v1/"
+      },
+      "client_id": {
+        "title": "Client ID",
+        "type": "string",
+        "required": true,
+        "description": "OAuth2 Client ID from SmartThings. Obtained using the SmartThings CLI 'apps:create' command. See [Setup Instructions](https://github.com/aziz66/homebridge-smartthings?tab=readme-ov-file#getting-started) for details."
+      },
+      "client_secret": {
+        "title": "Client Secret",
+        "type": "string",
+        "required": true,
+        "format": "password",
+        "description": "OAuth2 Client Secret from SmartThings. Obtained using the SmartThings CLI 'apps:create' command. Save this value securely! See [Setup Instructions](https://github.com/aziz66/homebridge-smartthings?tab=readme-ov-file#getting-started) for details."
+      },
+      "server_url": {
+        "title": "Server URL",
+        "type": "string",
+        "required": true,
+        "description": "The public URL of your server (e.g., https://your-domain.com)"
+      },
+      "webhook_port": {
+        "title": "Webhook Port",
+        "type": "integer",
+        "required": true,
+        "default": 3000,
+        "description": "Port for webhook server and OAuth callback"
+      },
+      "GarageDoorMaxPoll": {
+        "title": "Garage Door Max Poll",
+        "type": "integer",
+        "required": true,
+        "default": 40
+      },
+      "PollLocksSeconds": {
+        "title": "Poll Locks (zero = don't poll)",
+        "type": "integer",
+        "required": false,
+        "default": 10
+      },
+      "PollDoorsSeconds": {
+        "title": "Poll Garage Doors (zero = don't poll)",
+        "type": "integer",
+        "required": false,
+        "default": 10
+      },
+      "PollSensorsSeconds": {
+        "title": "Poll Sensors (zero = don't poll)",
+        "type": "integer",
+        "required": false,
+        "default": 5
+      },
+      "PollSwitchesAndLightsSeconds": {
+        "title": "Poll Switches and Lights (zero = don't poll)",
+        "type": "integer",
+        "required": false,
+        "default": 10
+      },
+      "PollWindowShadesSeconds": {
+        "title": "Poll Window Shades (zero = don't poll)",
+        "type": "integer",
+        "required": false,
+        "default": 20
+      },
+      "ExposeHumiditySensorForAirConditioners": {
+        "title": "Expose humidity Sensor for air Conditioners if available.",
+        "type": "boolean",
+        "required": false,
+        "default": false
+      },
+      "OptionalModeForAirConditioners": {
+        "title": "Select what optional mode to use as additional switch in air conditioners.",
+        "type": "string",
+        "required": false,
+        "enum": [
+          "Sleep",
+          "Speed",
+          "WindFree",
+          "WindFreeSleep",
+          "Speed and Windfree"
+        ],
+        "default": "None"
+      },
+      "IgnoreLocations": {
+        "title": "Locations to Ignore",
+        "type": "array",
+        "items": {
+          "title": "Location Name",
+          "type": "string"
+        }
+      },
+      "IgnoreDevices": {
+        "title": "Devices to Ignore",
+        "type": "array",
+        "items": {
+          "title": "Device Name",
+          "type": "string"
+        }
+      }
+    }
+  },
+  "form": null,
+  "display": null
+}
