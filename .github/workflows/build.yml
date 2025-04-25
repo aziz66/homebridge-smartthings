@@ -24,8 +24,6 @@ jobs:
 
       - name: Lint the project
         run: npm run lint
-        env:
-          ESLINT_USE_FLAT_CONFIG: "false"
 
       - name: Build the project
         run: npm run build
