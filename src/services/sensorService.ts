@@ -9,7 +9,7 @@ export abstract class SensorService extends BaseService {
     return null;
   };
 
-  pollingTimer: NodeJS.Timer | void | undefined;
+  private pollingTimer: NodeJS.Timeout | undefined;
 
   characteristic: WithUUID<new () => Characteristic> | undefined;
 
@@ -35,10 +35,19 @@ export abstract class SensorService extends BaseService {
     }
 
     if (pollSensorsSeconds > 0) {
-      this.pollingTimer = this.multiServiceAccessory.startPollingState(pollSensorsSeconds, this.getSensorState.bind(this), this.service,
-        sensorCharacteristic);
-    }
+      const timerResult = this.multiServiceAccessory.startPollingState(
+        pollSensorsSeconds,
+        this.getSensorState.bind(this),
+        this.service,
+        this.platform.Characteristic.MotionDetected
+      );
 
+      if (timerResult && typeof timerResult === 'object') {
+        this.pollingTimer = timerResult as NodeJS.Timeout;
+      } else {
+        this.pollingTimer = undefined;
+      }
+    }
   }
 
   // Get the current state of the sensor
@@ -64,6 +73,7 @@ export abstract class SensorService extends BaseService {
               // Stop polling and remove service
               if (this.pollingTimer) {
                 clearInterval(this.pollingTimer);
+                this.pollingTimer = undefined;
               }
               this.accessory.removeService(this.service);
             } else {

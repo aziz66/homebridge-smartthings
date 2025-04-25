@@ -62,6 +62,9 @@ export class AirConditionerService extends BaseService {
   // A flag or state to know which setup we are using
   private multipleOptionalModesEnabled = false;
 
+  // Flag to handle HomeKit setting speed to 0 -> Auto
+  private justSetFanToAuto = false;
+
   constructor(platform: IKHomeBridgeHomebridgePlatform, accessory: PlatformAccessory, componentId: string, capabilities: string[],
     multiServiceAccessory: MultiServiceAccessory,
     name: string, deviceStatus) {
@@ -313,9 +316,8 @@ export class AirConditionerService extends BaseService {
   }
 
   private async setLightSwitchState(value: CharacteristicValue): Promise<void> {
-    const level = value ? 100 : 0; // 100 for on, 0 for off
     this.log.info(`[${this.name}] set light switch state to ${value}`);
-    this.sendCommandsOrFail([new Command('switchLevel', 'setLevel', [level])]);
+    this.sendCommandsOrFail([new Command('switchLevel', 'setLevel', [value])]);
   }
 
   private async getLightBrightness(): Promise<CharacteristicValue> {
@@ -346,9 +348,9 @@ export class AirConditionerService extends BaseService {
   // If fan is turned on, and thermostat is not active, sets the air conditioner to the Wind mode or mantains the current one.
   private async setSwitchState(value: CharacteristicValue): Promise<void> {
     const CurrentHeatingCoolingState = this.platform.Characteristic.CurrentHeatingCoolingState;
-    const heatingCoolingState = await this.getCurrentHeatingCoolingState();
+    const heatingCoolingState = await this.getTargetHeatingCoolingState(); // Use target state for mode decision when turning on
     const currentAirConditionerMode = this.targetHeatingCoolingStateToAirConditionerMode(heatingCoolingState);
-    const airConditionerMode = heatingCoolingState === CurrentHeatingCoolingState.OFF ? AirConditionerMode.Wind : currentAirConditionerMode;
+    const airConditionerMode = heatingCoolingState === this.platform.Characteristic.TargetHeatingCoolingState.OFF ? AirConditionerMode.Wind : currentAirConditionerMode;
     const switchState = value ? SwitchState.On : SwitchState.Off;
 
 
@@ -357,14 +359,41 @@ export class AirConditionerService extends BaseService {
       await this.sendCommandsOrFail(
         [
           new Command('switch', switchState),
-          new Command('airConditionerMode', 'setAirConditionerMode', [airConditionerMode]),
+          // Only set mode if it's defined (not OFF state originally)
+          ...(airConditionerMode ? [new Command('airConditionerMode', 'setAirConditionerMode', [airConditionerMode])] : []),
         ],
       );
       return;
-    }
+    } else { // switchState === SwitchState.Off
+      // Before turning off, check if the fan mode is 'Auto'.
+      // If it is, HomeKit likely sent this 'off' because speed was set to 0.
+      // In this case, we *don't* want to actually turn the device off.
+      let fanMode: FanMode | undefined;
+      try {
+        const deviceStatus = await this.getDeviceStatus(); // Get current status
+        fanMode = deviceStatus?.airConditionerFanMode?.fanMode?.value;
+      } catch (error) {
+        this.log.error(`[${this.name}] Failed to get device status before potentially turning off: ${error}`);
+        // Proceed with caution - maybe still turn off? Or error out?
+        // Let's proceed for now, but log the error.
+      }
 
-    this.log.info(`[${this.name}] set switch state to ${switchState}.`);
-    await this.sendCommandsOrFail([new Command('switch', switchState)]);
+      // Check if we just set the fan to Auto mode.
+      // If so, ignore the 'off' command from HomeKit as it's likely due to setting speed to 0.
+      if (this.justSetFanToAuto) {
+        this.log.info(`[${this.name}] Received request to turn off (Active=false) shortly after setting fan to Auto. Ignoring turn-off command.`);
+        this.justSetFanToAuto = false; // Reset the flag
+        return; // Do not send the 'off' command
+      }
+
+      if (fanMode === FanMode.Auto) {
+        this.log.info(`[${this.name}] Received request to turn off (Active=false), but fanMode is ${fanMode}. Assuming this came from setting speed to 0. Ignoring turn-off command.`);
+        // Do nothing - don't send the Off command
+      } else {
+        this.log.info(`[${this.name}] set switch state to ${switchState}.`);
+        await this.sendCommandsOrFail([new Command('switch', switchState)]);
+      }
+    }
   }
 
 
@@ -377,6 +406,17 @@ export class AirConditionerService extends BaseService {
     const fanMode = this.levelToFanMode(value as number);
     const command = new Command('airConditionerFanMode', 'setFanMode', [fanMode]);
     this.log.info(`[${this.name}] set fan level to ${fanMode}`);
+
+    // If setting to Auto (level 0), set the flag and a timeout to reset it.
+    if (fanMode === FanMode.Auto) {
+      this.log.debug(`[${this.name}] Setting justSetFanToAuto flag.`);
+      this.justSetFanToAuto = true;
+      setTimeout(() => {
+        this.log.debug(`[${this.name}] Resetting justSetFanToAuto flag after timeout.`);
+        this.justSetFanToAuto = false;
+      }, 1500); // Reset after 1.5 seconds
+    }
+
     return this.sendCommandsOrFail([command]);
   }
 

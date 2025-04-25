@@ -3,6 +3,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Released]
 
+## [1.0.7]
+### Fixed
+- Addressed an issue where setting the fan speed to 0% in HomeKit would incorrectly turn off the air conditioner instead of setting the fan mode to 'Auto'. Implemented a mechanism in `AirConditionerService` to correctly handle this sequence and maintain the 'Auto' fan mode.
+
 ## [1.0.6] 
 ### Changed
 - Updated minimum required Node.js version to v20.0.0. Adjusted `engines` field in `package.json` accordingly.
