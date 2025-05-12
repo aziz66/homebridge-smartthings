@@ -55,6 +55,7 @@ export class AirConditionerService extends BaseService {
   private optionalModeSwitchService: Service | undefined;
   private optionalMode: OptionalMode | undefined;
   private lightService: Service | undefined;
+  private acLightingService: Service | undefined;
 
   // Add variables for multiple modes if needed
   private speedModeSwitchService: Service | undefined;
@@ -86,6 +87,14 @@ export class AirConditionerService extends BaseService {
     // Check if the device supports controlling the light
     if (this.isCapabilitySupported('switchLevel')) {
       this.lightService = this.setupLightSwitch(platform, multiServiceAccessory);
+    }
+    
+    // Check if the device supports Samsung's air conditioner lighting
+    if (this.isCapabilitySupported('samsungce.airConditionerLighting')) {
+      this.log.info(`[${this.name}] Samsung AC Lighting capability detected - adding service`);
+      this.acLightingService = this.setupACLighting(platform, multiServiceAccessory);
+    } else {
+      this.log.debug(`[${this.name}] Samsung AC Lighting capability not found`);
     }
 
     // Optional mode switch is exposed only if the related capability is suppoorted
@@ -239,6 +248,60 @@ export class AirConditionerService extends BaseService {
       platform.Characteristic.CurrentRelativeHumidity);
 
     return this.service;
+  }
+
+  private setupACLighting(platform: IKHomeBridgeHomebridgePlatform, multiServiceAccessory: MultiServiceAccessory): Service {
+    this.log.debug(`Expose Samsung AC Lighting for ${this.name}`);
+    
+    // Create a new service with a unique subtype to avoid conflicts
+    const subtype = 'ac-lighting';
+    const serviceName = `${this.name} Display Light`;
+    this.log.debug(`Creating lighting service with name: ${serviceName} and subtype: ${subtype}`);
+    
+    const lightService = this.accessory.getService(serviceName) ||
+      this.accessory.addService(platform.Service.Lightbulb, serviceName, subtype);
+    
+    lightService.getCharacteristic(platform.Characteristic.On)
+      .onGet(this.getACLightingState.bind(this))
+      .onSet(this.setACLightingState.bind(this));
+    
+    this.log.debug(`Setting up polling for AC lighting service`);
+    multiServiceAccessory.startPollingState(this.platform.config.PollSwitchesAndLightsSeconds, 
+      this.getACLightingState.bind(this), lightService, platform.Characteristic.On);
+    
+    return lightService;
+  }
+
+  private async getACLightingState(): Promise<CharacteristicValue> {
+    this.log.debug(`[${this.name}] Getting AC lighting state from AirConditionerService`);
+    const deviceStatus = await this.getDeviceStatus();
+    
+    this.log.debug(`[${this.name}] Lighting path in device status: ${deviceStatus['samsungce.airConditionerLighting'] ? 'exists' : 'missing'}`);
+    
+    if (deviceStatus['samsungce.airConditionerLighting'] && 
+        deviceStatus['samsungce.airConditionerLighting'].lighting) {
+      const state = deviceStatus['samsungce.airConditionerLighting'].lighting.value;
+      this.log.debug(`[${this.name}] Retrieved AC lighting state: ${state}`);
+      return state === 'on';
+    }
+    
+    this.log.warn(`[${this.name}] AC lighting state not found in device status`);
+    return false; // Default to off if we can't determine the state
+  }
+
+  private async setACLightingState(value: CharacteristicValue): Promise<void> {
+    const lightState = value ? 'on' : 'off';
+    this.log.info(`[${this.name}] Setting AC lighting to: ${lightState} from AirConditionerService`);
+    
+    try {
+      await this.sendCommandsOrFail([
+        new Command('samsungce.airConditionerLighting', 'setLighting', [lightState])
+      ]);
+      this.log.info(`[${this.name}] Successfully sent lighting command: ${lightState}`);
+    } catch (error) {
+      this.log.error(`[${this.name}] Failed to set AC lighting: ${error}`);
+      throw error;
+    }
   }
 
   private setupLightSwitch(platform: IKHomeBridgeHomebridgePlatform, multiServiceAccessory: MultiServiceAccessory): Service {
@@ -661,6 +724,11 @@ export class AirConditionerService extends BaseService {
       case 'switchLevel':
         this.lightService?.updateCharacteristic(this.platform.Characteristic.On, event.value > 0);
         this.lightService?.updateCharacteristic(this.platform.Characteristic.Brightness, event.value);
+        break;
+      case 'samsungce.airConditionerLighting':
+        this.log.info(`[${this.name}] Received AC lighting event in AirConditionerService: ${event.value}`);
+        this.log.debug(`[${this.name}] Full lighting event: ${JSON.stringify(event, null, 2)}`);
+        this.acLightingService?.updateCharacteristic(this.platform.Characteristic.On, event.value === 'on');
         break;
       default:
         this.log.info(`[${this.name}] Ignore event updating ${event.capability} capability to ${event.value}`);
