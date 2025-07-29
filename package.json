@@ -2,7 +2,7 @@
   "private": false,
   "displayName": "Homebridge Smartthings oAuth Plugin",
   "name": "homebridge-smartthings-oauth",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Connects SmartThings devices to Homebridge.  Automatically discovers devices.",
   "license": "Apache-2.0",
   "repository": {
@@ -15,7 +15,7 @@
   "homepage": "https://github.com/aziz66/homebridge-smartthings#readme",
   "engines": {
     "node": ">=20.0.0",
-    "homebridge": ">=1.3.5"
+    "homebridge": "^1.6.0 || ^2.0.0-beta.0"
   },
   "main": "dist/index.js",
   "scripts": {

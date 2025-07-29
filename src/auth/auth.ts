@@ -22,10 +22,10 @@ export class SmartThingsAuth {
     private readonly webhookServer: WebhookServer,
   ) {
     this.tokenManager = new TokenManager(
-      log, 
-      storagePath, 
+      log,
+      storagePath,
       this.startAuthFlow.bind(this),
-      this.refreshTokens.bind(this)
+      this.refreshTokens.bind(this),
     );
     this.webhookServer.setAuthHandler(this);
   }
@@ -73,8 +73,8 @@ export class SmartThingsAuth {
     const response = await axios.post(SMARTTHINGS_TOKEN_URL, params, {
       headers: {
         'Authorization': `Basic ${basicAuth}`,
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
     });
 
     return response.data;
@@ -99,8 +99,8 @@ export class SmartThingsAuth {
       const response = await axios.post(SMARTTHINGS_TOKEN_URL, params, {
         headers: {
           'Authorization': `Basic ${basicAuth}`,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
       });
 
       this.log.info('Successfully obtained new tokens from API.');
@@ -114,7 +114,7 @@ export class SmartThingsAuth {
 
   public startAuthFlow(): void {
     this.state = crypto.randomBytes(32).toString('hex');
-    
+
     const authUrl = new URL(SMARTTHINGS_AUTH_URL);
     authUrl.searchParams.append('client_id', this.clientId);
     authUrl.searchParams.append('response_type', 'code');
@@ -125,7 +125,7 @@ export class SmartThingsAuth {
       redirectUri += '/';
     }
     redirectUri += 'oauth/callback';
-    
+
     authUrl.searchParams.append('redirect_uri', redirectUri);
     authUrl.searchParams.append('scope', 'r:devices:* x:devices:* r:locations:*');
     authUrl.searchParams.append('state', this.state);
@@ -169,4 +169,21 @@ export class SmartThingsAuth {
   public getAccessToken(): string | null {
     return this.tokenManager.getAccessToken();
   }
-} 
+
+  public async handleCrashLoopRecovery(): Promise<void> {
+    this.log.warn('Handling crash loop recovery by clearing tokens and starting new auth flow.');
+    try {
+      // Clear existing tokens
+      await this.tokenManager.clearTokens();
+      this.log.info('Successfully cleared tokens during crash loop recovery.');
+
+      // Start new auth flow
+      this.startAuthFlow();
+      this.log.info('Started new authentication flow for crash loop recovery.');
+    } catch (error) {
+      this.log.error('Error during crash loop recovery:', error);
+      // Even if clearing fails, try to start auth flow
+      this.startAuthFlow();
+    }
+  }
+}

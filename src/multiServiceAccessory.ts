@@ -4,7 +4,7 @@ import { IKHomeBridgeHomebridgePlatform } from './platform';
 import { BaseService } from './services/baseService';
 // import { BasePlatformAccessory } from './basePlatformAccessory';
 import { MotionService } from './services/motionService';
-import { BatteryService } from './services/batteryService';
+import { Battery } from './services/batteryService';
 import { TemperatureService } from './services/temperatureService';
 import { HumidityService } from './services/humidityService';
 import { LightSensorService } from './services/lightSensorService';
@@ -26,6 +26,7 @@ import { ThermostatService } from './services/thermostatService';
 import { StatelessProgrammableSwitchService } from './services/statelessProgrammableSwitchService';
 import { AirConditionerService } from './services/airConditionerService';
 import { Command } from './services/smartThingsCommand';
+import { CrashLoopManager, CrashErrorType } from './auth/CrashLoopManager';
 // type DeviceStatus = {
 //   timestamp: number;
 //   //status: Record<string, unknown>;
@@ -71,7 +72,7 @@ export class MultiServiceAccessory {
     'illuminanceMeasurement': LightSensorService,
     'contactSensor': ContactSensorService,
     'button': StatelessProgrammableSwitchService,
-    'battery': BatteryService,
+    'battery': Battery,
     'valve': ValveService,
   };
 
@@ -162,6 +163,9 @@ export class MultiServiceAccessory {
   protected statusQueryInProgress = false;
   protected lastStatusResult = true;
 
+  // Add a field for CrashLoopManager
+  private crashLoopManager: CrashLoopManager;
+
   get id() {
     return this.accessory.UUID;
   }
@@ -177,6 +181,9 @@ export class MultiServiceAccessory {
     this.baseURL = platform.config.BaseURL;
     this.key = platform.config.AccessToken;
     this.api = platform.api;
+
+    // Get CrashLoopManager instance from platform
+    this.crashLoopManager = platform.getCrashLoopManagerInstance();
 
     this.commandURL = 'devices/' + accessory.context.device.deviceId + '/commands';
     this.statusURL = 'devices/' + accessory.context.device.deviceId + '/status';
@@ -204,10 +211,15 @@ export class MultiServiceAccessory {
       const response = await this.axInstance.get(this.healthURL);
       this.online = response.data.state === 'ONLINE';
       this.log.debug(`Device ${this.name} is ${this.online ? 'online' : 'offline'}`);
+      // If successfully checked health, and previously we might have been in a loop,
+      // this doesn't reset the loop counter directly, but successful init is good.
     } catch (error) {
       this.log.error(`Failed to check device health for ${this.name}:`, error);
       this.online = false;
-      throw error; // Re-throw to be caught by the constructor
+      // Record this specific failure type for crash loop detection
+      // This assumes checkDeviceHealth is critical and its failure might lead to a crash loop
+      await this.crashLoopManager.recordPotentialCrash(CrashErrorType.DEVICE_HEALTH_FAILURE);
+      throw error; // Re-throw to be caught by the platform initialization or calling function
     }
   }
 
@@ -336,9 +348,12 @@ export class MultiServiceAccessory {
             //   this.statusQueryInProgress = false;
             //   resolve(this.lastStatusResult = false);
             // }
-          }).catch(error => {
+          }).catch(async error => {
             this.failureCount++;
             this.log.error(`Failed to request status from ${this.name}: ${error}.  This is failure number ${this.failureCount}`);
+            // If consistent polling failures for a device cause broader instability/crashes,
+            // we might record it. For now, focusing on init-time crashes.
+            // Example: await this.crashLoopManager.recordPotentialCrash(CrashErrorType.UNKNOWN_API_FAILURE);
             if (this.failureCount >= 5) {
               this.log.error(`Exceeded allowed failures for ${this.name}.  Device is offline`);
               this.giveUpTime = Date.now();

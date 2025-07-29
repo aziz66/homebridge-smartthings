@@ -1,6 +1,30 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.9] - Homebridge v2.0 Compatibility
+### Added
+- **Homebridge v2.0 Support**: Added support for Homebridge v2.0.0-beta.0 and above
+- **HAP-NodeJS v1 Compatibility**: Updated to comply with HAP-NodeJS v1 breaking changes
+- **Crash Loop Recovery**: Added `handleCrashLoopRecovery()` method for improved error handling
+
+### Changed
+- **BatteryService Rename**: Renamed `BatteryService` class to `Battery` to comply with HAP-NodeJS v1 changes
+- **Package.json Engines**: Updated to support both Homebridge v1.6.0+ and v2.0.0-beta.0+
+- **Backward Compatibility**: Maintained full compatibility with Homebridge v1.x
+
+### Technical Details
+- Updated `package.json` engines field to `"^1.6.0 || ^2.0.0-beta.0"`
+- Renamed `BatteryService` to `Battery` in `src/services/batteryService.ts`
+- Updated capability map in `src/multiServiceAccessory.ts`
+- Added crash loop recovery method in `src/auth/auth.ts`
+- Verified existing code already complies with HAP-NodeJS v1 requirements
+
+### Notes
+- The plugin is now ready for Homebridge v2.0 testing
+- All existing functionality is preserved
+- No breaking changes for existing users
+- Comprehensive migration documentation provided
+
 ## [1.0.8]
 ### Fixed
 - Corrected `.npmignore` file to ensure the compiled `dist` directory is included in the published package, resolving installation failures during Homebridge verification.

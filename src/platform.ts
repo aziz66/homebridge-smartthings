@@ -8,6 +8,7 @@ import { MultiServiceAccessory } from './multiServiceAccessory';
 import { SubscriptionHandler } from './webhook/subscriptionHandler';
 import { SmartThingsAuth } from './auth/auth';
 import { WebhookServer } from './webhook/webhookServer';
+import { CrashLoopManager, CrashErrorType, defaultCrashLoopConfig } from './auth/CrashLoopManager';
 
 /**
  * HomebridgePlatform
@@ -24,6 +25,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
   private locationIDsToIgnore: string[] = [];
   private roomsIDsToIgnore: string[] = [];
   public auth: SmartThingsAuth;
+  private crashLoopManager: CrashLoopManager;
 
   private headerDict = {
     'Authorization': 'Bearer: ' + this.config.AccessToken,
@@ -43,6 +45,10 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
     public readonly api: API,
   ) {
     this.log.debug('Finished initializing platform:', this.config.name);
+
+    // Initialize CrashLoopManager first as auth might use it if it fails early.
+    // It's a singleton, so getting instance here ensures it's created with platform logger and storage path.
+    this.crashLoopManager = CrashLoopManager.getInstance(this.api.user.storagePath(), this.log);
 
     // Initialize webhook server first
     const webhookServer = new WebhookServer(this, this.log);
@@ -87,10 +93,10 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
               this.auth.startAuthFlow(); // Start auth flow if no refresh token
               return Promise.reject(new Error('No refresh token available for automatic refresh.'));
             }
-            
+
             // Attempt to refresh the token using the specific token
             await this.auth.refreshTokens(refreshToken);
-            
+
             // Update the Authorization header with the new token
             const newToken = this.auth.getAccessToken();
             if (newToken) {
@@ -118,9 +124,23 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
     // in order to ensure they weren't added to homebridge already. This event can also be used
     // to start discovery of new accessories.
     this.api.on('didFinishLaunching', async () => {
-      log.debug('Executed didFinishLaunching callback');
+      this.log.debug('Executed didFinishLaunching callback');
 
       try {
+        // Check for crash loop BEFORE attempting any auth or API calls
+        if (await this.crashLoopManager.isCrashLoopDetected(defaultCrashLoopConfig)) {
+          this.log.warn('[CRASH LOOP DETECTED] Attempting to recover by clearing tokens and re-authenticating.');
+          // Assuming auth is already initialized enough to call this method
+          // Or SmartThingsAuth constructor needs to be robust enough if called before full init
+          await this.auth.handleCrashLoopRecovery();
+          // After attempting recovery, it's best to let Homebridge restart the plugin cleanly.
+          // Or, if handleCrashLoopRecovery sets a state for re-auth, allow it to proceed.
+          // For now, we'll log and let the user know. A manual restart of Homebridge might be needed if the auth flow doesn't auto-trigger UI.
+          this.log.warn('[CRASH LOOP RECOVERY] Token clearing initiated. Monitor logs for re-authentication steps. A Homebridge restart may be required.');
+          // We might want to return here to prevent further execution in a potentially unstable state until re-auth completes.
+          return;
+        }
+
         // Initialize OAuth2 flow if needed and wait for it to complete
         const authFlowStarted = await this.auth.initialize();
 
@@ -152,7 +172,11 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
           this.log.error('Authentication failed or token invalid after initialization.');
         }
       } catch (error) {
-        this.log.error('Error during platform initialization:', error);
+        this.log.error('Error during platform initialization in didFinishLaunching:', error);
+        // Record that an initialization error occurred.
+        // If this error is one that leads to a crash and restart, it will be logged by CrashLoopManager.
+        await this.crashLoopManager.recordPotentialCrash(CrashErrorType.API_INIT_FAILURE);
+        this.log.error('Platform initialization failed. This might lead to a restart. If this persists, a crash loop recovery might be attempted.');
       }
     });
   }
@@ -225,9 +249,11 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
         });
         this.log.debug('Stored all devices.');
         resolve(devices);
-      }).catch(error => {
+      }).catch(async error => {
         this.log.error('Error getting devices from Smartthings: ' + error);
-        reject();
+        // Record this critical failure as it prevents device discovery
+        await this.crashLoopManager.recordPotentialCrash(CrashErrorType.API_INIT_FAILURE);
+        reject(error);
       });
     });
   }
@@ -353,6 +379,11 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
     });
 
     return acc;
+  }
+
+  // Method to allow MultiServiceAccessory to get the CrashLoopManager instance
+  public getCrashLoopManagerInstance(): CrashLoopManager {
+    return this.crashLoopManager;
   }
 }
 

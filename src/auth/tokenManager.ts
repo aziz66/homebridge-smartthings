@@ -2,6 +2,7 @@ import { Logger } from 'homebridge';
 import * as fs from 'fs';
 import * as path from 'path';
 import { IKHomeBridgeHomebridgePlatform } from '../platform';
+import fsExtra from 'fs-extra';
 
 export interface TokenData {
   access_token: string;
@@ -26,7 +27,7 @@ export class TokenManager {
     private readonly log: Logger,
     storagePath: string,
     startAuthFlowCallback: () => void,
-    refreshTokenApiCallback: (refreshToken: string) => Promise<Partial<TokenData>>
+    refreshTokenApiCallback: (refreshToken: string) => Promise<Partial<TokenData>>,
   ) {
     this.tokenPath = path.join(storagePath, 'smartthings_tokens.json');
     this.startAuthFlowCallback = startAuthFlowCallback;
@@ -71,7 +72,7 @@ export class TokenManager {
         // If the API callback fails (e.g., invalid refresh token), trigger full auth flow
         this.log.error('API token refresh failed:', error);
         this.log.warn('Starting new auth flow due to refresh failure.');
-        this.startAuthFlowCallback(); 
+        this.startAuthFlowCallback();
       }
     }
   }
@@ -113,7 +114,7 @@ export class TokenManager {
 
     // Update platform config only if access token actually changed
     if (tokenData.access_token && tokenData.access_token !== oldAccessToken) {
-      // This part requires access to platform.config and platform.api, 
+      // This part requires access to platform.config and platform.api,
       // which we no longer directly have. This needs rethinking.
       // For now, commenting out the config update.
       // TODO: Find a way to update platform config without circular dependency.
@@ -122,12 +123,12 @@ export class TokenManager {
         // Save the updated config to disk
         const configPath = this.platform.api.user.configPath();
         const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        
+
         // Find and update our platform's config
-        const platformConfig = config.platforms.find(p => 
+        const platformConfig = config.platforms.find(p =>
           p.platform === 'HomeBridgeSmartThings' && p.name === this.platform.config.name
         );
-        
+
         if (platformConfig) {
           platformConfig.AccessToken = tokenData.access_token;
           fs.writeFileSync(configPath, JSON.stringify(config, null, 4));
@@ -149,22 +150,36 @@ export class TokenManager {
   }
 
   public isTokenValid(): boolean {
-    if (!this.tokenData) return false;
+    if (!this.tokenData) {
+return false;
+}
     return Date.now() < (this.tokenData.expires_at - this.REFRESH_BEFORE_EXPIRY);
   }
 
   public isRefreshTokenValid(): boolean {
-    if (!this.tokenData) return false;
+    if (!this.tokenData) {
+return false;
+}
     return Date.now() < (this.tokenData.refresh_token_expires_at - this.REFRESH_BEFORE_EXPIRY);
   }
 
-  public clearTokens(): void {
-    this.tokenData = null;
-    if (fs.existsSync(this.tokenPath)) {
-      fs.unlinkSync(this.tokenPath);
-    }
-    if (this.refreshTimer) {
-      clearInterval(this.refreshTimer);
+  public async clearTokens(): Promise<void> {
+    try {
+      if (await fsExtra.pathExists(this.tokenPath)) {
+        await fsExtra.remove(this.tokenPath);
+        this.log.info('Successfully cleared stored tokens.');
+        // Reset in-memory tokens as well
+        this.tokenData = null;
+        if (this.refreshTimer) {
+          clearInterval(this.refreshTimer);
+        }
+      } else {
+        this.log.info('No stored tokens file found to clear.');
+      }
+    } catch (error) {
+      this.log.error('Error clearing tokens:', error);
+      // Optionally re-throw or handle as appropriate for your plugin's error strategy
+      throw error;
     }
   }
 
@@ -179,4 +194,4 @@ export class TokenManager {
       refreshTokenExpiresIn: Math.max(0, this.tokenData.refresh_token_expires_at - now),
     };
   }
-} 
+}

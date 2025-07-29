@@ -3,7 +3,7 @@ import { IKHomeBridgeHomebridgePlatform } from '../platform';
 import { BaseService } from './baseService';
 import { MultiServiceAccessory } from '../multiServiceAccessory';
 
-export class BatteryService extends BaseService {
+export class Battery extends BaseService {
 
   constructor(platform: IKHomeBridgeHomebridgePlatform, accessory: PlatformAccessory, componentId: string, capabilities: string[],
     multiServiceAccessory: MultiServiceAccessory,
@@ -11,7 +11,7 @@ export class BatteryService extends BaseService {
     super(platform, accessory, componentId, capabilities, multiServiceAccessory, name, deviceStatus);
     this.setServiceType(platform.Service.Battery);
 
-    this.log.debug(`Adding BatteryService to ${this.name}`);
+    this.log.debug(`Adding Battery service to ${this.name}`);
     this.service.getCharacteristic(platform.Characteristic.BatteryLevel)
       .onGet(this.getBatteryLevel.bind(this));
 
