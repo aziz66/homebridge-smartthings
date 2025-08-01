@@ -25,6 +25,7 @@ import { WindowCoveringService } from './services/windowCoveringService';
 import { ThermostatService } from './services/thermostatService';
 import { StatelessProgrammableSwitchService } from './services/statelessProgrammableSwitchService';
 import { AirConditionerService } from './services/airConditionerService';
+import { ACLightingService } from './services/acLightingService';
 import { Command } from './services/smartThingsCommand';
 import { CrashLoopManager, CrashErrorType } from './auth/CrashLoopManager';
 // type DeviceStatus = {
@@ -74,6 +75,7 @@ export class MultiServiceAccessory {
     'button': StatelessProgrammableSwitchService,
     'battery': Battery,
     'valve': ValveService,
+    'samsungce.airConditionerLighting': ACLightingService,
   };
 
   // Maps combinations of supported capabilities to a service
@@ -230,7 +232,7 @@ export class MultiServiceAccessory {
     capabilities: string[],
     optionalCapabilities: string[],
     serviceConstructor: any,
-  ): string[] {
+  ): string[] {    
     // this.log.debug(`Testing ${serviceConstructor.name} for capabilities ${capabilitiesToCover}`);
     // ignore services which cannot cover all required capabilities
     if (!capabilities.every(e => capabilitiesToCover.includes(e))) {
@@ -256,7 +258,6 @@ export class MultiServiceAccessory {
       status: {},
     };
     this.components.push(component);
-
 
     let capabilitiesToCover = [...capabilities];
 
