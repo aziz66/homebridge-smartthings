@@ -5,111 +5,169 @@
 
 </p>
 
-# Smartthings Homebridge Plugin 
+# SmartThings Homebridge Plugin with OAuth Support
 
-This is a smartthings plugin for Homebridge.  This requires no access to the legacy smartthings app, and doesn't
-require a lot of work to install.  It will discover devices automatically as well as unregister devices that are removed
-from your smarttthings network.  This is currently under development.
+A modern SmartThings plugin for Homebridge that provides seamless integration with your SmartThings devices. This plugin features automatic device discovery, OAuth authentication, and access token refresh capabilities.
 
-This is a fork for the homebridge-smartthings plugin created by [@iklein99](https://github.com/iklein99/), which adds oauth support and access token refresh.
+## ✨ Features
 
-# Getting Started
-- The [SmartThings CLI](https://github.com/SmartThingsCommunity/smartthings-cli#readme) installed
-- [ngrok](https://ngrok.com/) or similar tool to create a secure tunnel to a publicly available URL
+- **No Legacy App Required**: Works with the new SmartThings app and API
+- **Automatic Device Discovery**: Automatically finds and adds your SmartThings devices
+- **Device Management**: Automatically removes devices that are no longer in your SmartThings network
+- **OAuth Support**: Secure authentication with automatic token refresh
+- **Easy Setup**: Simplified installation and configuration process
 
-## Instructions
+## 📋 Prerequisites
 
-### 1. Set up your server
+Before you begin, ensure you have the following installed and configured:
 
-Start ngrok or similar tool to create a secure tunnel to your local server. Note that the free version of ngrok will
-change the subdomain part of the URL every time you restart it. 
-Alternately, you can use the paid version which supports reserved subdomains, or any other tool such as cloudflare zero trust tunnels which has a free tier:
-```
-ngrok http 3000
-```
-### 2. Register your SmartThings app
+- **Homebridge**: A working Homebridge installation
+- **SmartThings CLI**: [Download and install](https://github.com/SmartThingsCommunity/smartthings-cli#readme) the official SmartThings CLI tool
+- **Tunneling Service**: One of the following:
+  - [ngrok](https://ngrok.com/) (free tier available)
+  - [Cloudflare Zero Trust Tunnels](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) (free)
+  - Any other secure tunnel service
 
-Look at the log output of your local server, You should see something like this:
-```
-Target URL -- Copy this value into the targetUrl field of you app creation request:
-https://315e5367357f.ngrok.app
+## 🚀 Installation Guide
 
-Redirect URI -- Copy this value into redirectUris field of your app creation request:
-https://315e5367357f.ngrok.app/oauth/callback
+### Step 1: Set Up Secure Tunnel
 
-Website URL -- Visit this URL in your browser to log into SmartThings and connect your account:
-https://315e5367357f.ngrok.app
-```
+You need a secure tunnel to expose your local Homebridge server to the internet for SmartThings OAuth callbacks.
 
-After Installaing the SmartThings CLI, Run the `smartthings apps:create` command to create a new smartthingsAPI app. You will be prompted for the required
-information. The following is an example of the output from the command:
+#### Option A: Using ngrok (Recommended for beginners)
 
-```bash
-~ % smartthings apps:create
-? What kind of app do you want to create? (Currently, only OAuth-In apps are supported.) OAuth-In App
+1. **Sign up and get your domain**:
+   - Create a free account at [ngrok.com](https://ngrok.com/)
+   - Go to your ngrok dashboard and note your free domain (e.g., `your-domain.ngrok-free.app`)
 
-More information on writing SmartApps can be found at
-  https://developer.smartthings.com/docs/connected-services/smartapp-basics
+2. **Start the tunnel**:
+   ```bash
+   ngrok http --url=your-domain.ngrok-free.app 3000
+   ```
+   > **Important**: Replace `your-domain.ngrok-free.app` with your actual ngrok domain. Keep port `3000` as shown.
 
-? Display Name My API Subscription App
-? Description Allows control of SmartThings devices
-? Icon Image URL (optional) 
-? Target URL (optional) https://315e5367357f.ngrok.app
+#### Option B: Using Cloudflare Zero Trust Tunnels (Free alternative)
 
-More information on OAuth 2 Scopes can be found at:
-  https://www.oauth.com/oauth2-servers/scope/
+Follow the [Cloudflare tunnel setup guide](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) to create a tunnel pointing to `localhost:3000`.
 
-To determine which scopes you need for the application, see documentation for the individual endpoints you will use in your app:
-  https://developer.smartthings.com/docs/api/public/
+### Step 2: Create SmartThings App
 
-? Select Scopes. r:devices:*, x:devices:*, r:locations:*
-? Add or edit Redirect URIs. Add Redirect URI.
-? Redirect URI (? for help) https://315e5367357f.ngrok.app/oauth/callback
-? Add or edit Redirect URIs. Finish editing Redirect URIs.
-? Choose an action. Finish and create OAuth-In SmartApp.
-Basic App Data:
-─────────────────────────────────────────────────────────────────────────────
- Display Name     My API Subscription App                                    
- App Id           3275eef3-xxxx-xxxx-xxxx-xxxxxxxxxxxx                       
- App Name         amyapisubscriptionapp-aaea18b1-xxxx-xxxx-xxxx-xxxxxxxxxxxx 
- Description      Allows control of SmartThings devices                      
- Single Instance  true                                                       
- Classifications  CONNECTED_SERVICE                                          
- App Type         API_ONLY                                                   
- Target URL       https://315e5367357f.ngrok.app                             
- Target Status    PENDING                                                    
-─────────────────────────────────────────────────────────────────────────────
+> **⚠️ Important**: You must create the SmartThings app FIRST to get the Client ID and Secret needed for plugin configuration.
 
+1. **Run the app creation command**:
+   ```bash
+   smartthings apps:create
+   ```
 
-OAuth Info (you will not be able to see the OAuth info again so please save it now!):
-───────────────────────────────────────────────────────────
- OAuth Client Id      7a850484-xxxx-xxxx-xxxx-xxxxxxxxxxxx 
- OAuth Client Secret  3581f317-xxxx-xxxx-xxxx-xxxxxxxxxxxx 
-───────────────────────────────────────────────────────────
-```
+2. **Follow the prompts carefully**:
 
-Save the output of the create command for later use. It contains the client ID and secret of your app. You
-won't be able to see those values again.
+   | Prompt | Your Answer | Example |
+   |--------|-------------|---------|
+   | **App Type** | `OAuth-In App` | OAuth-In App |
+   | **Display Name** | Choose a descriptive name | `Homebridge SmartThings` |
+   | **Description** | Brief description | `Homebridge integration for SmartThings devices` |
+   | **Icon Image URL** | Leave blank | _(press Enter)_ |
+   | **Target URL** | Your tunnel URL | `https://your-domain.ngrok-free.app` |
+   | **Scopes** | Required permissions | `r:devices:*`, `x:devices:*`, `r:locations:*` |
+   | **🔴 Redirect URI** | **CRITICAL: Your callback URL** | `https://your-domain.ngrok-free.app/oauth/callback` |
 
-### 3. install the plugin
+   > **🚨 CRITICAL**: The **Redirect URI** must be exactly `https://your-domain.ngrok-free.app/oauth/callback` (including `/oauth/callback`). This is essential for OAuth to work properly!
 
-Download the plugin files in your homebridge machine, once downloaded Use your favorite terminal to install the plugin, you need to be inside the project folder and run the following command, Starting by installing the plugin:
-```
-npm install -g
-```
-once installed, you can build the plugin:
-```
-npm run build
-```
-after building, link the plugin to homebridge:
-```
-npm link homebridge-smartthings@1.5.22
-```
+3. **Save your credentials immediately**:
+   
+   After creation, you'll see output like this:
+   ```
+   OAuth Info (you will not be able to see the OAuth info again so please save it now!):
+   ───────────────────────────────────────────────────────────
+    OAuth Client Id      7a850484-xxxx-xxxx-xxxx-xxxxxxxxxxxx 
+    OAuth Client Secret  3581f317-xxxx-xxxx-xxxx-xxxxxxxxxxxx 
+   ───────────────────────────────────────────────────────────
+   ```
 
-### 4. Configure the plugin
-After installing the plugin, you can configure the plugin from homebridge ui, you need the target url from step 1, and you need to add the client id and secret from the app you created in step 2.
+   > **⚠️ Critical**: Copy and save both the **Client ID** and **Client Secret** immediately. You cannot retrieve them later!
 
-### 5. Authorize the plugin
-Once you have configured the plugin, you can authorize the plugin by clicking the authorize link found in the plugin log, after authorization proceed to restart homebridge.
+### Step 3: Install the Plugin
 
+Now that you have your SmartThings app credentials, you can install and configure the plugin.
 
+1. **Install via Homebridge UI**:
+   - Open your Homebridge web interface
+   - Go to the "Plugins" tab
+   - Search for `Homebridge Smartthings oAuth Plugin`
+   - Click "Install"
+
+### Step 4: Configure the Plugin
+
+1. **Open Homebridge Configuration**:
+   - Go to your Homebridge web interface
+   - Navigate to "Plugins" tab
+   - Find "SmartThings OAuth Plugin" and click "Settings"
+
+2. **Enter your configuration** (using credentials from Step 2):
+   
+   | Field | Value | Notes |
+   |-------|-------|-------|
+   | **Target URL** | `https://your-domain.ngrok-free.app` | Your tunnel URL (without `/oauth/callback`) |
+   | **Client ID** | Your OAuth Client ID | From Step 2 |
+   | **Client Secret** | Your OAuth Client Secret | From Step 2 |
+
+   > **📝 Note**: The plugin automatically appends `/oauth/callback` to your Target URL, so don't include it.
+
+3. **Save the configuration**.
+
+### Step 5: Authorize the Plugin
+
+1. **Restart Homebridge** to apply the configuration.
+
+2. **Check the logs** for an authorization URL:
+   ```
+   [SmartThings OAuth] Visit this URL to authorize the plugin:
+   https://your-domain.ngrok-free.app/authorize?client_id=...
+   ```
+
+3. **Authorize the plugin**:
+   - Copy the complete authorization URL from the logs
+   - Paste it into your web browser
+   - Log in to your SmartThings account
+   - Grant the requested permissions
+   - You should see a success message
+
+4. **Final restart**: Restart Homebridge one more time to complete the setup.
+
+## 🎉 You're Done!
+
+Your SmartThings devices should now appear in HomeKit! The plugin will automatically:
+- Discover all compatible devices
+- Add them to HomeKit
+- Remove devices that are no longer available
+- Refresh access tokens as needed
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+**Plugin not finding devices**:
+- Verify your SmartThings app has the correct scopes: `r:devices:*`, `x:devices:*`, `r:locations:*`
+- Check that your tunnel is still running
+- Ensure you completed the authorization step
+
+**Authorization fails**:
+- Make sure you copied the complete authorization URL
+- Verify your tunnel URL is accessible from the internet
+- Check that your Client ID and Secret are correct
+
+**Devices not responding**:
+- Restart Homebridge
+- Check that devices are online in the SmartThings app
+- Verify the plugin has the necessary permissions
+
+### Getting Help
+
+If you encounter issues:
+1. Check the Homebridge logs for detailed error messages
+2. Ensure all URLs and credentials are correct
+3. Verify your tunnel service is running properly
+
+## 📄 Credits
+
+This is a fork of the original homebridge-smartthings plugin created by [@iklein99](https://github.com/iklein99/), enhanced with OAuth support and automatic token refresh capabilities.
