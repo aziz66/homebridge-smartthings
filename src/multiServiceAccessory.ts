@@ -25,6 +25,7 @@ import { WindowCoveringService } from './services/windowCoveringService';
 import { ThermostatService } from './services/thermostatService';
 import { StatelessProgrammableSwitchService } from './services/statelessProgrammableSwitchService';
 import { AirConditionerService } from './services/airConditionerService';
+import { ACLightingService } from './services/acLightingService';
 import { Command } from './services/smartThingsCommand';
 import { CrashLoopManager, CrashErrorType } from './auth/CrashLoopManager';
 // type DeviceStatus = {
@@ -74,6 +75,7 @@ export class MultiServiceAccessory {
     'button': StatelessProgrammableSwitchService,
     'battery': Battery,
     'valve': ValveService,
+    'samsungce.airConditionerLighting': ACLightingService,
   };
 
   // Maps combinations of supported capabilities to a service
