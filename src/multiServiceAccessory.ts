@@ -279,6 +279,13 @@ export class MultiServiceAccessory {
 
     Object.keys(MultiServiceAccessory.capabilityMap).forEach((capability) => {
       const service = MultiServiceAccessory.capabilityMap[capability];
+
+      // Skip AC Display Light service if not enabled in config
+      if (capability === 'samsungce.airConditionerLighting' && !this.platform.config.ExposeACDisplayLight) {
+        this.log.debug(`Skipping AC Display Light service for ${this.name} - not enabled in config`);
+        return;
+      }
+
       capabilitiesToCover = this.registerServiceIfMatchesCapabilities(
         componentId,
         component,

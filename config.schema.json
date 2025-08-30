@@ -85,6 +85,12 @@
         "required": false,
         "default": false
       },
+      "ExposeACDisplayLight": {
+        "title": "Expose AC Display Light as a switch if available.",
+        "type": "boolean",
+        "required": false,
+        "default": true
+      },
       "OptionalModeForAirConditioners": {
         "title": "Select what optional mode to use as additional switch in air conditioners.",
         "type": "string",
