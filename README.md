@@ -5,11 +5,9 @@
 
 </p>
 
-<div style="text-align: center;">
-  <a href="https://github.com/homebridge/homebridge/wiki/Verified-Plugins">
-    <img src="https://img.shields.io/badge/homebridge-verified-blueviolet?color=%23491F59&style=for-the-badge&logoColor=%23FFFFFF&logo=homebridge" alt="verified-by-homebridge">
-  </a>
-</div>
+<p align="center">
+<a href="https://github.com/homebridge/homebridge/wiki/Verified-Plugins"><img src="https://img.shields.io/badge/homebridge-verified-blueviolet?color=%23491F59&style=for-the-badge&logoColor=%23FFFFFF&logo=homebridge" alt="verified-by-homebridge"></a>
+</p>
 
 # SmartThings Homebridge Plugin with OAuth Support
 
