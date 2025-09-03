@@ -27,6 +27,7 @@ import { StatelessProgrammableSwitchService } from './services/statelessProgramm
 import { AirConditionerService } from './services/airConditionerService';
 import { ACLightingService } from './services/acLightingService';
 import { TelevisionService } from './services/televisionService';
+import { VolumeSliderService } from './services/volumeSliderService';
 import { Command } from './services/smartThingsCommand';
 import { CrashLoopManager, CrashErrorType } from './auth/CrashLoopManager';
 // type DeviceStatus = {
@@ -285,20 +286,44 @@ export class MultiServiceAccessory {
         );
         this.services.push(serviceInstance);
 
-        // Remove TV capabilities from the list to avoid duplicate services
-        capabilitiesToCover = capabilitiesToCover.filter(cap => !tvCapabilities.includes(cap));
+                     // Remove TV capabilities from the list to avoid duplicate services
+             capabilitiesToCover = capabilitiesToCover.filter(cap => !tvCapabilities.includes(cap));
 
-        // If configured to remove legacy switch, remove the 'switch' capability
-        if (removeLegacySwitch && tvCapabilities.includes('switch')) {
-          this.log.debug(`Removing legacy switch service for TV: ${this.name}`);
-          // 'switch' capability is already removed from capabilitiesToCover above
-        } else if (tvCapabilities.includes('switch')) {
-          // Keep the switch capability for legacy compatibility
-          capabilitiesToCover.push('switch');
-          this.log.debug(`Keeping legacy switch service alongside Television service for: ${this.name}`);
-        }
-      }
-    }
+             // If configured to remove legacy switch, remove the 'switch' capability
+             if (removeLegacySwitch && tvCapabilities.includes('switch')) {
+               this.log.debug(`Removing legacy switch service for TV: ${this.name}`);
+               // 'switch' capability is already removed from capabilitiesToCover above
+             } else if (tvCapabilities.includes('switch')) {
+               // Keep the switch capability for legacy compatibility
+               capabilitiesToCover.push('switch');
+               this.log.debug(`Keeping legacy switch service alongside Television service for: ${this.name}`);
+             }
+
+             // Add separate volume slider if enabled (this makes volume controls visible in Home app)
+             const registerVolumeSlider = this.platform.config.registerVolumeSlider === true;
+             if (registerVolumeSlider && VolumeSliderService.supportsVolumeSlider(capabilities)) {
+               this.log.debug(`Creating separate volume slider accessory for TV: ${this.name}`);
+               const volumeSliderCapabilities = VolumeSliderService.getVolumeSliderCapabilities().filter(cap => capabilities.includes(cap));
+
+               if (volumeSliderCapabilities.length > 0) {
+                 const volumeSliderService = new VolumeSliderService(
+                   this.platform,
+                   this.accessory,
+                   componentId,
+                   volumeSliderCapabilities,
+                   this,
+                   this.name,
+                   component,
+                 );
+                 this.services.push(volumeSliderService);
+
+                 // Remove volume capabilities from other services to avoid conflicts
+                 capabilitiesToCover = capabilitiesToCover.filter(cap => !volumeSliderCapabilities.includes(cap));
+                 this.log.info(`📱 Volume slider accessory created for ${this.name} - volume controls now visible in Home app`);
+               }
+             }
+           }
+         }
 
     // Start with comboServices and remove used capabilities to avoid duplicated sensors.
     // For example, there is no need to expose a temperature sensor in case of a thermostat which already exposes that charateristic.
@@ -347,6 +372,11 @@ export class MultiServiceAccessory {
 
     // Check if it's a TV-related capability
     if (TelevisionService.getTvCapabilities().includes(capability)) {
+      return true;
+    }
+
+    // Check if it's a volume slider capability
+    if (VolumeSliderService.getVolumeSliderCapabilities().includes(capability)) {
       return true;
     }
 

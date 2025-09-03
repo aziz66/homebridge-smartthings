@@ -2,6 +2,7 @@ import { PlatformAccessory, CharacteristicValue, Service } from 'homebridge';
 import { IKHomeBridgeHomebridgePlatform } from '../platform';
 import { BaseService } from './baseService';
 import { MultiServiceAccessory } from '../multiServiceAccessory';
+import { SamsungTVApps } from './tvApps';
 import { ShortEvent } from '../webhook/subscriptionHandler';
 
 export class TelevisionService extends BaseService {
@@ -155,10 +156,13 @@ export class TelevisionService extends BaseService {
           `Input-${input.id}`,
         );
 
+      // Set the service name to the input ID (this is what gets used in commands)
+      inputService.name = input.id;
+
       // Configure the input source
       inputService
         .setCharacteristic(this.platform.Characteristic.Identifier, index + 1)
-        .setCharacteristic(this.platform.Characteristic.ConfiguredName, input.name)
+        .setCharacteristic(this.platform.Characteristic.ConfiguredName, input.name)  // Display name (e.g., "Apple TV")
         .setCharacteristic(this.platform.Characteristic.IsConfigured, this.platform.Characteristic.IsConfigured.CONFIGURED)
         .setCharacteristic(this.platform.Characteristic.InputSourceType, this.getInputSourceType(input.id))
         .setCharacteristic(this.platform.Characteristic.CurrentVisibilityState, this.platform.Characteristic.CurrentVisibilityState.SHOWN);
@@ -173,6 +177,59 @@ export class TelevisionService extends BaseService {
 
       this.inputServices.push(inputService);
     });
+
+    // Add streaming applications as input sources if enabled and supported
+    const registerApps = this.platform.config.registerApplications !== false; // Default to true
+    if (registerApps && this.isCapabilitySupported('custom.launchapp')) {
+      this.registerApplications();
+    } else if (!this.isCapabilitySupported('custom.launchapp')) {
+      this.log.debug(`📱 Application registration skipped for ${this.name} - custom.launchapp capability not supported`);
+    } else {
+      this.log.debug(`📱 Application registration disabled in config for ${this.name}`);
+    }
+  }
+
+  private registerApplications(): void {
+    this.log.info(`📱 Registering streaming applications as input sources for ${this.name}`);
+
+    // Register common Samsung TV applications
+    SamsungTVApps.forEach(app => {
+      // Use the first app ID as the service identifier
+      const appId = app.ids[0];
+      this.registerApplicationInputSource(appId, app.name);
+      this.log.debug(`   📱 Added app: ${app.name} (${appId})`);
+    });
+  }
+
+  private registerApplicationInputSource(id: string, name: string): void {
+    const inputService = this.accessory.getService(`App-${id}`) ||
+      this.accessory.addService(
+        this.platform.Service.InputSource,
+        name,
+        `App-${id}`,
+      );
+
+    // Set the service name to the app ID (this is what gets used in launchApp commands)
+    inputService.name = id;
+
+    // Configure the application input source
+    inputService
+      .setCharacteristic(this.platform.Characteristic.Identifier, this.inputServices.length + 1)
+      .setCharacteristic(this.platform.Characteristic.ConfiguredName, name)  // Display name (e.g., "Netflix")
+      .setCharacteristic(this.platform.Characteristic.IsConfigured, this.platform.Characteristic.IsConfigured.CONFIGURED)
+      .setCharacteristic(this.platform.Characteristic.InputSourceType, this.platform.Characteristic.InputSourceType.APPLICATION)
+      .setCharacteristic(this.platform.Characteristic.CurrentVisibilityState, this.platform.Characteristic.CurrentVisibilityState.SHOWN);
+
+    // Configure visibility state
+    inputService.getCharacteristic(this.platform.Characteristic.TargetVisibilityState)
+      .onGet(() => this.platform.Characteristic.TargetVisibilityState.SHOWN)
+      .onSet((value) => {
+        this.log.debug(`App ${name} visibility changed to ${value}`);
+      });
+
+    // Link to Television service and add to our list
+    this.televisionService.addLinkedService(inputService);
+    this.inputServices.push(inputService);
   }
 
   private loadInputSources(): void {
@@ -181,8 +238,16 @@ export class TelevisionService extends BaseService {
     const inputSourceData = component?.status?.['samsungvd.mediaInputSource'] as any;
 
     if (inputSourceData?.supportedInputSourcesMap?.value) {
-      this.inputSourcesMap = inputSourceData.supportedInputSourcesMap.value;
-      this.log.debug(`Loaded ${this.inputSourcesMap.length} input sources for ${this.name}`);
+      // Use Samsung TV's custom input names (e.g., "Apple TV" instead of "HDMI1")
+      this.inputSourcesMap = inputSourceData.supportedInputSourcesMap.value.map((source: any) => ({
+        id: source.id,        // SmartThings ID (e.g., "HDMI1")
+        name: source.name,    // Custom name from TV (e.g., "Apple TV", "PlayStation 5")
+      }));
+
+      this.log.info(`📺 Loaded ${this.inputSourcesMap.length} custom input sources for ${this.name}:`);
+      this.inputSourcesMap.forEach((source, index) => {
+        this.log.info(`   ${index + 1}. "${source.name}" (${source.id})`);
+      });
     } else {
       // Fallback to common input sources if not available
       this.inputSourcesMap = [
@@ -192,7 +257,7 @@ export class TelevisionService extends BaseService {
         { id: 'HDMI3', name: 'HDMI 3' },
         { id: 'HDMI4', name: 'HDMI 4' },
       ];
-      this.log.debug(`Using fallback input sources for ${this.name}`);
+      this.log.warn(`⚠️  Using fallback input sources for ${this.name} - custom names not available`);
     }
   }
 
@@ -328,14 +393,27 @@ export class TelevisionService extends BaseService {
       // 2. Standard mediaInputSource with setInputSource command (fallback)
       let success = false;
 
-      // Try Samsung-specific capability first (most likely to work for Samsung TVs)
-      this.log.debug(`Using Samsung-specific input source command: samsungvd.mediaInputSource.setInputSource("${targetInput.id}")`);
-      success = await this.multiServiceAccessory.sendCommand('samsungvd.mediaInputSource', 'setInputSource', [targetInput.id]);
+                  // According to reference implementation: determine if this is an app or input source
+      const inputService = this.inputServices[inputIndex];
+      const inputId = inputService.name; // This contains the SmartThings ID
+      const inputSourceType = inputService.getCharacteristic(this.platform.Characteristic.InputSourceType).value as number;
 
-      // Fallback to standard mediaInputSource capability if Samsung-specific fails
-      if (!success) {
-        this.log.debug(`Fallback: Using standard input source command: mediaInputSource.setInputSource("${targetInput.id}")`);
-        success = await this.multiServiceAccessory.sendCommand('mediaInputSource', 'setInputSource', [targetInput.id]);
+      this.log.debug(`Setting input source: "${targetInput.name}" using ID "${inputId}" for ${this.name}`);
+
+      if (inputSourceType === this.platform.Characteristic.InputSourceType.APPLICATION) {
+        // For applications, use custom.launchapp capability
+        this.log.debug(`Launching application: custom.launchapp.launchApp("${inputId}") for ${this.name}`);
+        success = await this.multiServiceAccessory.sendCommand('custom.launchapp', 'launchApp', [inputId]);
+      } else {
+        // For regular input sources, use Samsung-specific mediaInputSource
+        this.log.debug(`Using Samsung-specific input source command: samsungvd.mediaInputSource.setInputSource("${inputId}")`);
+        success = await this.multiServiceAccessory.sendCommand('samsungvd.mediaInputSource', 'setInputSource', [inputId]);
+
+        // Fallback to standard mediaInputSource capability if Samsung-specific fails
+        if (!success) {
+          this.log.debug(`Fallback: Using standard input source command: mediaInputSource.setInputSource("${inputId}")`);
+          success = await this.multiServiceAccessory.sendCommand('mediaInputSource', 'setInputSource', [inputId]);
+        }
       }
 
       if (success) {
@@ -794,6 +872,7 @@ export class TelevisionService extends BaseService {
       'mediaPlayback',
       'custom.picturemode',
       'custom.soundmode',
+      'custom.launchapp', // Application launching
     ];
   }
 }

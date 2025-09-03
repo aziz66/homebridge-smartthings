@@ -80,6 +80,20 @@
         "default": 15,
         "description": "How often to poll TV devices for status updates. TVs typically respond slower than other devices, so a higher interval is recommended."
       },
+      "registerVolumeSlider": {
+        "title": "Register Volume Slider for TVs",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "Creates a separate volume slider accessory for TVs (exposed as a lightbulb) because HomeKit's native TV interface doesn't show volume controls directly. Enable this if you can't see volume controls in the Home app."
+      },
+      "registerApplications": {
+        "title": "Register TV Applications as Input Sources",
+        "type": "boolean",
+        "required": false,
+        "default": true,
+        "description": "Registers streaming applications (Netflix, YouTube, Disney+, etc.) as input sources for Samsung TVs. These will appear alongside HDMI inputs in the HomeKit interface."
+      },
       "PollWindowShadesSeconds": {
         "title": "Poll Window Shades (zero = don't poll)",
         "type": "integer",
