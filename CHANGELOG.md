@@ -1,5 +1,9 @@
 # Changelog
 All notable changes to this project will be documented in this file.
+## [1.0.18] - Official SmartThings API Compliance & Samsung TV Fixes
+### Fixed
+- **🔊 Samsung TV Volume Control**: Fixed critical issue where volume does not apear in homekit
+
 ## [1.0.17] - Official SmartThings API Compliance & Samsung TV Fixes
 ### Fixed
 - **📋 Official SmartThings API Compliance**: Completely aligned implementation with official SmartThings capability specifications
@@ -28,7 +32,7 @@ All notable changes to this project will be documented in this file.
 - **📡 Channel Controls**: Added TV channel control support based on official tvChannel capability
   - Channel Up/Down via remote control keys
   - Capability detection to ensure TV supports channel control
-  
+
 ## [1.0.16] - Official SmartThings API Compliance & Samsung TV Fixes
 ### Fixed
 - **📋 Official SmartThings API Compliance**: Completely aligned implementation with official SmartThings capability specifications
