@@ -29,8 +29,9 @@ export class TelevisionService extends BaseService {
     // Setup the main Television service
     this.televisionService = this.setupTelevisionService();
 
-    // Setup the Television Speaker service
-    this.televisionSpeakerService = this.setupTelevisionSpeaker();
+    // Setup the Television Speaker service (if not using separate volume slider)
+    const hasVolumeSlider = this.platform.config.registerVolumeSlider === true;
+    this.televisionSpeakerService = this.setupTelevisionSpeaker(hasVolumeSlider);
 
     // Setup Input Source services (will be completed during capability registration)
     // Note: Input sources are loaded asynchronously when samsungvd.mediaInputSource capability is registered
@@ -93,54 +94,73 @@ export class TelevisionService extends BaseService {
     return tvService;
   }
 
-  private setupTelevisionSpeaker(): Service {
+  private setupTelevisionSpeaker(hasVolumeSlider = false): Service {
     const speakerService = this.accessory.getService(this.platform.Service.TelevisionSpeaker) ||
       this.accessory.addService(this.platform.Service.TelevisionSpeaker, `${this.name} Speaker`, 'TelevisionSpeaker');
 
     // Set the display name
     speakerService.setCharacteristic(this.platform.Characteristic.Name, `${this.name} Speaker`);
 
-    // Configure Mute characteristic (required)
-    speakerService.getCharacteristic(this.platform.Characteristic.Mute)
-      .onGet(this.getMute.bind(this))
-      .onSet(this.setMute.bind(this));
+    if (hasVolumeSlider) {
+      // Volume Slider is enabled - TelevisionSpeaker only provides basic speaker functionality
+      this.log.info(`🎚️ Volume Slider enabled - TelevisionSpeaker will provide minimal functionality for ${this.name}`);
 
-    // Start polling for Mute changes (like verified plugin) - this makes IR remote changes visible!
-    if (this.isCapabilitySupported('audioMute')) {
-      this.startMutePolling(speakerService);
-    }
-
-    // Configure Volume Control Type - specify what type of volume control is supported
-    if (this.isCapabilitySupported('audioVolume')) {
-      // TV supports absolute volume control
-      speakerService.setCharacteristic(
-        this.platform.Characteristic.VolumeControlType,
-        this.platform.Characteristic.VolumeControlType.ABSOLUTE,
-      );
-
-      // Add Volume characteristic for absolute volume control
-      speakerService.getCharacteristic(this.platform.Characteristic.Volume)
-        .setProps({
-          minValue: 0,
-          maxValue: 100,
-          minStep: 1,
-        })
-        .onGet(this.getVolume.bind(this))
-        .onSet(this.setVolume.bind(this));
-
-      // Start polling for Volume changes (like verified plugin) - this makes IR remote changes visible!
-      this.startVolumePolling(speakerService);
-    } else {
-      // Fallback to relative volume control only
+      // Set to relative volume control (no absolute volume since slider handles that)
       speakerService.setCharacteristic(
         this.platform.Characteristic.VolumeControlType,
         this.platform.Characteristic.VolumeControlType.RELATIVE,
       );
-    }
 
-    // Configure Volume Selector (for volume up/down commands) - always available
-    speakerService.getCharacteristic(this.platform.Characteristic.VolumeSelector)
-      .onSet(this.setVolumeSelector.bind(this));
+      // Only provide Volume Selector (volume up/down buttons)
+      speakerService.getCharacteristic(this.platform.Characteristic.VolumeSelector)
+        .onSet(this.setVolumeSelector.bind(this));
+
+    } else {
+      // Standard TelevisionSpeaker with full volume/mute controls
+      this.log.info(`🔊 Standard TelevisionSpeaker mode for ${this.name} (full volume/mute controls)`);
+
+      // Configure Mute characteristic
+      if (this.isCapabilitySupported('audioMute')) {
+        speakerService.getCharacteristic(this.platform.Characteristic.Mute)
+          .onGet(this.getMute.bind(this))
+          .onSet(this.setMute.bind(this));
+
+        // Start polling for Mute changes
+        this.startMutePolling(speakerService);
+      }
+
+      // Configure Volume Control Type and characteristics
+      if (this.isCapabilitySupported('audioVolume')) {
+        // TV supports absolute volume control
+        speakerService.setCharacteristic(
+          this.platform.Characteristic.VolumeControlType,
+          this.platform.Characteristic.VolumeControlType.ABSOLUTE,
+        );
+
+        // Add Volume characteristic for absolute volume control
+        speakerService.getCharacteristic(this.platform.Characteristic.Volume)
+          .setProps({
+            minValue: 0,
+            maxValue: 100,
+            minStep: 1,
+          })
+          .onGet(this.getVolume.bind(this))
+          .onSet(this.setVolume.bind(this));
+
+        // Start polling for Volume changes
+        this.startVolumePolling(speakerService);
+      } else {
+        // Fallback to relative volume control only
+        speakerService.setCharacteristic(
+          this.platform.Characteristic.VolumeControlType,
+          this.platform.Characteristic.VolumeControlType.RELATIVE,
+        );
+      }
+
+      // Configure Volume Selector (for volume up/down commands)
+      speakerService.getCharacteristic(this.platform.Characteristic.VolumeSelector)
+        .onSet(this.setVolumeSelector.bind(this));
+    }
 
     // Configure Active characteristic (speaker is always active when TV service exists - per verified plugin)
     speakerService.setCharacteristic(this.platform.Characteristic.Active, this.platform.Characteristic.Active.ACTIVE);

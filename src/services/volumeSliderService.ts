@@ -44,7 +44,42 @@ export class VolumeSliderService extends BaseService {
       .onGet(this.getBrightness.bind(this))
       .onSet(this.setBrightness.bind(this));
 
+    // Start polling to keep slider synchronized with TV (like verified plugin)
+    this.startSliderPolling();
+
     this.log.info(`🎚️ Volume Slider service created for ${this.name} (shows as lightbulb in HomeKit)`);
+  }
+
+  private startSliderPolling(): void {
+    // Get TV-specific polling interval
+    let pollInterval = 15000; // default 15 seconds for TVs
+    if (this.platform.config.PollTelevisionsSeconds !== undefined) {
+      pollInterval = this.platform.config.PollTelevisionsSeconds * 1000;
+    }
+
+    if (pollInterval > 0) {
+      this.log.debug(`🎚️ Starting Volume Slider polling with ${pollInterval / 1000}s interval for ${this.name} (syncs with IR remote)`);
+      
+      // Poll On/Off state (mute status)
+      setInterval(async () => {
+        try {
+          const onState = await this.getOn();
+          this.service.updateCharacteristic(this.platform.Characteristic.On, onState);
+        } catch (error) {
+          this.log.error(`Error polling volume slider on/off for ${this.name}:`, error);
+        }
+      }, pollInterval);
+
+      // Poll Brightness state (volume level)
+      setInterval(async () => {
+        try {
+          const brightness = await this.getBrightness();
+          this.service.updateCharacteristic(this.platform.Characteristic.Brightness, brightness);
+        } catch (error) {
+          this.log.error(`Error polling volume slider brightness for ${this.name}:`, error);
+        }
+      }, pollInterval);
+    }
   }
 
   // On/Off represents NOT muted (true = not muted, false = muted)
