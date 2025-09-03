@@ -28,7 +28,6 @@ import { AirConditionerService } from './services/airConditionerService';
 import { ACLightingService } from './services/acLightingService';
 import { TelevisionService } from './services/televisionService';
 import { VolumeSliderService } from './services/volumeSliderService';
-import { ApplicationSelectorService } from './services/applicationSelectorService';
 import { Command } from './services/smartThingsCommand';
 import { CrashLoopManager, CrashErrorType } from './auth/CrashLoopManager';
 // type DeviceStatus = {
@@ -337,29 +336,7 @@ export class MultiServiceAccessory {
                }
              }
 
-             // Add separate application selector if enabled (keeps apps separate from input sources)
-             const registerAppSelector = this.platform.config.registerApplications !== false; // Default to true
-             if (registerAppSelector && ApplicationSelectorService.supportsApplicationSelector(capabilities)) {
-               this.log.debug(`Creating separate application selector for TV: ${this.name}`);
-               const appSelectorCapabilities = ApplicationSelectorService.getApplicationSelectorCapabilities().filter(cap => capabilities.includes(cap));
 
-               if (appSelectorCapabilities.length > 0) {
-                 const appSelectorService = new ApplicationSelectorService(
-                   this.platform,
-                   this.accessory,
-                   componentId,
-                   appSelectorCapabilities,
-                   this,
-                   this.name,
-                   component,
-                 );
-                 this.services.push(appSelectorService);
-
-                 // Remove app capabilities from other services to avoid conflicts
-                 capabilitiesToCover = capabilitiesToCover.filter(cap => !appSelectorCapabilities.includes(cap));
-                 this.log.info(`📱 Application selector created for ${this.name} - streaming apps now available separately`);
-               }
-             }
            }
          }
 
@@ -418,10 +395,7 @@ export class MultiServiceAccessory {
       return true;
     }
 
-    // Check if it's an application selector capability
-    if (ApplicationSelectorService.getApplicationSelectorCapabilities().includes(capability)) {
-      return true;
-    }
+
 
     return false;
   }

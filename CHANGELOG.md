@@ -1,7 +1,26 @@
 # Changelog
 All notable changes to this project will be documented in this file.
-## [1.0.22] - Complete Samsung TV Experience & Reference Implementation Alignment
+## [1.0.23] - Complete Samsung TV Experience & Reference Implementation Alignment
 ### Fixed
+- **📋 Official SmartThings API Compliance**: Completely aligned implementation with official SmartThings capability specifications
+  - Updated audioVolume commands to match official spec (0-100 integer values with "%" unit)
+  - Fixed audioMute commands to use both setMute("muted"/"unmuted") and simple mute/unmute fallback
+  - Enhanced mediaInputSource to support both Samsung-specific and standard input source commands
+  - Added proper mediaPlayback support for play, pause, stop, rewind, fastForward commands
+  - Implemented tvChannel support for channelUp, channelDown, and setTvChannel commands
+- **🔊 Samsung TV Volume Control**: Fixed critical issue where volume commands would report success but not actually change TV volume
+  - Implemented automatic unmute before setting volume when TV is muted
+  - Added proper volume range validation (0-100) and integer conversion per official spec
+  - Enhanced volume command logging for better debugging
+  - Added delayed status refresh to verify volume changes took effect
+- **🔇 Enhanced Mute Control**: Improved mute/unmute command reliability with official spec compliance
+  - Primary: Uses setMute command with "muted"/"unmuted" string arguments (official spec)
+  - Fallback: Uses simple mute/unmute commands for compatibility
+  - Enhanced logging and status verification
+- **📺 Input Source Control**: Enhanced input source switching with dual capability support
+  - Primary: Samsung-specific samsungvd.mediaInputSource capability
+  - Fallback: Standard mediaInputSource capability for broader compatibility
+  - Better error handling and logging for failed input changes
 - **📋 Official SmartThings API Compliance**: Completely aligned implementation with official SmartThings capability specifications
   - Updated audioVolume commands to match official spec (0-100 integer values with "%" unit)
   - Fixed audioMute commands to use both setMute("muted"/"unmuted") and simple mute/unmute fallback
@@ -28,7 +47,8 @@ All notable changes to this project will be documented in this file.
 - **📡 Channel Controls**: Added TV channel control support based on official tvChannel capability
   - Channel Up/Down via remote control keys
   - Capability detection to ensure TV supports channel control
-## [1.0.21] - Complete Samsung TV Experience & Reference Implementation Alignment
+
+## [1.0.21] - Samsung TV Custom Input Names & Simplified Experience
 ### Fixed
 - **📋 Official SmartThings API Compliance**: Completely aligned implementation with official SmartThings capability specifications
   - Updated audioVolume commands to match official spec (0-100 integer values with "%" unit)
@@ -127,6 +147,15 @@ All notable changes to this project will be documented in this file.
   - Capability detection to ensure TV supports channel control
 
 ### Added
+- **🏷️ Dynamic Input Source Names**: Samsung TV custom input names now display properly in HomeKit
+  - Shows custom names like "PlayStation 5", "Apple TV" instead of generic "HDMI1", "HDMI2"
+  - Automatically fetches fresh custom names from Samsung TV during device registration
+  - Fallback to generic names if custom names not available
+  - Focused on physical input sources only for clean, simple experience
+- **🎚️ Volume Slider Accessory**: Added separate lightbulb accessory for TV volume control
+  - Configurable via `registerVolumeSlider: boolean` option (default: false)
+  - Volume appears as brightness slider (0-100%), mute as on/off toggle
+  - Shows as separate accessory in Home app for easy volume access
 - **📖 Official Capability Validation**: All commands now validate against official SmartThings capability specifications
 - **🔄 Smart Command Fallbacks**: Multiple command strategies for better device compatibility
 - **📊 Enhanced Logging**: Detailed logging with ✅/❌ indicators for successful/failed commands

@@ -2,7 +2,6 @@ import { PlatformAccessory, CharacteristicValue, Service } from 'homebridge';
 import { IKHomeBridgeHomebridgePlatform } from '../platform';
 import { BaseService } from './baseService';
 import { MultiServiceAccessory } from '../multiServiceAccessory';
-import { SamsungTVApps } from './tvApps';
 import { ShortEvent } from '../webhook/subscriptionHandler';
 
 export class TelevisionService extends BaseService {
@@ -865,7 +864,6 @@ export class TelevisionService extends BaseService {
       'mediaPlayback',
       'custom.picturemode',
       'custom.soundmode',
-      // Note: custom.launchapp is handled by ApplicationSelectorService
     ];
   }
 }
