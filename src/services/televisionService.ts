@@ -40,14 +40,9 @@ export class TelevisionService extends BaseService {
 
     // Link services together - TelevisionSpeaker and InputSources must be linked to Television
     this.televisionService.addLinkedService(this.televisionSpeakerService);
-    this.log.debug(`✅ TelevisionSpeaker service linked to Television for ${this.name}`);
-
-    this.inputServices.forEach((inputService, index) => {
+    this.inputServices.forEach(inputService => {
       this.televisionService.addLinkedService(inputService);
-      this.log.debug(`✅ InputSource ${index + 1} linked to Television for ${this.name}`);
     });
-
-    this.log.info(`🎬 Television service linking complete for ${this.name}: TV=${this.televisionService.UUID}, Speaker=${this.televisionSpeakerService.UUID}, Inputs=${this.inputServices.length}`);
 
     // Set the main service for BaseService compatibility
     this.service = this.televisionService;
