@@ -312,18 +312,18 @@ export class MultiServiceAccessory {
                this.log.debug(`Keeping legacy switch service alongside Television service for: ${this.name}`);
              }
 
-             // Add separate volume slider if enabled (this makes volume controls visible in Home app)
-             // CRITICAL: Only create volume slider for main TV component, not sensor components
+             // Add volume slider as lightbulb service to the SAME TV accessory (same tile in HomeKit)
+             // CRITICAL: Only create for main TV component with volume capabilities
              const registerVolumeSlider = this.platform.config.registerVolumeSlider === true;
              if (registerVolumeSlider && componentId === 'main' && VolumeSliderService.supportsVolumeSlider(capabilities)) {
-               this.log.debug(`Creating separate volume slider accessory for TV main component: ${this.name}`);
+               this.log.debug(`Creating volume slider service within TV accessory for main component: ${this.name}`);
                const volumeSliderCapabilities = VolumeSliderService.getVolumeSliderCapabilities().filter(cap => capabilities.includes(cap));
 
                if (volumeSliderCapabilities.length > 0) {
                  const volumeSliderService = new VolumeSliderService(
                    this.platform,
                    this.accessory,
-                   componentId,
+                   componentId, // 'main' component for TV
                    volumeSliderCapabilities,
                    this,
                    this.name,
@@ -333,7 +333,7 @@ export class MultiServiceAccessory {
 
                  // Remove volume capabilities from other services to avoid conflicts
                  capabilitiesToCover = capabilitiesToCover.filter(cap => !volumeSliderCapabilities.includes(cap));
-                 this.log.info(`📱 Volume slider accessory created for ${this.name} main component - volume controls now visible in Home app`);
+                 this.log.info(`📱 Volume slider service added to ${this.name} TV tile - volume controls now visible in Home app`);
                }
              }
 

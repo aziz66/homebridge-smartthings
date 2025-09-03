@@ -4,12 +4,17 @@ import { MultiServiceAccessory } from '../multiServiceAccessory';
 import { IKHomeBridgeHomebridgePlatform } from '../platform';
 
 /**
- * Volume Slider Service
- * Creates a separate lightbulb accessory for TV volume control because HomeKit's native TV interface 
- * doesn't show volume controls directly in the Home app.
+ * Volume Slider Service (Within Same TV Accessory)
+ * Creates a lightbulb service within the TV accessory for volume control.
+ * This ensures the volume slider appears in the same HomeKit tile as the TV.
+ * 
+ * The slider appears as a lightbulb because iOS doesn't support direct volume sliders.
+ * Brightness = Volume (0-100%), On/Off = Mute state (inverted: On = NOT muted)
  */
 export class VolumeSliderService extends BaseService {
+  protected service: Service;
   private lastVolumeBeforeOff = 0;
+  private pollInterval: NodeJS.Timeout | undefined;
 
   constructor(
     platform: IKHomeBridgeHomebridgePlatform,
@@ -22,19 +27,19 @@ export class VolumeSliderService extends BaseService {
   ) {
     super(platform, accessory, componentId, capabilities, multiServiceAccessory, name, deviceStatus);
 
-    // Create the service as a Lightbulb (this makes it show as a slider in HomeKit)
+    // Create the service as a Lightbulb within the same TV accessory
     this.service = this.accessory.getService(`${name} Volume`) ||
       this.accessory.addService(this.platform.Service.Lightbulb, `${name} Volume`, 'VolumeSlider');
 
     // Set the display name
     this.service.setCharacteristic(this.platform.Characteristic.Name, `${name} Volume`);
 
-    // Configure On/Off characteristic (represents mute state)
+    // Configure On/Off characteristic (represents NOT muted - inverted logic)
     this.service.getCharacteristic(this.platform.Characteristic.On)
       .onGet(this.getOn.bind(this))
       .onSet(this.setOn.bind(this));
 
-    // Configure Brightness characteristic (represents volume level)
+    // Configure Brightness characteristic (represents volume level 0-100)
     this.service.getCharacteristic(this.platform.Characteristic.Brightness)
       .setProps({
         minValue: 0,
@@ -44,172 +49,201 @@ export class VolumeSliderService extends BaseService {
       .onGet(this.getBrightness.bind(this))
       .onSet(this.setBrightness.bind(this));
 
-    // Start polling to keep slider synchronized with TV (like verified plugin)
+    // Start polling to keep slider synchronized with TV IR remote changes
     this.startSliderPolling();
 
-    this.log.info(`🎚️ Volume Slider service created for ${this.name} component '${componentId}' (shows as lightbulb in HomeKit)`);
+    this.log.info(`🎚️ Volume Slider service created within ${this.name} TV tile (component: ${componentId})`);
   }
 
   private startSliderPolling(): void {
     // Get TV-specific polling interval
     let pollInterval = 15000; // default 15 seconds for TVs
-    if (this.platform.config.PollTelevisionsSeconds !== undefined) {
+    if (this.platform.config.PollTelevisionsSeconds && this.platform.config.PollTelevisionsSeconds > 0) {
       pollInterval = this.platform.config.PollTelevisionsSeconds * 1000;
     }
 
-    if (pollInterval > 0) {
-      this.log.debug(`🎚️ Starting Volume Slider polling with ${pollInterval / 1000}s interval for ${this.name} (syncs with IR remote)`);
-      
-      // Poll On/Off state (mute status)
-      setInterval(async () => {
-        try {
-          const onState = await this.getOn();
-          this.service.updateCharacteristic(this.platform.Characteristic.On, onState);
-        } catch (error) {
-          this.log.error(`Error polling volume slider on/off for ${this.name}:`, error);
-        }
-      }, pollInterval);
+    this.log.info(`🎚️ Starting Volume Slider polling with ${pollInterval/1000}s interval for ${this.name} (syncs with IR remote)`);
 
-      // Poll Brightness state (volume level)
-      setInterval(async () => {
-        try {
-          const brightness = await this.getBrightness();
-          this.service.updateCharacteristic(this.platform.Characteristic.Brightness, brightness);
-        } catch (error) {
-          this.log.error(`Error polling volume slider brightness for ${this.name}:`, error);
-        }
-      }, pollInterval);
-    }
+    this.pollInterval = setInterval(async () => {
+      try {
+        // Poll both On (mute) and Brightness (volume) to sync with IR remote changes
+        const onValue = await this.getOn();
+        const brightnessValue = await this.getBrightness();
+
+        this.service.updateCharacteristic(this.platform.Characteristic.On, onValue);
+        this.service.updateCharacteristic(this.platform.Characteristic.Brightness, brightnessValue);
+      } catch (error) {
+        this.log.debug(`Volume slider polling error for ${this.name}:`, error);
+      }
+    }, pollInterval);
   }
 
-  // On/Off represents NOT muted (true = not muted, false = muted)
+  /**
+   * Get On state (represents NOT muted - inverted logic)
+   * On = true means NOT muted, On = false means muted
+   */
   private async getOn(): Promise<CharacteristicValue> {
     try {
-      const component = this.multiServiceAccessory.components.find(c => c.componentId === this.componentId);
-      const muteState = (component?.status?.audioMute as any)?.mute?.value;
-      const isNotMuted = muteState !== 'muted';
-      this.log.debug(`Volume slider On state for ${this.name}: ${isNotMuted} (mute state: ${muteState})`);
+      // Get fresh status directly from SmartThings API for the main component
+      const response = await this.platform.axInstance.get(`devices/${this.accessory.context.device.deviceId}/components/main/capabilities/audioMute/status`);
+      const muteValue = response.data?.mute?.value;
+      
+      const isNotMuted = muteValue !== 'muted';
+      this.log.debug(`Volume slider On state for ${this.name}: ${isNotMuted} (mute: ${muteValue}) from main component`);
       return isNotMuted;
     } catch (error) {
-      this.log.debug(`Could not get mute state for volume slider ${this.name}, using cached value`);
+      this.log.debug(`Could not get mute state for slider ${this.name}:`, error);
       return true; // Default to not muted
     }
   }
 
+  /**
+   * Set On state (toggle mute)
+   * On = true means unmute, On = false means mute
+   */
   private async setOn(value: CharacteristicValue): Promise<void> {
-    this.log.debug(`Setting volume slider On state for ${this.name} to ${value}`);
+    try {
+      if (value as boolean) {
+        // Turning on = unmute
+        this.log.debug(`Volume slider turning ON (unmuting) ${this.name}`);
+        await this.platform.axInstance.post(`devices/${this.accessory.context.device.deviceId}/commands`, {
+          commands: [{
+            component: 'main', // Always target main component
+            capability: 'audioMute',
+            command: 'unmute',
+          }],
+        });
+        this.log.info(`✅ Volume slider unmuted successfully for ${this.name}`);
+      } else {
+        // Turning off = mute
+        this.log.debug(`Volume slider turning OFF (muting) ${this.name}`);
+        await this.platform.axInstance.post(`devices/${this.accessory.context.device.deviceId}/commands`, {
+          commands: [{
+            component: 'main', // Always target main component
+            capability: 'audioMute',
+            command: 'mute',
+          }],
+        });
+        this.log.info(`✅ Volume slider muted successfully for ${this.name}`);
+      }
 
-    if (!this.multiServiceAccessory.isOnline()) {
+      // Refresh status after a short delay
+      setTimeout(async () => {
+        try {
+          await this.multiServiceAccessory.refreshStatus();
+        } catch (error) {
+          this.log.debug(`Status refresh after mute toggle failed for ${this.name}:`, error);
+        }
+      }, 1000);
+
+    } catch (error) {
+      this.log.error(`❌ Failed to set mute state for volume slider ${this.name}:`, error);
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
-
-    if (value as boolean) {
-      // Turning "on" means unmute and restore last volume
-      if (this.lastVolumeBeforeOff > 0) {
-        this.log.debug(`Restoring volume to ${this.lastVolumeBeforeOff} for ${this.name}`);
-        await this.multiServiceAccessory.sendCommand('audioVolume', 'setVolume', [this.lastVolumeBeforeOff]);
-      }
-      await this.multiServiceAccessory.sendCommand('audioMute', 'unmute');
-    } else {
-      // Turning "off" means save current volume and mute
-      this.lastVolumeBeforeOff = await this.getBrightness() as number;
-      this.log.debug(`Saving volume ${this.lastVolumeBeforeOff} and muting ${this.name}`);
-      await this.multiServiceAccessory.sendCommand('audioMute', 'mute');
-    }
-
-    this.multiServiceAccessory.forceNextStatusRefresh();
   }
 
-  // Brightness represents volume level (0-100)
+  /**
+   * Get Brightness (represents volume level 0-100)
+   */
   private async getBrightness(): Promise<CharacteristicValue> {
     try {
-      const component = this.multiServiceAccessory.components.find(c => c.componentId === this.componentId);
-      const audioVolumeData = (component?.status?.audioVolume as any);
-      const volume = audioVolumeData?.volume?.value;
-      
+      // Get fresh status directly from SmartThings API for the main component
+      const response = await this.platform.axInstance.get(`devices/${this.accessory.context.device.deviceId}/components/main/capabilities/audioVolume/status`);
+      const volume = response.data?.volume?.value;
+
       if (typeof volume === 'number') {
-        this.log.debug(`Volume slider brightness for ${this.name}: ${volume} (from '${this.componentId}' component)`);
-        return volume;
+        const boundedVolume = Math.max(0, Math.min(100, volume)); // Bound between 0-100
+        this.log.debug(`Volume slider brightness for ${this.name}: ${boundedVolume}% (from main component)`);
+        return boundedVolume;
       } else {
-        this.log.warn(`⚠️  No audioVolume data in '${this.componentId}' component for ${this.name} - available status:`, 
-          Object.keys(component?.status || {}));
+        this.log.warn(`⚠️  No audioVolume data in main component for ${this.name} - API response:`, response.data);
         return 0;
       }
     } catch (error) {
-      this.log.debug(`Could not get volume for slider ${this.name}, using default`);
+      this.log.debug(`Could not get volume for slider ${this.name}:`, error);
       return 0;
     }
   }
 
+  /**
+   * Set Brightness (set volume level 0-100)
+   */
   private async setBrightness(value: CharacteristicValue): Promise<void> {
-    this.log.debug(`Setting volume slider brightness for ${this.name} to ${value}`);
+    try {
+      const volume = Math.max(0, Math.min(100, value as number)); // Bound between 0-100
+      
+      this.log.debug(`Volume slider setting brightness to ${volume}% for ${this.name}`);
+      
+      // Set volume using SmartThings API to main component
+      await this.platform.axInstance.post(`devices/${this.accessory.context.device.deviceId}/commands`, {
+        commands: [{
+          component: 'main', // Always target main component
+          capability: 'audioVolume',
+          command: 'setVolume',
+          arguments: [volume],
+        }],
+      });
 
-    if (!this.multiServiceAccessory.isOnline()) {
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-    }
-
-    const volumeLevel = Math.max(0, Math.min(100, Math.round(Number(value))));
-    
-    // If setting volume above 0, automatically unmute
-    if (volumeLevel > 0) {
-      try {
-        const component = this.multiServiceAccessory.components.find(c => c.componentId === this.componentId);
-        const muteState = (component?.status?.audioMute as any)?.mute?.value;
-        
-        if (muteState === 'muted') {
-          this.log.debug(`Auto-unmuting before setting volume to ${volumeLevel} for ${this.name}`);
-          await this.multiServiceAccessory.sendCommand('audioMute', 'unmute');
-          await new Promise(resolve => setTimeout(resolve, 300));
+      // If setting volume above 0 and TV is muted, automatically unmute
+      if (volume > 0) {
+        try {
+          const response = await this.platform.axInstance.get(`devices/${this.accessory.context.device.deviceId}/components/main/capabilities/audioMute/status`);
+          const muteValue = response.data?.mute?.value;
+          
+          if (muteValue === 'muted') {
+            this.log.debug(`Auto-unmuting ${this.name} because volume was set to ${volume}%`);
+            await this.platform.axInstance.post(`devices/${this.accessory.context.device.deviceId}/commands`, {
+              commands: [{
+                component: 'main', // Always target main component
+                capability: 'audioMute',
+                command: 'unmute',
+              }],
+            });
+          }
+        } catch (error) {
+          this.log.debug(`Could not check/set mute state during volume change for ${this.name}:`, error);
         }
-      } catch (error) {
-        this.log.debug(`Could not check mute state before volume change: ${error}`);
       }
-    }
 
-    this.log.info(`🔊 Setting volume via slider: ${volumeLevel}% for ${this.name}`);
-    const success = await this.multiServiceAccessory.sendCommand('audioVolume', 'setVolume', [volumeLevel]);
-    
-    if (success) {
-      this.log.info(`✅ Volume slider set successfully to ${volumeLevel}% for ${this.name}`);
-      setTimeout(() => {
-        this.multiServiceAccessory.forceNextStatusRefresh();
+      this.log.info(`✅ Volume slider set successfully to ${volume}% for ${this.name}`);
+
+      // Refresh status after a short delay
+      setTimeout(async () => {
+        try {
+          await this.multiServiceAccessory.refreshStatus();
+        } catch (error) {
+          this.log.debug(`Status refresh after volume change failed for ${this.name}:`, error);
+        }
       }, 1000);
-    } else {
-      this.log.error(`❌ Volume slider command failed for ${this.name}`);
+
+    } catch (error) {
+      this.log.error(`❌ Failed to set volume for slider ${this.name}:`, error);
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
   }
 
+  /**
+   * Returns the capabilities that this service can handle
+   */
   public static getVolumeSliderCapabilities(): string[] {
     return ['audioVolume', 'audioMute'];
   }
 
+  /**
+   * Check if the given capabilities support volume slider functionality
+   */
   public static supportsVolumeSlider(capabilities: string[]): boolean {
-    return capabilities.includes('audioVolume');
+    return capabilities.includes('audioVolume') || capabilities.includes('audioMute');
   }
 
-  updateStatus(capability: string, status: any): void {
-    this.log.debug(`Volume slider status update for ${this.name}: ${capability}`);
-    
-    try {
-      switch (capability) {
-        case 'audioVolume':
-          if (status?.volume?.value !== undefined) {
-            const volume = Number(status.volume.value);
-            this.service.updateCharacteristic(this.platform.Characteristic.Brightness, volume);
-            this.log.debug(`Volume slider updated to ${volume}% for ${this.name}`);
-          }
-          break;
-        case 'audioMute':
-          if (status?.mute?.value !== undefined) {
-            const isNotMuted = status.mute.value !== 'muted';
-            this.service.updateCharacteristic(this.platform.Characteristic.On, isNotMuted);
-            this.log.debug(`Volume slider mute state updated to ${isNotMuted} for ${this.name}`);
-          }
-          break;
-      }
-    } catch (error) {
-      this.log.error(`Error updating volume slider status for ${this.name}:`, error);
+  /**
+   * Cleanup method to stop polling when accessory is removed
+   */
+  public cleanup(): void {
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = undefined;
+      this.log.debug(`Volume slider polling stopped for ${this.name}`);
     }
   }
 }

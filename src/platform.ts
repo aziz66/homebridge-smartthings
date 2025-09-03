@@ -407,5 +407,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
   public getCrashLoopManagerInstance(): CrashLoopManager {
     return this.crashLoopManager;
   }
+
+
 }
 

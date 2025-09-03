@@ -102,18 +102,11 @@ export class TelevisionService extends BaseService {
     speakerService.setCharacteristic(this.platform.Characteristic.Name, `${this.name} Speaker`);
 
     if (hasVolumeSlider) {
-      // Volume Slider is enabled - TelevisionSpeaker only provides basic speaker functionality
-      this.log.info(`🎚️ Volume Slider enabled - TelevisionSpeaker will provide minimal functionality for ${this.name}`);
+      // Volume Slider is enabled - TelevisionSpeaker provides NO volume controls to avoid conflicts
+      this.log.info(`🎚️ Volume Slider enabled - TelevisionSpeaker disabled to prevent conflicts for ${this.name}`);
 
-      // Set to relative volume control (no absolute volume since slider handles that)
-      speakerService.setCharacteristic(
-        this.platform.Characteristic.VolumeControlType,
-        this.platform.Characteristic.VolumeControlType.RELATIVE,
-      );
-
-      // Only provide Volume Selector (volume up/down buttons)
-      speakerService.getCharacteristic(this.platform.Characteristic.VolumeSelector)
-        .onSet(this.setVolumeSelector.bind(this));
+      // Don't register any volume/mute characteristics when volume slider is enabled
+      // This completely avoids conflicts with the separate volume slider accessory
 
     } else {
       // Standard TelevisionSpeaker with full volume/mute controls
