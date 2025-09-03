@@ -39,11 +39,9 @@ export class TelevisionService extends BaseService {
     // Configure the Television service as the primary service
     this.televisionService.setPrimaryService();
 
-    // Link services together - TelevisionSpeaker and InputSources must be linked to Television
+    // Link services together - TelevisionSpeaker must be linked to Television
+    // Note: InputSources will be linked individually when they are registered asynchronously
     this.televisionService.addLinkedService(this.televisionSpeakerService);
-    this.inputServices.forEach(inputService => {
-      this.televisionService.addLinkedService(inputService);
-    });
 
     // Set the main service for BaseService compatibility
     this.service = this.televisionService;
@@ -175,7 +173,9 @@ export class TelevisionService extends BaseService {
     }
 
     if (pollInterval > 0) {
-      this.log.debug(`🎚️ Starting Volume polling with ${pollInterval / 1000}s interval for ${this.name} (IR remote changes will be detected)`);
+      this.log.debug(
+        `🎚️ Starting Volume polling with ${pollInterval / 1000}s interval for ${this.name} (IR remote changes will be detected)`,
+      );
       setInterval(async () => {
         try {
           const volume = await this.getVolume();
@@ -227,8 +227,10 @@ export class TelevisionService extends BaseService {
         this.getInputSourceType(input.id),
       );
 
-      this.log.info(`   📺 Physical Input: "${input.name}" (${input.id})`);
+      this.log.info(`   📺 Physical Input: "${input.name}" (${input.id}) -> HomeKit ID ${index + 1}`);
     });
+
+    this.log.info(`📺 Successfully registered ${this.inputSourcesMap.length} input sources for ${this.name}`);
   }
 
 
@@ -262,12 +264,16 @@ export class TelevisionService extends BaseService {
       .onGet(() => this.platform.Characteristic.TargetVisibilityState.SHOWN)
       .onSet((value) => {
         inputService.setCharacteristic(this.platform.Characteristic.CurrentVisibilityState, value);
-        this.log.debug(`${inputSourceType === this.platform.Characteristic.InputSourceType.APPLICATION ? 'App' : 'Input'} "${name}" visibility changed to ${value}`);
+        const sourceType = inputSourceType === this.platform.Characteristic.InputSourceType.APPLICATION ? 'App' : 'Input';
+        this.log.debug(`${sourceType} "${name}" visibility changed to ${value}`);
       });
 
     // Link to Television service and add to our list
     this.televisionService.addLinkedService(inputService);
     this.inputServices.push(inputService);
+    this.log.debug(
+      `✅ Registered input source "${name}" (${id}) with identifier ${this.inputServices.length} for ${this.accessory.displayName}`,
+    );
   }
 
   // Method to be called when samsungvd.mediaInputSource capability becomes available
@@ -275,6 +281,12 @@ export class TelevisionService extends BaseService {
     if (this.inputServices.length === 0) {
       this.log.info(`🔄 Input source capability available - registering input sources for ${this.name}`);
       await this.setupInputSources();
+
+      // CRITICAL: Update HomeKit about the new input source services
+      this.log.debug(
+        `📱 Updating HomeKit with ${this.inputServices.length} new input sources for ${this.name}`,
+      );
+      this.platform.api.updatePlatformAccessories([this.accessory]);
     } else {
       this.log.debug(`Input sources already registered for ${this.name}`);
     }
@@ -292,9 +304,24 @@ export class TelevisionService extends BaseService {
 
       if (inputSourceData?.supportedInputSourcesMap?.value) {
         // Use Samsung TV's current custom input names (fresh from API)
-        const supportedInputSources = [...new Set(inputSourceData.supportedInputSourcesMap.value as { id: string; name: string }[])];
+        const supportedInputSources = inputSourceData.supportedInputSourcesMap.value as { id: string; name: string }[];
 
-        this.inputSourcesMap = supportedInputSources.map((source: any) => ({
+        // Remove duplicates and ensure unique input source IDs
+        const uniqueInputSources = supportedInputSources.reduce((acc: { id: string; name: string }[], current) => {
+          const existingIndex = acc.findIndex(item => item.id === current.id);
+          if (existingIndex >= 0) {
+            // If duplicate ID found, use the one with more descriptive name (longer name usually)
+            if (current.name.length > acc[existingIndex].name.length) {
+              acc[existingIndex] = current;
+            }
+            this.log.debug(`⚠️  Duplicate input ID "${current.id}" found - keeping "${acc[existingIndex].name}"`);
+          } else {
+            acc.push(current);
+          }
+          return acc;
+        }, []);
+
+        this.inputSourcesMap = uniqueInputSources.map((source: any) => ({
           id: source.id,        // SmartThings ID (e.g., "HDMI1")
           name: source.name,    // Current custom name from TV (e.g., "PlayStation 5")
         }));
@@ -455,10 +482,9 @@ export class TelevisionService extends BaseService {
       // 2. Standard mediaInputSource with setInputSource command (fallback)
       let success = false;
 
-                  // According to reference implementation: determine if this is an app or input source
+      // According to reference implementation: determine if this is an app or input source
       const inputService = this.inputServices[inputIndex];
       const inputId = inputService.name; // This contains the SmartThings ID
-      const inputSourceType = inputService.getCharacteristic(this.platform.Characteristic.InputSourceType).value as number;
 
       this.log.debug(`Setting input source: "${targetInput.name}" using ID "${inputId}" for ${this.name}`);
 
@@ -808,13 +834,14 @@ export class TelevisionService extends BaseService {
     this.log.debug(`Processing event for TV ${this.name}: ${event.capability} = ${event.value}`);
 
     switch (event.capability) {
-      case 'switch':
+      case 'switch': {
         const isActive = event.value === 'on';
         this.televisionService.updateCharacteristic(
           this.platform.Characteristic.Active,
           isActive ? this.platform.Characteristic.Active.ACTIVE : this.platform.Characteristic.Active.INACTIVE,
         );
         break;
+      }
 
       case 'audioMute':
         this.isMuted = event.value === 'muted';
