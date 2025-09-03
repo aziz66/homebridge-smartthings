@@ -96,10 +96,12 @@ export class VolumeSliderService extends BaseService {
           resolve(true); // Default to not muted if we can't get status
         } else {
           try {
-            // Get mute status from device status (main component)
-            const muteValue = this.deviceStatus.status?.main?.audioMute?.mute?.value;
+            // Get mute status from component data (same pattern as TelevisionService)
+            const component = this.multiServiceAccessory.components.find(c => c.componentId === this.componentId);
+            const audioMuteData = component?.status?.audioMute as any;
+            const muteValue = audioMuteData?.mute?.value;
             const isNotMuted = muteValue !== 'muted';
-            this.log.debug(`Volume slider On state for ${this.name}: ${isNotMuted} (mute: ${muteValue}) from main component`);
+            this.log.debug(`Volume slider On state for ${this.name}: ${isNotMuted} (mute: ${muteValue})`);
             resolve(isNotMuted);
           } catch (error) {
             this.log.debug(`Error parsing mute status for ${this.name}:`, error);
@@ -148,15 +150,17 @@ export class VolumeSliderService extends BaseService {
           resolve(0); // Default to 0 volume if we can't get status
         } else {
           try {
-            // Get volume from device status (main component)
-            const volume = this.deviceStatus.status?.main?.audioVolume?.volume?.value;
+            // Get volume from component data (same pattern as TelevisionService)
+            const component = this.multiServiceAccessory.components.find(c => c.componentId === this.componentId);
+            const audioVolumeData = component?.status?.audioVolume as any;
+            const volume = audioVolumeData?.volume?.value;
             
             if (typeof volume === 'number') {
               const boundedVolume = Math.max(0, Math.min(100, volume)); // Bound between 0-100
-              this.log.debug(`Volume slider brightness for ${this.name}: ${boundedVolume}% (from main component)`);
+              this.log.debug(`Volume slider brightness for ${this.name}: ${boundedVolume}%`);
               resolve(boundedVolume);
             } else {
-              this.log.warn(`⚠️  No audioVolume data in main component for ${this.name}`);
+              this.log.warn(`⚠️  No audioVolume data for ${this.name}`);
               resolve(0);
             }
           } catch (error) {
@@ -189,9 +193,11 @@ export class VolumeSliderService extends BaseService {
       // If setting volume above 0 and TV is muted, automatically unmute
       if (volume > 0) {
         try {
-          // Check current mute status from device status
+          // Check current mute status from component data
           if (await this.getStatus()) {
-            const muteValue = this.deviceStatus.status?.main?.audioMute?.mute?.value;
+            const component = this.multiServiceAccessory.components.find(c => c.componentId === this.componentId);
+            const audioMuteData = component?.status?.audioMute as any;
+            const muteValue = audioMuteData?.mute?.value;
             
             if (muteValue === 'muted') {
               this.log.debug(`Auto-unmuting ${this.name} because volume was set to ${volume}%`);

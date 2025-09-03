@@ -1,5 +1,16 @@
 # Changelog
 All notable changes to this project will be documented in this file.
+## [1.0.30] - Complete Samsung TV Experience & Reference Implementation Alignment
+### Fixed
+- **🚨 CRITICAL: Volume Slider Component Targeting**: Fixed volume slider targeting wrong device components (was controlling light sensor instead of TV audio)
+- **Volume Slider Tile Placement**: Volume slider now appears within the same TV tile in HomeKit (not as separate accessory)
+- **Direct API Calls**: Volume slider now uses direct SmartThings API calls to main TV component, ensuring reliable volume control
+- **Component Confusion**: Added strict `componentId === 'main'` check to prevent volume slider creation on sensor components
+
+### Changed
+- **Volume Slider Architecture**: Simplified to work as a service within the same TV accessory (same HomeKit tile)
+- **TelevisionSpeaker Conflicts**: When volume slider is enabled, TelevisionSpeaker completely disables volume controls to prevent conflicts
+- **API Communication**: Volume slider bypasses internal component status and uses direct API calls for immediate responsiveness
 ## [1.0.29] - Complete Samsung TV Experience & Reference Implementation Alignment
 ### Fixed
 - **🚨 CRITICAL: Volume Slider Component Targeting**: Fixed volume slider targeting wrong device components (was controlling light sensor instead of TV audio)
