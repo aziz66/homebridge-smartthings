@@ -1,5 +1,8 @@
 # Changelog
 All notable changes to this project will be documented in this file.
+## [1.0.26] - Complete Samsung TV Experience & Reference Implementation Alignment
+### Fixed
+- **📋 Bug fixes**
 ## [1.0.25] - Complete Samsung TV Experience & Reference Implementation Alignment
 ### Fixed
 - **📋 Bug fixes**

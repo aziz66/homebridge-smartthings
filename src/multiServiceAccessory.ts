@@ -313,9 +313,10 @@ export class MultiServiceAccessory {
              }
 
              // Add separate volume slider if enabled (this makes volume controls visible in Home app)
+             // CRITICAL: Only create volume slider for main TV component, not sensor components
              const registerVolumeSlider = this.platform.config.registerVolumeSlider === true;
-             if (registerVolumeSlider && VolumeSliderService.supportsVolumeSlider(capabilities)) {
-               this.log.debug(`Creating separate volume slider accessory for TV: ${this.name}`);
+             if (registerVolumeSlider && componentId === 'main' && VolumeSliderService.supportsVolumeSlider(capabilities)) {
+               this.log.debug(`Creating separate volume slider accessory for TV main component: ${this.name}`);
                const volumeSliderCapabilities = VolumeSliderService.getVolumeSliderCapabilities().filter(cap => capabilities.includes(cap));
 
                if (volumeSliderCapabilities.length > 0) {
@@ -332,7 +333,7 @@ export class MultiServiceAccessory {
 
                  // Remove volume capabilities from other services to avoid conflicts
                  capabilitiesToCover = capabilitiesToCover.filter(cap => !volumeSliderCapabilities.includes(cap));
-                 this.log.info(`📱 Volume slider accessory created for ${this.name} - volume controls now visible in Home app`);
+                 this.log.info(`📱 Volume slider accessory created for ${this.name} main component - volume controls now visible in Home app`);
                }
              }
 

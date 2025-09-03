@@ -47,7 +47,7 @@ export class VolumeSliderService extends BaseService {
     // Start polling to keep slider synchronized with TV (like verified plugin)
     this.startSliderPolling();
 
-    this.log.info(`🎚️ Volume Slider service created for ${this.name} (shows as lightbulb in HomeKit)`);
+    this.log.info(`🎚️ Volume Slider service created for ${this.name} component '${componentId}' (shows as lightbulb in HomeKit)`);
   }
 
   private startSliderPolling(): void {
@@ -128,10 +128,11 @@ export class VolumeSliderService extends BaseService {
       const volume = audioVolumeData?.volume?.value;
       
       if (typeof volume === 'number') {
-        this.log.debug(`Volume slider brightness for ${this.name}: ${volume}`);
+        this.log.debug(`Volume slider brightness for ${this.name}: ${volume} (from '${this.componentId}' component)`);
         return volume;
       } else {
-        this.log.debug(`Could not get volume for slider ${this.name}, using default`);
+        this.log.warn(`⚠️  No audioVolume data in '${this.componentId}' component for ${this.name} - available status:`, 
+          Object.keys(component?.status || {}));
         return 0;
       }
     } catch (error) {
