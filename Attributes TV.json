@@ -1,0 +1,1146 @@
+[
+    {
+        "component": "main",
+        "capability": "audioMute",
+        "attribute": "mute",
+        "value": "muted",
+        "timestamp": "2025-06-16T14:32:30.674Z"
+    },
+    {
+        "component": "main",
+        "capability": "audioVolume",
+        "attribute": "volume",
+        "value": 6,
+        "timestamp": "2025-06-16T14:32:30.674Z"
+    },
+    {
+        "component": "main",
+        "capability": "custom.disabledCapabilities",
+        "attribute": "disabledCapabilities",
+        "value": [
+            "samsungvd.ambientContent",
+            "sec.wifiConfiguration"
+        ],
+        "timestamp": "2025-09-03T05:40:48.940Z"
+    },
+    {
+        "component": "main",
+        "capability": "custom.energyType",
+        "attribute": "drMaxDuration",
+        "value": 99999999,
+        "timestamp": "2025-09-02T19:15:08.584Z"
+    },
+    {
+        "component": "main",
+        "capability": "custom.energyType",
+        "attribute": "energySavingInfo",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "custom.energyType",
+        "attribute": "energySavingLevel",
+        "value": 1,
+        "timestamp": "2025-09-02T19:15:08.584Z"
+    },
+    {
+        "component": "main",
+        "capability": "custom.energyType",
+        "attribute": "energySavingOperation",
+        "value": false,
+        "timestamp": "2025-09-02T19:15:08.584Z"
+    },
+    {
+        "component": "main",
+        "capability": "custom.energyType",
+        "attribute": "energySavingOperationSupport",
+        "value": true,
+        "timestamp": "2025-09-02T19:15:08.584Z"
+    },
+    {
+        "component": "main",
+        "capability": "custom.energyType",
+        "attribute": "energySavingSupport",
+        "value": true,
+        "timestamp": "2025-09-02T19:15:08.584Z"
+    },
+    {
+        "component": "main",
+        "capability": "custom.energyType",
+        "attribute": "energyType",
+        "value": "2.0",
+        "timestamp": "2025-09-02T19:15:08.584Z"
+    },
+    {
+        "component": "main",
+        "capability": "custom.energyType",
+        "attribute": "notificationTemplateID",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "custom.energyType",
+        "attribute": "supportedEnergySavingLevels",
+        "value": [
+            1
+        ],
+        "timestamp": "2025-09-02T19:15:08.584Z"
+    },
+    {
+        "component": "main",
+        "capability": "custom.error",
+        "attribute": "error",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "custom.picturemode",
+        "attribute": "pictureMode",
+        "value": "FILMMAKER MODE",
+        "timestamp": "2025-06-16T14:32:27.030Z"
+    },
+    {
+        "component": "main",
+        "capability": "custom.picturemode",
+        "attribute": "supportedPictureModes",
+        "value": [
+            "Dynamic",
+            "Eco",
+            "FILMMAKER MODE",
+            "Movie (Calibrated)",
+            "Standard"
+        ],
+        "timestamp": "2025-06-16T14:32:27.030Z"
+    },
+    {
+        "component": "main",
+        "capability": "custom.picturemode",
+        "attribute": "supportedPictureModesMap",
+        "value": [
+            {
+                "id": "modeDynamic",
+                "name": "Dynamic"
+            },
+            {
+                "id": "modeGen_65552",
+                "name": "Eco"
+            },
+            {
+                "id": "modeFilmmakerMode",
+                "name": "FILMMAKER MODE"
+            },
+            {
+                "id": "modeMovie",
+                "name": "Movie (Calibrated)"
+            },
+            {
+                "id": "modeStandard",
+                "name": "Standard"
+            }
+        ],
+        "timestamp": "2025-06-16T14:32:27.030Z"
+    },
+    {
+        "component": "main",
+        "capability": "custom.soundmode",
+        "attribute": "soundMode",
+        "value": "Standard",
+        "timestamp": "2025-06-16T14:32:30.542Z"
+    },
+    {
+        "component": "main",
+        "capability": "custom.soundmode",
+        "attribute": "supportedSoundModes",
+        "value": [
+            "Amplify",
+            "Standard"
+        ],
+        "timestamp": "2025-06-16T14:32:30.542Z"
+    },
+    {
+        "component": "main",
+        "capability": "custom.soundmode",
+        "attribute": "supportedSoundModesMap",
+        "value": [
+            {
+                "id": "modeAmplify",
+                "name": "Amplify"
+            },
+            {
+                "id": "modeStandard",
+                "name": "Standard"
+            }
+        ],
+        "timestamp": "2025-06-16T14:32:30.542Z"
+    },
+    {
+        "component": "main",
+        "capability": "demandResponseLoadControl",
+        "attribute": "drlcStatus",
+        "value": {
+            "drlcType": 1,
+            "drlcLevel": 0,
+            "start": "2025-09-02T19:15:08Z",
+            "duration": 99999999,
+            "override": false
+        },
+        "timestamp": "2025-09-02T19:15:07.145Z"
+    },
+    {
+        "component": "main",
+        "capability": "execute",
+        "attribute": "data",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "mediaInputSource",
+        "attribute": "inputSource",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "mediaInputSource",
+        "attribute": "supportedInputSources",
+        "value": [],
+        "timestamp": "2025-06-16T14:32:24.258Z"
+    },
+    {
+        "component": "main",
+        "capability": "mediaPlayback",
+        "attribute": "playbackStatus",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "mediaPlayback",
+        "attribute": "supportedPlaybackCommands",
+        "value": [
+            "play",
+            "pause",
+            "stop",
+            "fastForward",
+            "rewind"
+        ],
+        "timestamp": "2025-06-16T14:32:24.258Z"
+    },
+    {
+        "component": "main",
+        "capability": "mediaTrackControl",
+        "attribute": "supportedTrackControlCommands",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "ocf",
+        "attribute": "di",
+        "value": "2be36aa7-bd5c-8248-12c0-139e34748204",
+        "timestamp": "2025-06-16T14:32:24.705Z"
+    },
+    {
+        "component": "main",
+        "capability": "ocf",
+        "attribute": "dmv",
+        "value": "res.1.1.0,sh.1.1.0",
+        "timestamp": "2025-06-16T14:32:24.705Z"
+    },
+    {
+        "component": "main",
+        "capability": "ocf",
+        "attribute": "icv",
+        "value": "core.1.1.0",
+        "timestamp": "2025-06-16T14:32:24.705Z"
+    },
+    {
+        "component": "main",
+        "capability": "ocf",
+        "attribute": "mndt",
+        "value": "2023-01-01",
+        "timestamp": "2025-06-16T14:32:24.705Z"
+    },
+    {
+        "component": "main",
+        "capability": "ocf",
+        "attribute": "mnfv",
+        "value": "T-PTMCUABC-0080-2024.0|ST_ENERGY",
+        "timestamp": "2025-06-16T14:32:24.705Z"
+    },
+    {
+        "component": "main",
+        "capability": "ocf",
+        "attribute": "mnhw",
+        "value": "",
+        "timestamp": "2025-06-16T14:32:24.705Z"
+    },
+    {
+        "component": "main",
+        "capability": "ocf",
+        "attribute": "mnml",
+        "value": "",
+        "timestamp": "2025-06-16T14:32:24.705Z"
+    },
+    {
+        "component": "main",
+        "capability": "ocf",
+        "attribute": "mnmn",
+        "value": "Samsung Electronics",
+        "timestamp": "2025-06-16T14:32:24.705Z"
+    },
+    {
+        "component": "main",
+        "capability": "ocf",
+        "attribute": "mnmo",
+        "value": "QA77S90CAUXZN",
+        "timestamp": "2025-06-16T14:32:24.705Z"
+    },
+    {
+        "component": "main",
+        "capability": "ocf",
+        "attribute": "mnos",
+        "value": "Tizen",
+        "timestamp": "2025-06-16T14:32:24.705Z"
+    },
+    {
+        "component": "main",
+        "capability": "ocf",
+        "attribute": "mnpv",
+        "value": "8.0",
+        "timestamp": "2025-06-16T14:32:24.705Z"
+    },
+    {
+        "component": "main",
+        "capability": "ocf",
+        "attribute": "mnsl",
+        "value": "",
+        "timestamp": "2025-06-16T14:32:24.705Z"
+    },
+    {
+        "component": "main",
+        "capability": "ocf",
+        "attribute": "n",
+        "value": "77\" OLED",
+        "timestamp": "2025-06-16T14:32:24.705Z"
+    },
+    {
+        "component": "main",
+        "capability": "ocf",
+        "attribute": "pi",
+        "value": "2be36aa7-bd5c-8248-12c0-139e34748204",
+        "timestamp": "2025-06-16T14:32:24.705Z"
+    },
+    {
+        "component": "main",
+        "capability": "ocf",
+        "attribute": "st",
+        "value": "2025-06-16T14:32:22Z",
+        "timestamp": "2025-06-16T14:32:24.705Z"
+    },
+    {
+        "component": "main",
+        "capability": "ocf",
+        "attribute": "vid",
+        "value": "VD-STV-2023",
+        "timestamp": "2025-06-16T14:32:24.705Z"
+    },
+    {
+        "component": "main",
+        "capability": "powerConsumptionReport",
+        "attribute": "powerConsumption",
+        "value": {
+            "energy": 0,
+            "deltaEnergy": 0,
+            "power": 0,
+            "powerEnergy": 0,
+            "persistedEnergy": 0,
+            "energySaved": 0,
+            "persistedSavedEnergy": 0,
+            "start": "1970-01-01T00:00:00Z",
+            "end": "2025-09-02T19:15:07Z"
+        },
+        "timestamp": "2025-09-02T19:15:07.277Z"
+    },
+    {
+        "component": "main",
+        "capability": "relativeBrightness",
+        "attribute": "brightnessIntensity",
+        "value": 3,
+        "timestamp": "2025-09-03T05:40:49.195Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungim.findNodeGeolocation",
+        "attribute": "accuracy",
+        "value": 0,
+        "timestamp": "2025-09-02T19:15:07.815Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungim.findNodeGeolocation",
+        "attribute": "heading",
+        "value": 0,
+        "timestamp": "2025-09-02T19:15:07.815Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungim.findNodeGeolocation",
+        "attribute": "latitude",
+        "value": 0,
+        "timestamp": "2025-09-02T19:15:07.815Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungim.findNodeGeolocation",
+        "attribute": "longitude",
+        "value": 0,
+        "timestamp": "2025-09-02T19:15:07.815Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungim.findNodeGeolocation",
+        "attribute": "method",
+        "value": "NONE",
+        "timestamp": "2025-09-02T19:15:07.815Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungim.findNodeGeolocation",
+        "attribute": "speed",
+        "value": 0,
+        "timestamp": "2025-09-02T19:15:07.815Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.ambient",
+        "attribute": "info",
+        "value": {
+            "event": "get_setting_all",
+            "requestId": "c2ff189a-e73c-4310-8b20-8f0306b01bec.1756841526829.f",
+            "data": {
+                "daily_info": "on",
+                "family_info": "on",
+                "iot_home_summary": "on",
+                "music_widget": "on",
+                "tvplus": "on",
+                "iot_summary_visible": "on",
+                "iot_cam_visible": "off",
+                "iot_energy_visible": "off",
+                "bg_content_name": "com.samsung.tv.ambientbg-tranquilnature",
+                "food_widget_visible": "off",
+                "cn_music_visible": "off",
+                "bixby_greeting_visible": "off",
+                "hourly_onoff": "on",
+                "night_mode": "on",
+                "background": "off",
+                "sleep_mode": "off",
+                "slide_time": "15",
+                "sensitivity": "1",
+                "display_time": "120",
+                "json_sample_widget": "off",
+                "music_visible": "on",
+                "program_reminder_visible": "off",
+                "auto_adjustment": "off",
+                "power_animation_hide": "off",
+                "version": "1.24.235",
+                "preview_widget_list": {
+                    "screen_item_count": 4,
+                    "widget_order": [
+                        {
+                            "widget_type": "daily_info"
+                        },
+                        {
+                            "widget_type": "family_info"
+                        },
+                        {
+                            "widget_type": "tvplus"
+                        },
+                        {
+                            "widget_type": "music_widget"
+                        },
+                        {
+                            "widget_type": "iot_home_summary"
+                        }
+                    ]
+                },
+                "ambient_info_active": "off",
+                "voice": "off",
+                "support_fullview": false,
+                "support_ultrasonic_sensor": false,
+                "support_timeout_auto": false,
+                "bixby_country": "en_GB",
+                "sleep_mode_set_time": "21:00-07:00",
+                "ultrasonic_sensor": "off",
+                "bg_content_support_list": [
+                    "none",
+                    "blossom",
+                    "tranquilnature",
+                    "islandflyover",
+                    "fireplace",
+                    "sparkle",
+                    "wish",
+                    "window",
+                    "journey",
+                    "spring"
+                ]
+            }
+        },
+        "timestamp": "2025-09-02T19:32:09.035Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.ambientContent",
+        "attribute": "supportedAmbientApps",
+        "value": [],
+        "timestamp": "2025-06-16T14:32:24.258Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.contentInfo",
+        "attribute": "currenttime",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.contentInfo",
+        "attribute": "endtime",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.contentInfo",
+        "attribute": "input",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.contentInfo",
+        "attribute": "inputname",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.contentInfo",
+        "attribute": "number",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.contentInfo",
+        "attribute": "starttime",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.contentInfo",
+        "attribute": "subtitle",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.contentInfo",
+        "attribute": "thumbnailurl",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.contentInfo",
+        "attribute": "title",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceCategory",
+        "attribute": "category",
+        "value": "tv",
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "additionalInfo",
+        "value": {
+            "udn": "fd2b39e9-edd5-4c6d-b205-f48818b683ea",
+            "category": "tv",
+            "subcategory": "tv",
+            "onsupport": true,
+            "ambientsupport": true,
+            "paneltime": 9185,
+            "mnid": "0AJK",
+            "setupid": "101",
+            "ipv4": "10.0.1.198",
+            "ipv6": "",
+            "swversion": "T-PTMCUABC-0080-2024.0"
+        },
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "artsupport",
+        "value": false,
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "blemac",
+        "value": "6C:70:CB:0A:40:0B",
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "btmac",
+        "value": "6C:70:CB:0A:40:0B",
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "country",
+        "value": "NONE",
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "countrycode",
+        "value": "AE",
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "ds",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "encryptedduid",
+        "value": "Cc/SnAEb+tJv1F+nz5jM+Q==",
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "ethmac",
+        "value": "2c:99:75:2a:1c:64",
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "infolinkversion",
+        "value": "T-INFOLINK2024-1006",
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "language",
+        "value": "en_GB",
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "modelid",
+        "value": "23_PONTUSM_QD_OS80",
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "productcode",
+        "value": "QA77S90CAUXZN",
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "ptopmac",
+        "value": "6e:70:cb:0a:40:0a",
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "remoteless",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "sn",
+        "value": "0Q7N3NJX500027R",
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "swmodel",
+        "value": "QCQS90",
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "vendorcode",
+        "value": "Samsung",
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "wifimac",
+        "value": "6c:70:cb:0a:40:0a",
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.deviceInfoPrivate",
+        "attribute": "year",
+        "value": 2023,
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.firmwareVersion",
+        "attribute": "firmwareVersion",
+        "value": "3.5.1",
+        "timestamp": "2025-06-16T14:32:26.385Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.lightControl",
+        "attribute": "errorCode",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.lightControl",
+        "attribute": "requestId",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.lightControl",
+        "attribute": "selectedAppId",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.lightControl",
+        "attribute": "selectedMode",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.lightControl",
+        "attribute": "streamControl",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.lightControl",
+        "attribute": "supportedModeMap",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.lightControl",
+        "attribute": "supportedModes",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.mediaInputSource",
+        "attribute": "inputSource",
+        "value": "dtv",
+        "timestamp": "2025-09-03T05:40:49.053Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.mediaInputSource",
+        "attribute": "supportedInputSourcesMap",
+        "value": [
+            {
+                "id": "dtv",
+                "name": "TV"
+            },
+            {
+                "id": "HDMI1",
+                "name": "Etisalat"
+            },
+            {
+                "id": "HDMI2",
+                "name": "PlayStation 5"
+            },
+            {
+                "id": "HDMI3",
+                "name": "Samsung"
+            },
+            {
+                "id": "HDMI3",
+                "name": "Nvidia"
+            },
+            {
+                "id": "HDMI4",
+                "name": "Apple TV"
+            }
+        ],
+        "timestamp": "2025-09-03T05:40:49.053Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.mediaOutput",
+        "attribute": "currentOutput",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.mediaOutput",
+        "attribute": "supportedOutputList",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.sensorStates",
+        "attribute": "supportedSensorTypes",
+        "value": [
+            {
+                "name": "Light",
+                "enabled": true,
+                "deviceId": "ecbe47c8-11aa-4a41-b57b-32940d1b3c84"
+            },
+            {
+                "name": "SoundRecognition",
+                "enabled": false,
+                "deviceId": ""
+            },
+            {
+                "name": "CameraMotion",
+                "enabled": false,
+                "deviceId": ""
+            }
+        ],
+        "timestamp": "2025-09-03T05:40:49.015Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.supportsFeatures",
+        "attribute": "artSupported",
+        "value": false,
+        "timestamp": "2025-06-16T14:32:26.257Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.supportsFeatures",
+        "attribute": "executableServiceList",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.supportsFeatures",
+        "attribute": "imeAdvSupported",
+        "value": true,
+        "timestamp": "2025-06-16T14:32:26.257Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.supportsFeatures",
+        "attribute": "mediaOutputSupported",
+        "value": true,
+        "timestamp": "2025-06-16T14:32:26.257Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.supportsFeatures",
+        "attribute": "mobileCamSupported",
+        "value": true,
+        "timestamp": "2025-06-16T14:32:26.257Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.supportsFeatures",
+        "attribute": "remotelessSupported",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.supportsFeatures",
+        "attribute": "wifiUpdateSupport",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.supportsPowerOnByOcf",
+        "attribute": "supportsPowerOnByOcf",
+        "value": "true",
+        "timestamp": "2025-09-03T05:40:48.976Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.thingStatus",
+        "attribute": "status",
+        "value": "Idle",
+        "timestamp": "2025-09-02T19:15:05.592Z"
+    },
+    {
+        "component": "main",
+        "capability": "samsungvd.thingStatus",
+        "attribute": "updatedTime",
+        "value": 1756840506,
+        "timestamp": "2025-09-02T19:15:05.592Z"
+    },
+    {
+        "component": "main",
+        "capability": "sec.deviceConnectionState",
+        "attribute": "deviceConnectionState",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "sec.diagnosticsInformation",
+        "attribute": "dumpType",
+        "value": "id",
+        "timestamp": "2025-09-02T19:15:07.552Z"
+    },
+    {
+        "component": "main",
+        "capability": "sec.diagnosticsInformation",
+        "attribute": "endpoint",
+        "value": "NONE",
+        "timestamp": "2025-09-02T19:15:07.552Z"
+    },
+    {
+        "component": "main",
+        "capability": "sec.diagnosticsInformation",
+        "attribute": "logType",
+        "value": [
+            "errCode",
+            "dump"
+        ],
+        "timestamp": "2025-09-02T19:15:07.552Z"
+    },
+    {
+        "component": "main",
+        "capability": "sec.diagnosticsInformation",
+        "attribute": "minVersion",
+        "value": "1.0",
+        "timestamp": "2025-09-02T19:15:07.552Z"
+    },
+    {
+        "component": "main",
+        "capability": "sec.diagnosticsInformation",
+        "attribute": "mnId",
+        "value": "0AJK",
+        "timestamp": "2025-09-02T19:15:07.552Z"
+    },
+    {
+        "component": "main",
+        "capability": "sec.diagnosticsInformation",
+        "attribute": "protocolType",
+        "value": "ble_ocf",
+        "timestamp": "2025-09-02T19:15:07.552Z"
+    },
+    {
+        "component": "main",
+        "capability": "sec.diagnosticsInformation",
+        "attribute": "setupId",
+        "value": "101",
+        "timestamp": "2025-09-02T19:15:07.552Z"
+    },
+    {
+        "component": "main",
+        "capability": "sec.diagnosticsInformation",
+        "attribute": "signinPermission",
+        "value": "enabled",
+        "timestamp": "2025-09-02T19:15:07.552Z"
+    },
+    {
+        "component": "main",
+        "capability": "sec.diagnosticsInformation",
+        "attribute": "tsId",
+        "value": "VD01",
+        "timestamp": "2025-09-02T19:15:07.552Z"
+    },
+    {
+        "component": "main",
+        "capability": "sec.smartthingsHub",
+        "attribute": "availability",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "sec.smartthingsHub",
+        "attribute": "deviceId",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "sec.smartthingsHub",
+        "attribute": "eui",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "sec.smartthingsHub",
+        "attribute": "lastOnboardingErrorCode",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "sec.smartthingsHub",
+        "attribute": "lastOnboardingResult",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "sec.smartthingsHub",
+        "attribute": "onboardingProgress",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "sec.smartthingsHub",
+        "attribute": "state",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "sec.smartthingsHub",
+        "attribute": "threadHardwareAvailability",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "sec.smartthingsHub",
+        "attribute": "threadRequiresExternalHardware",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "sec.smartthingsHub",
+        "attribute": "version",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "sec.smartthingsHub",
+        "attribute": "zigbeeHardwareAvailability",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "sec.smartthingsHub",
+        "attribute": "zigbeeRequiresExternalHardware",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "sec.smartthingsHub",
+        "attribute": "zwaveHardwareAvailability",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "sec.smartthingsHub",
+        "attribute": "zwaveRequiresExternalHardware",
+        "value": null
+    },
+    {
+        "component": "main",
+        "capability": "sec.wifiConfiguration",
+        "attribute": "autoReconnection",
+        "value": true,
+        "timestamp": "2025-09-02T19:15:07.466Z"
+    },
+    {
+        "component": "main",
+        "capability": "sec.wifiConfiguration",
+        "attribute": "minVersion",
+        "value": "1.0",
+        "timestamp": "2025-09-02T19:15:07.466Z"
+    },
+    {
+        "component": "main",
+        "capability": "sec.wifiConfiguration",
+        "attribute": "protocolType",
+        "value": [
+            "ble_ocf"
+        ],
+        "timestamp": "2025-09-02T19:15:07.466Z"
+    },
+    {
+        "component": "main",
+        "capability": "sec.wifiConfiguration",
+        "attribute": "supportedAuthType",
+        "value": [
+            "OPEN",
+            "WEP",
+            "WPA-PSK",
+            "WPA2-PSK",
+            "EAP",
+            "SAE",
+            "OWE",
+            "FT-PSK"
+        ],
+        "timestamp": "2025-09-02T19:15:07.466Z"
+    },
+    {
+        "component": "main",
+        "capability": "sec.wifiConfiguration",
+        "attribute": "supportedWiFiFreq",
+        "value": [
+            "2.4G",
+            "5G"
+        ],
+        "timestamp": "2025-09-02T19:15:07.466Z"
+    },
+    {
+        "component": "main",
+        "capability": "soundDetection",
+        "attribute": "soundDetected",
+        "value": "noSound",
+        "timestamp": "2025-09-03T05:40:48.914Z"
+    },
+    {
+        "component": "main",
+        "capability": "soundDetection",
+        "attribute": "soundDetectionState",
+        "value": "disabled",
+        "timestamp": "2025-09-03T05:40:48.914Z"
+    },
+    {
+        "component": "main",
+        "capability": "soundDetection",
+        "attribute": "supportedSoundTypes",
+        "value": [
+            "noSound",
+            "dogBarking"
+        ],
+        "timestamp": "2025-09-03T05:40:48.914Z"
+    },
+    {
+        "component": "main",
+        "capability": "switch",
+        "attribute": "switch",
+        "value": "off",
+        "timestamp": "2025-09-03T05:40:48.995Z"
+    },
+    {
+        "component": "main",
+        "capability": "tvChannel",
+        "attribute": "tvChannel",
+        "value": "",
+        "timestamp": "2025-09-02T03:06:05.737Z"
+    },
+    {
+        "component": "main",
+        "capability": "tvChannel",
+        "attribute": "tvChannelName",
+        "value": "com.samsung.tv.csfs",
+        "timestamp": "2025-09-02T03:06:05.737Z"
+    }
+]

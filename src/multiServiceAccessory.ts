@@ -26,6 +26,7 @@ import { ThermostatService } from './services/thermostatService';
 import { StatelessProgrammableSwitchService } from './services/statelessProgrammableSwitchService';
 import { AirConditionerService } from './services/airConditionerService';
 import { ACLightingService } from './services/acLightingService';
+import { TelevisionService } from './services/televisionService';
 import { Command } from './services/smartThingsCommand';
 import { CrashLoopManager, CrashErrorType } from './auth/CrashLoopManager';
 // type DeviceStatus = {
@@ -259,8 +260,45 @@ export class MultiServiceAccessory {
     };
     this.components.push(component);
 
-
     let capabilitiesToCover = [...capabilities];
+
+    // Check if this device is a TV and TV service is enabled
+    const isTelevisionEnabled = this.platform.config.enableTelevisionService !== false; // Default to true
+    const removeLegacySwitch = this.platform.config.removeLegacySwitchForTV === true; // Default to false
+
+    if (isTelevisionEnabled && componentId === 'main' && this.isTelevisionDevice()) {
+      this.log.debug(`Detected TV device: ${this.name}, setting up Television service`);
+
+      // Register the Television service with all TV-related capabilities
+      const tvCapabilities = TelevisionService.getTvCapabilities().filter(cap => capabilities.includes(cap));
+
+      if (tvCapabilities.length > 0) {
+        this.log.debug(`Creating Television service for ${this.name} with capabilities: ${tvCapabilities.join(', ')}`);
+        const serviceInstance = new TelevisionService(
+          this.platform,
+          this.accessory,
+          componentId,
+          tvCapabilities,
+          this,
+          this.name,
+          component,
+        );
+        this.services.push(serviceInstance);
+
+        // Remove TV capabilities from the list to avoid duplicate services
+        capabilitiesToCover = capabilitiesToCover.filter(cap => !tvCapabilities.includes(cap));
+
+        // If configured to remove legacy switch, remove the 'switch' capability
+        if (removeLegacySwitch && tvCapabilities.includes('switch')) {
+          this.log.debug(`Removing legacy switch service for TV: ${this.name}`);
+          // 'switch' capability is already removed from capabilitiesToCover above
+        } else if (tvCapabilities.includes('switch')) {
+          // Keep the switch capability for legacy compatibility
+          capabilitiesToCover.push('switch');
+          this.log.debug(`Keeping legacy switch service alongside Television service for: ${this.name}`);
+        }
+      }
+    }
 
     // Start with comboServices and remove used capabilities to avoid duplicated sensors.
     // For example, there is no need to expose a temperature sensor in case of a thermostat which already exposes that charateristic.
@@ -305,9 +343,19 @@ export class MultiServiceAccessory {
   public static capabilitySupported(capability: string): boolean {
     if (Object.keys(MultiServiceAccessory.capabilityMap).find(c => c === capability)) {
       return true;
-    } else {
-      return false;
     }
+
+    // Check if it's a TV-related capability
+    if (TelevisionService.getTvCapabilities().includes(capability)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  // Check if this device is a Television
+  private isTelevisionDevice(): boolean {
+    return TelevisionService.isTelevisionDevice(this.accessory.context.device);
   }
 
   // public async refreshStatus(): Promise<boolean> {

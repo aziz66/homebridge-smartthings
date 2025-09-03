@@ -227,17 +227,36 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
           }
           let deviceName = '';
           try {
-            // deviceName = device.label.toString().replaceAll(String.fromCharCode(8217), '\'');
-            deviceName = device.label;
+            // Handle special characters like right single quote (') that SmartThings uses
+            deviceName = device.label.toString().replace(/[\u2018\u2019]/g, '\'').replace(/[\u201C\u201D]/g, '"');
           } catch(error) {
             this.log.warn(`Error getting device name for ${device.label}: ${error}`);
             deviceName = device.label;
           }
-          if (this.config.IgnoreDevices &&
-          //this.config.IgnoreDevices.find(d => d.replaceAll(String.fromCharCode(8217), '\'').toLowerCase() === deviceName.toLowerCase())) {
-            this.config.IgnoreDevices.find(d => d.toLowerCase() === deviceName.toLowerCase())) {
-            this.log.info(`Ignoring ${device.label} because it is in the Ignore Devices list`);
-            return;
+          
+          // Check if device should be ignored
+          if (this.config.IgnoreDevices && Array.isArray(this.config.IgnoreDevices)) {
+            this.log.debug(`Checking if device "${deviceName}" should be ignored against list: [${this.config.IgnoreDevices.join(', ')}]`);
+            
+            const shouldIgnore = this.config.IgnoreDevices.find(ignoreName => {
+              if (typeof ignoreName !== 'string') {
+                this.log.warn(`Invalid ignore device entry: ${ignoreName} (expected string)`);
+                return false;
+              }
+              // Normalize both names for comparison - handle special characters
+              const normalizedIgnoreName = ignoreName.replace(/[\u2018\u2019]/g, '\'').replace(/[\u201C\u201D]/g, '"').toLowerCase().trim();
+              const normalizedDeviceName = deviceName.toLowerCase().trim();
+              
+              this.log.debug(`Comparing normalized names: "${normalizedDeviceName}" vs "${normalizedIgnoreName}"`);
+              return normalizedIgnoreName === normalizedDeviceName;
+            });
+            
+            if (shouldIgnore) {
+              this.log.info(`Ignoring ${device.label} because it is in the Ignore Devices list`);
+              return;
+            }
+          } else if (this.config.IgnoreDevices) {
+            this.log.warn('IgnoreDevices configuration is not an array. Expected format: ["Device Name 1", "Device Name 2"]');
           }
 
           if (!this.locationIDsToIgnore.find(locationID => device.locationId === locationID)) {

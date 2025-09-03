@@ -172,6 +172,10 @@ If you encounter issues:
 2. Ensure all URLs and credentials are correct
 3. Verify your tunnel service is running properly
 
+## 📄 Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md) for version history and detailed release notes.
+
 ## 📄 Credits
 
 This is a fork of the original homebridge-smartthings plugin created by [@iklein99](https://github.com/iklein99/), enhanced with OAuth support and automatic token refresh capabilities.

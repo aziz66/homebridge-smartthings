@@ -73,6 +73,13 @@
         "required": false,
         "default": 10
       },
+      "PollTelevisionsSeconds": {
+        "title": "Poll Television devices (zero = don't poll)",
+        "type": "integer",
+        "required": false,
+        "default": 15,
+        "description": "How often to poll TV devices for status updates. TVs typically respond slower than other devices, so a higher interval is recommended."
+      },
       "PollWindowShadesSeconds": {
         "title": "Poll Window Shades (zero = don't poll)",
         "type": "integer",
@@ -104,6 +111,20 @@
         ],
         "default": "None"
       },
+      "enableTelevisionService": {
+        "title": "Enable Television Service for TV devices",
+        "type": "boolean",
+        "required": false,
+        "default": true,
+        "description": "When enabled, Samsung TVs will be exposed as proper Television accessories with input source control, volume control, and picture modes. When disabled, TVs will continue to appear as simple switches."
+      },
+      "removeLegacySwitchForTV": {
+        "title": "Remove Legacy Switch Service for TVs",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "When enabled, removes the basic switch service for TV devices, leaving only the Television service. When disabled (default), both services are available for backward compatibility."
+      },
       "IgnoreLocations": {
         "title": "Locations to Ignore",
         "type": "array",
@@ -115,10 +136,15 @@
       "IgnoreDevices": {
         "title": "Devices to Ignore",
         "type": "array",
+        "description": "List of device names to ignore. Device names are case-insensitive and whitespace is trimmed. Special characters like smart quotes (') are automatically normalized to regular quotes (').",
         "items": {
           "title": "Device Name",
-          "type": "string"
-        }
+          "type": "string",
+          "description": "Exact device name as it appears in SmartThings (case-insensitive)"
+        },
+        "examples": [
+          ["Living Room Light", "Kitchen Switch", "Bedroom Fan"]
+        ]
       }
     }
   },
