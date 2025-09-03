@@ -50,8 +50,8 @@ export class TelevisionService extends BaseService {
     // Set the accessory category to Television for proper HomeKit presentation
     accessory.category = this.platform.api.hap.Categories.TELEVISION;
 
-    // Start polling for updates
-    this.startPolling();
+    // Setup characteristic polling (will be started when capabilities are registered)
+    this.setupCharacteristicPolling();
   }
 
   private setupTelevisionService(): Service {
@@ -105,6 +105,11 @@ export class TelevisionService extends BaseService {
       .onGet(this.getMute.bind(this))
       .onSet(this.setMute.bind(this));
 
+    // Start polling for Mute changes (like verified plugin) - this makes IR remote changes visible!
+    if (this.isCapabilitySupported('audioMute')) {
+      this.startMutePolling(speakerService);
+    }
+
     // Configure Volume Control Type - specify what type of volume control is supported
     if (this.isCapabilitySupported('audioVolume')) {
       // TV supports absolute volume control
@@ -122,6 +127,9 @@ export class TelevisionService extends BaseService {
         })
         .onGet(this.getVolume.bind(this))
         .onSet(this.setVolume.bind(this));
+
+      // Start polling for Volume changes (like verified plugin) - this makes IR remote changes visible!
+      this.startVolumePolling(speakerService);
     } else {
       // Fallback to relative volume control only
       speakerService.setCharacteristic(
@@ -134,12 +142,56 @@ export class TelevisionService extends BaseService {
     speakerService.getCharacteristic(this.platform.Characteristic.VolumeSelector)
       .onSet(this.setVolumeSelector.bind(this));
 
-    // Configure Active characteristic (speaker active state)
-    speakerService.getCharacteristic(this.platform.Characteristic.Active)
-      .onGet(this.getSpeakerActive.bind(this))
-      .onSet(this.setSpeakerActive.bind(this));
+    // Configure Active characteristic (speaker is always active when TV service exists - per verified plugin)
+    speakerService.setCharacteristic(this.platform.Characteristic.Active, this.platform.Characteristic.Active.ACTIVE);
 
     return speakerService;
+  }
+
+  private setupCharacteristicPolling(): void {
+    // Characteristic polling will be set up individually when each capability is detected
+    // This matches the verified plugin's approach of polling per capability
+    this.log.debug(`Characteristic polling setup completed for ${this.name}`);
+  }
+
+  private startVolumePolling(speakerService: Service): void {
+    // Get TV-specific polling interval
+    let pollInterval = 15000; // default 15 seconds for TVs
+    if (this.platform.config.PollTelevisionsSeconds !== undefined) {
+      pollInterval = this.platform.config.PollTelevisionsSeconds * 1000;
+    }
+
+    if (pollInterval > 0) {
+      this.log.debug(`🎚️ Starting Volume polling with ${pollInterval / 1000}s interval for ${this.name} (IR remote changes will be detected)`);
+      setInterval(async () => {
+        try {
+          const volume = await this.getVolume();
+          speakerService.updateCharacteristic(this.platform.Characteristic.Volume, volume);
+        } catch (error) {
+          this.log.error(`Error polling volume for ${this.name}:`, error);
+        }
+      }, pollInterval);
+    }
+  }
+
+  private startMutePolling(speakerService: Service): void {
+    // Get TV-specific polling interval
+    let pollInterval = 15000; // default 15 seconds for TVs
+    if (this.platform.config.PollTelevisionsSeconds !== undefined) {
+      pollInterval = this.platform.config.PollTelevisionsSeconds * 1000;
+    }
+
+    if (pollInterval > 0) {
+      this.log.debug(`🔇 Starting Mute polling with ${pollInterval / 1000}s interval for ${this.name} (IR remote changes will be detected)`);
+      setInterval(async () => {
+        try {
+          const mute = await this.getMute();
+          speakerService.updateCharacteristic(this.platform.Characteristic.Mute, mute);
+        } catch (error) {
+          this.log.error(`Error polling mute for ${this.name}:`, error);
+        }
+      }, pollInterval);
+    }
   }
 
   private async setupInputSources(): Promise<void> {
@@ -736,30 +788,7 @@ export class TelevisionService extends BaseService {
     }
   }
 
-  // Speaker Active Methods
-  private async getSpeakerActive(): Promise<CharacteristicValue> {
-    this.log.debug(`Getting speaker active state for ${this.name}`);
 
-    // Speaker is active when TV is active and not muted
-    const tvActive = await this.getTelevisionActive();
-    const isMuted = await this.getMute();
-
-    const speakerActive = tvActive === this.platform.Characteristic.Active.ACTIVE && !isMuted;
-    return speakerActive ? this.platform.Characteristic.Active.ACTIVE : this.platform.Characteristic.Active.INACTIVE;
-  }
-
-  private async setSpeakerActive(value: CharacteristicValue): Promise<void> {
-    this.log.debug(`Setting speaker active state for ${this.name} to ${value}`);
-
-    if (!this.multiServiceAccessory.isOnline()) {
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-    }
-
-    // For speaker active/inactive, we control the mute state
-    // Active = unmute, Inactive = mute
-    const shouldMute = value === this.platform.Characteristic.Active.INACTIVE;
-    await this.setMute(shouldMute);
-  }
 
   // Event Processing
   public processEvent(event: ShortEvent): void {

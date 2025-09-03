@@ -1,5 +1,8 @@
 # Changelog
 All notable changes to this project will be documented in this file.
+## [1.0.24] - Complete Samsung TV Experience & Reference Implementation Alignment
+### Fixed
+- **📋 Bug fixes**
 ## [1.0.23] - Complete Samsung TV Experience & Reference Implementation Alignment
 ### Fixed
 - **📋 Official SmartThings API Compliance**: Completely aligned implementation with official SmartThings capability specifications
