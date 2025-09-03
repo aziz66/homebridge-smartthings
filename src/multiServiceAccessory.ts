@@ -28,6 +28,7 @@ import { AirConditionerService } from './services/airConditionerService';
 import { ACLightingService } from './services/acLightingService';
 import { TelevisionService } from './services/televisionService';
 import { VolumeSliderService } from './services/volumeSliderService';
+import { ApplicationSelectorService } from './services/applicationSelectorService';
 import { Command } from './services/smartThingsCommand';
 import { CrashLoopManager, CrashErrorType } from './auth/CrashLoopManager';
 // type DeviceStatus = {
@@ -286,6 +287,19 @@ export class MultiServiceAccessory {
         );
         this.services.push(serviceInstance);
 
+        // Trigger input source registration if mediaInputSource capability is available
+        if (tvCapabilities.includes('samsungvd.mediaInputSource')) {
+          this.log.debug(`🔄 Triggering input source registration for ${this.name}`);
+          // Use setTimeout to allow constructor to complete first
+          setTimeout(async () => {
+            try {
+              await serviceInstance.registerInputSourceCapability();
+            } catch (error) {
+              this.log.error(`Failed to register input sources for ${this.name}:`, error);
+            }
+          }, 100);
+        }
+
                      // Remove TV capabilities from the list to avoid duplicate services
              capabilitiesToCover = capabilitiesToCover.filter(cap => !tvCapabilities.includes(cap));
 
@@ -320,6 +334,30 @@ export class MultiServiceAccessory {
                  // Remove volume capabilities from other services to avoid conflicts
                  capabilitiesToCover = capabilitiesToCover.filter(cap => !volumeSliderCapabilities.includes(cap));
                  this.log.info(`📱 Volume slider accessory created for ${this.name} - volume controls now visible in Home app`);
+               }
+             }
+
+             // Add separate application selector if enabled (keeps apps separate from input sources)
+             const registerAppSelector = this.platform.config.registerApplications !== false; // Default to true
+             if (registerAppSelector && ApplicationSelectorService.supportsApplicationSelector(capabilities)) {
+               this.log.debug(`Creating separate application selector for TV: ${this.name}`);
+               const appSelectorCapabilities = ApplicationSelectorService.getApplicationSelectorCapabilities().filter(cap => capabilities.includes(cap));
+
+               if (appSelectorCapabilities.length > 0) {
+                 const appSelectorService = new ApplicationSelectorService(
+                   this.platform,
+                   this.accessory,
+                   componentId,
+                   appSelectorCapabilities,
+                   this,
+                   this.name,
+                   component,
+                 );
+                 this.services.push(appSelectorService);
+
+                 // Remove app capabilities from other services to avoid conflicts
+                 capabilitiesToCover = capabilitiesToCover.filter(cap => !appSelectorCapabilities.includes(cap));
+                 this.log.info(`📱 Application selector created for ${this.name} - streaming apps now available separately`);
                }
              }
            }
@@ -377,6 +415,11 @@ export class MultiServiceAccessory {
 
     // Check if it's a volume slider capability
     if (VolumeSliderService.getVolumeSliderCapabilities().includes(capability)) {
+      return true;
+    }
+
+    // Check if it's an application selector capability
+    if (ApplicationSelectorService.getApplicationSelectorCapabilities().includes(capability)) {
       return true;
     }
 

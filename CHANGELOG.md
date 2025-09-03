@@ -1,5 +1,33 @@
 # Changelog
 All notable changes to this project will be documented in this file.
+## [1.0.22] - Complete Samsung TV Experience & Reference Implementation Alignment
+### Fixed
+- **📋 Official SmartThings API Compliance**: Completely aligned implementation with official SmartThings capability specifications
+  - Updated audioVolume commands to match official spec (0-100 integer values with "%" unit)
+  - Fixed audioMute commands to use both setMute("muted"/"unmuted") and simple mute/unmute fallback
+  - Enhanced mediaInputSource to support both Samsung-specific and standard input source commands
+  - Added proper mediaPlayback support for play, pause, stop, rewind, fastForward commands
+  - Implemented tvChannel support for channelUp, channelDown, and setTvChannel commands
+- **🔊 Samsung TV Volume Control**: Fixed critical issue where volume commands would report success but not actually change TV volume
+  - Implemented automatic unmute before setting volume when TV is muted
+  - Added proper volume range validation (0-100) and integer conversion per official spec
+  - Enhanced volume command logging for better debugging
+  - Added delayed status refresh to verify volume changes took effect
+- **🔇 Enhanced Mute Control**: Improved mute/unmute command reliability with official spec compliance
+  - Primary: Uses setMute command with "muted"/"unmuted" string arguments (official spec)
+  - Fallback: Uses simple mute/unmute commands for compatibility
+  - Enhanced logging and status verification
+- **📺 Input Source Control**: Enhanced input source switching with dual capability support
+  - Primary: Samsung-specific samsungvd.mediaInputSource capability
+  - Fallback: Standard mediaInputSource capability for broader compatibility
+  - Better error handling and logging for failed input changes
+- **🎮 Media Playback Controls**: Added full media playback support based on official mediaPlayback capability
+  - Play/Pause remote key support with smart play/pause detection
+  - Rewind and Fast Forward controls
+  - Proper capability detection before sending commands
+- **📡 Channel Controls**: Added TV channel control support based on official tvChannel capability
+  - Channel Up/Down via remote control keys
+  - Capability detection to ensure TV supports channel control
 ## [1.0.21] - Complete Samsung TV Experience & Reference Implementation Alignment
 ### Fixed
 - **📋 Official SmartThings API Compliance**: Completely aligned implementation with official SmartThings capability specifications

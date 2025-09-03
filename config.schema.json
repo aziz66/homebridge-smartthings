@@ -84,15 +84,15 @@
         "title": "Register Volume Slider for TVs",
         "type": "boolean",
         "required": false,
-        "default": false,
+        "default": true,
         "description": "Creates a separate volume slider accessory for TVs (exposed as a lightbulb) because HomeKit's native TV interface doesn't show volume controls directly. Enable this if you can't see volume controls in the Home app."
       },
       "registerApplications": {
-        "title": "Register TV Applications as Input Sources",
+        "title": "Register TV Application Selector",
         "type": "boolean",
         "required": false,
         "default": true,
-        "description": "Registers streaming applications (Netflix, YouTube, Disney+, etc.) as input sources for Samsung TVs. These will appear alongside HDMI inputs in the HomeKit interface."
+        "description": "Creates a separate application selector accessory for Samsung TVs to launch streaming apps (Netflix, YouTube, Disney+, etc.). This keeps applications separate from physical input sources for better organization."
       },
       "PollWindowShadesSeconds": {
         "title": "Poll Window Shades (zero = don't poll)",
