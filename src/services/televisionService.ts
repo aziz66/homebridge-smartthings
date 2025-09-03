@@ -55,19 +55,6 @@ export class TelevisionService extends BaseService {
     // Set the accessory category to Television for proper HomeKit presentation
     accessory.category = this.platform.api.hap.Categories.TELEVISION;
 
-    // Force accessory to update its service configuration for HomeKit
-    this.log.debug(`📱 Accessory category set to TELEVISION for ${this.name}`);
-
-    // CRITICAL: Remove any existing TelevisionSpeaker services that might have subtypes
-    const existingSpeakerServices = accessory.services.filter(service =>
-      service.UUID === this.platform.Service.TelevisionSpeaker.UUID &&
-      service !== this.televisionSpeakerService,
-    );
-    existingSpeakerServices.forEach(service => {
-      this.log.debug(`🧹 Removing duplicate TelevisionSpeaker service for ${this.name}`);
-      accessory.removeService(service);
-    });
-
     // Start polling for updates
     this.startPolling();
   }
@@ -112,9 +99,8 @@ export class TelevisionService extends BaseService {
   }
 
   private setupTelevisionSpeaker(): Service {
-    // TelevisionSpeaker MUST NOT have a subtype to be properly linked to Television service
     const speakerService = this.accessory.getService(this.platform.Service.TelevisionSpeaker) ||
-      this.accessory.addService(this.platform.Service.TelevisionSpeaker);
+      this.accessory.addService(this.platform.Service.TelevisionSpeaker, `${this.name} Speaker`, 'TelevisionSpeaker');
 
     // Set the display name
     speakerService.setCharacteristic(this.platform.Characteristic.Name, `${this.name} Speaker`);

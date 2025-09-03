@@ -1,5 +1,9 @@
 # Changelog
 All notable changes to this project will be documented in this file.
+## [1.0.19] - Official SmartThings API Compliance & Samsung TV Fixes
+### Fixed
+- **🔊 Samsung TV Volume Control**: fixed audio issue with homekit
+
 ## [1.0.18] - Official SmartThings API Compliance & Samsung TV Fixes
 ### Fixed
 - **🔊 Samsung TV Volume Control**: Fixed critical issue where volume does not apear in homekit
