@@ -28,10 +28,10 @@ export class TelevisionService extends BaseService {
 
     // Setup the main Television service
     this.televisionService = this.setupTelevisionService();
-    
+
     // Setup the Television Speaker service
     this.televisionSpeakerService = this.setupTelevisionSpeaker();
-    
+
     // Setup Input Source services
     this.setupInputSources();
 
@@ -110,7 +110,7 @@ export class TelevisionService extends BaseService {
       // TV supports absolute volume control
       speakerService.setCharacteristic(
         this.platform.Characteristic.VolumeControlType,
-        this.platform.Characteristic.VolumeControlType.ABSOLUTE
+        this.platform.Characteristic.VolumeControlType.ABSOLUTE,
       );
 
       // Add Volume characteristic for absolute volume control
@@ -126,7 +126,7 @@ export class TelevisionService extends BaseService {
       // Fallback to relative volume control only
       speakerService.setCharacteristic(
         this.platform.Characteristic.VolumeControlType,
-        this.platform.Characteristic.VolumeControlType.RELATIVE
+        this.platform.Characteristic.VolumeControlType.RELATIVE,
       );
     }
 
@@ -152,7 +152,7 @@ export class TelevisionService extends BaseService {
         this.accessory.addService(
           this.platform.Service.InputSource,
           input.name,
-          `Input-${input.id}`
+          `Input-${input.id}`,
         );
 
       // Configure the input source
@@ -179,7 +179,7 @@ export class TelevisionService extends BaseService {
     // Try to load from Samsung's mediaInputSource capability from component status
     const component = this.multiServiceAccessory.components.find(c => c.componentId === this.componentId);
     const inputSourceData = component?.status?.['samsungvd.mediaInputSource'] as any;
-    
+
     if (inputSourceData?.supportedInputSourcesMap?.value) {
       this.inputSourcesMap = inputSourceData.supportedInputSourcesMap.value;
       this.log.debug(`Loaded ${this.inputSourcesMap.length} input sources for ${this.name}`);
@@ -270,7 +270,7 @@ export class TelevisionService extends BaseService {
 
     const command = value === this.platform.Characteristic.Active.ACTIVE ? 'on' : 'off';
     const success = await this.multiServiceAccessory.sendCommand('switch', command);
-    
+
     if (success) {
       this.log.debug(`TV power ${command} successful for ${this.name}`);
       this.multiServiceAccessory.forceNextStatusRefresh();
@@ -315,25 +315,41 @@ export class TelevisionService extends BaseService {
     const inputIndex = Number(value) - 1;
     if (inputIndex >= 0 && inputIndex < this.inputSourcesMap.length) {
       const targetInput = this.inputSourcesMap[inputIndex];
-      
+
       if (!this.multiServiceAccessory.isOnline()) {
         this.log.error(`${this.name} is offline`);
         throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
       }
 
-      // Send input source change command to Samsung TV
-      const success = await this.multiServiceAccessory.sendCommand('samsungvd.mediaInputSource', 'setInputSource', [targetInput.id]);
-      
+      this.log.debug(`Attempting to set input source to ${targetInput.name} (${targetInput.id}) for ${this.name}`);
+
+      // According to official SmartThings spec, try multiple approaches:
+      // 1. Samsung-specific samsungvd.mediaInputSource with setInputSource command
+      // 2. Standard mediaInputSource with setInputSource command (fallback)
+      let success = false;
+
+      // Try Samsung-specific capability first (most likely to work for Samsung TVs)
+      this.log.debug(`Using Samsung-specific input source command: samsungvd.mediaInputSource.setInputSource("${targetInput.id}")`);
+      success = await this.multiServiceAccessory.sendCommand('samsungvd.mediaInputSource', 'setInputSource', [targetInput.id]);
+
+      // Fallback to standard mediaInputSource capability if Samsung-specific fails
+      if (!success) {
+        this.log.debug(`Fallback: Using standard input source command: mediaInputSource.setInputSource("${targetInput.id}")`);
+        success = await this.multiServiceAccessory.sendCommand('mediaInputSource', 'setInputSource', [targetInput.id]);
+      }
+
       if (success) {
         this.currentInputSource = Number(value);
-        this.log.debug(`Input source changed to ${targetInput.name} for ${this.name}`);
-        this.multiServiceAccessory.forceNextStatusRefresh();
+        this.log.info(`✅ Input source set successfully to ${targetInput.name} (${targetInput.id}) for ${this.name}`);
+        setTimeout(() => {
+          this.multiServiceAccessory.forceNextStatusRefresh();
+        }, 1000);
       } else {
-        this.log.error(`Failed to change input source for ${this.name}`);
+        this.log.error(`❌ Failed to set input source to ${targetInput.name} for ${this.name} - both Samsung and standard commands failed`);
         throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
       }
     } else {
-      this.log.error(`Invalid input identifier ${value} for ${this.name}`);
+      this.log.error(`Invalid input identifier ${value} for ${this.name} (available: 1-${this.inputSourcesMap.length})`);
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.INVALID_VALUE_IN_REQUEST);
     }
   }
@@ -350,24 +366,41 @@ export class TelevisionService extends BaseService {
     // Map HomeKit remote keys to Samsung TV commands
     let command = '';
     let capability = '';
-    
+
     switch (value) {
       case this.platform.Characteristic.RemoteKey.REWIND:
-        capability = 'mediaPlayback';
-        command = 'rewind';
+        if (this.isCapabilitySupported('mediaPlayback')) {
+          capability = 'mediaPlayback';
+          command = 'rewind';
+        }
         break;
       case this.platform.Characteristic.RemoteKey.FAST_FORWARD:
-        capability = 'mediaPlayback';
-        command = 'fastForward';
+        if (this.isCapabilitySupported('mediaPlayback')) {
+          capability = 'mediaPlayback';
+          command = 'fastForward';
+        }
         break;
       case this.platform.Characteristic.RemoteKey.NEXT_TRACK:
-        // Samsung TVs don't typically support track navigation, but we can try channel up
-        capability = 'tvChannel';
-        command = 'channelUp';
+        // According to official tvChannel spec, try channelUp
+        if (this.isCapabilitySupported('tvChannel')) {
+          capability = 'tvChannel';
+          command = 'channelUp';
+        }
         break;
       case this.platform.Characteristic.RemoteKey.PREVIOUS_TRACK:
-        capability = 'tvChannel';
-        command = 'channelDown';
+        // According to official tvChannel spec, try channelDown
+        if (this.isCapabilitySupported('tvChannel')) {
+          capability = 'tvChannel';
+          command = 'channelDown';
+        }
+        break;
+      case this.platform.Characteristic.RemoteKey.PLAY_PAUSE:
+        // According to official mediaPlayback spec, try play/pause
+        if (this.isCapabilitySupported('mediaPlayback')) {
+          capability = 'mediaPlayback';
+          command = 'play'; // Start with play, could be enhanced to check current playback status
+          this.log.debug(`Play/Pause key pressed - sending play command for ${this.name}`);
+        }
         break;
       case this.platform.Characteristic.RemoteKey.ARROW_UP:
       case this.platform.Characteristic.RemoteKey.ARROW_DOWN:
@@ -376,27 +409,35 @@ export class TelevisionService extends BaseService {
       case this.platform.Characteristic.RemoteKey.SELECT:
       case this.platform.Characteristic.RemoteKey.BACK:
       case this.platform.Characteristic.RemoteKey.EXIT:
-      case this.platform.Characteristic.RemoteKey.PLAY_PAUSE:
-        // These would require Samsung's custom remote control capabilities
-        this.log.debug(`Remote key ${value} not implemented for Samsung TV`);
+        // These would require Samsung's custom remote control capabilities (not in standard SmartThings spec)
+        this.log.debug(`Navigation/control key ${value} - requires Samsung remote control capability (not implemented)`);
         return;
       case this.platform.Characteristic.RemoteKey.INFORMATION:
-        // Could potentially map to info button
-        this.log.debug(`Information key pressed for ${this.name}`);
+        // Could potentially map to info button (not in standard SmartThings spec)
+        this.log.debug(`Information key pressed for ${this.name} - not in standard capabilities`);
+        return;
+      default:
+        this.log.warn(`Unsupported remote key: ${value} for ${this.name}`);
         return;
     }
 
     if (command && capability) {
       try {
+        this.log.debug(`Sending remote key command: ${capability}.${command} for ${this.name}`);
         const success = await this.multiServiceAccessory.sendCommand(capability, command);
         if (success) {
-          this.log.debug(`Remote key command ${command} successful for ${this.name}`);
+          this.log.info(`✅ Remote key command ${capability}.${command} successful for ${this.name}`);
+          setTimeout(() => {
+            this.multiServiceAccessory.forceNextStatusRefresh();
+          }, 500);
         } else {
-          this.log.error(`Remote key command ${command} failed for ${this.name}`);
+          this.log.error(`❌ Remote key command ${capability}.${command} failed for ${this.name}`);
         }
       } catch (error) {
-        this.log.error(`Error sending remote key command for ${this.name}:`, error);
+        this.log.error(`Error sending remote key command ${capability}.${command} for ${this.name}:`, error);
       }
+    } else {
+      this.log.debug(`Remote key ${value} - no suitable capability found for ${this.name}`);
     }
   }
 
@@ -495,15 +536,31 @@ export class TelevisionService extends BaseService {
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
 
-    const command = value ? 'mute' : 'unmute';
-    const success = await this.multiServiceAccessory.sendCommand('audioMute', command);
-    
+    // According to official SmartThings audioMute capability spec:
+    // - setMute command takes "muted" or "unmuted" string argument
+    // - mute/unmute commands take no arguments
+    // Try the more explicit setMute command first, fallback to simple commands
+    const muteState = value ? 'muted' : 'unmuted';
+    this.log.debug(`Sending mute command: audioMute.setMute("${muteState}") for ${this.name}`);
+
+    let success = await this.multiServiceAccessory.sendCommand('audioMute', 'setMute', [muteState]);
+
+    // Fallback to simple mute/unmute commands if setMute fails
+    if (!success) {
+      const fallbackCommand = value ? 'mute' : 'unmute';
+      this.log.debug(`Fallback: Sending audioMute.${fallbackCommand} for ${this.name}`);
+      success = await this.multiServiceAccessory.sendCommand('audioMute', fallbackCommand);
+    }
+
     if (success) {
       this.isMuted = Boolean(value);
-      this.log.debug(`Mute ${command} successful for ${this.name}`);
-      this.multiServiceAccessory.forceNextStatusRefresh();
+      this.log.info(`✅ Mute command sent successfully to ${this.name}: ${muteState}`);
+      // Force a status refresh after a delay to verify the mute change
+      setTimeout(() => {
+        this.multiServiceAccessory.forceNextStatusRefresh();
+      }, 1000);
     } else {
-      this.log.error(`Mute command failed for ${this.name}`);
+      this.log.error(`❌ Both setMute and ${value ? 'mute' : 'unmute'} commands failed for ${this.name}`);
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
   }
@@ -544,14 +601,42 @@ export class TelevisionService extends BaseService {
     }
 
     const volumeLevel = Number(value);
-    const success = await this.multiServiceAccessory.sendCommand('audioVolume', 'setVolume', [volumeLevel]);
-    
+
+    // For Samsung TVs, we may need to unmute first if currently muted
+    // Check if TV is muted and unmute it before setting volume
+    try {
+      const component = this.multiServiceAccessory.components.find(c => c.componentId === this.componentId);
+      const muteState = (component?.status?.audioMute as any)?.mute?.value;
+
+      if (muteState === 'muted' && volumeLevel > 0) {
+        this.log.debug(`TV is muted, unmuting before setting volume for ${this.name}`);
+        await this.multiServiceAccessory.sendCommand('audioMute', 'unmute');
+        // Small delay to ensure unmute command processes
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    } catch (error) {
+      this.log.debug(`Could not check mute state before volume change: ${error}`);
+    }
+
+    // Samsung TVs sometimes require the volume to be sent as an integer within specific range
+    // Ensure volume is bounded between 0-100 and sent as integer
+    const boundedVolume = Math.max(0, Math.min(100, Math.round(volumeLevel)));
+
+    this.log.debug(`Sending volume command: audioVolume.setVolume with value [${boundedVolume}] for ${this.name}`);
+    const success = await this.multiServiceAccessory.sendCommand('audioVolume', 'setVolume', [boundedVolume]);
+
     if (success) {
-      this.currentVolume = volumeLevel;
-      this.log.debug(`Volume set to ${volumeLevel} for ${this.name}`);
-      this.multiServiceAccessory.forceNextStatusRefresh();
+      this.currentVolume = boundedVolume;
+      this.log.info(`✅ Volume command sent successfully to ${this.name}: ${boundedVolume}% - Please check if TV volume actually changed`);
+
+      // Samsung TVs sometimes don't report volume changes correctly via API
+      // But the commands still work. Force status refresh but don't rely solely on API feedback
+      setTimeout(() => {
+        this.multiServiceAccessory.forceNextStatusRefresh();
+        this.log.debug(`Status refresh completed for ${this.name} - note: Samsung TVs may not report volume changes accurately`);
+      }, 1000);
     } else {
-      this.log.error(`Volume command failed for ${this.name}`);
+      this.log.error(`❌ Volume command failed for ${this.name} - SmartThings API rejected the command`);
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
   }
@@ -564,11 +649,18 @@ export class TelevisionService extends BaseService {
     }
 
     const command = value === this.platform.Characteristic.VolumeSelector.INCREMENT ? 'volumeUp' : 'volumeDown';
+    this.log.debug(`Sending volume selector command: audioVolume.${command} for ${this.name}`);
+
+    // For Samsung TVs, volumeUp/volumeDown might work better than setVolume
+    // These commands don't require specific volume levels and work incrementally
     const success = await this.multiServiceAccessory.sendCommand('audioVolume', command);
-    
+
     if (success) {
       this.log.debug(`Volume ${command} successful for ${this.name}`);
-      this.multiServiceAccessory.forceNextStatusRefresh();
+      // Force a status refresh after a delay to verify the volume change
+      setTimeout(() => {
+        this.multiServiceAccessory.forceNextStatusRefresh();
+      }, 1000);
     } else {
       this.log.error(`Volume ${command} failed for ${this.name}`);
     }
@@ -577,11 +669,11 @@ export class TelevisionService extends BaseService {
   // Speaker Active Methods
   private async getSpeakerActive(): Promise<CharacteristicValue> {
     this.log.debug(`Getting speaker active state for ${this.name}`);
-    
+
     // Speaker is active when TV is active and not muted
     const tvActive = await this.getTelevisionActive();
     const isMuted = await this.getMute();
-    
+
     const speakerActive = tvActive === this.platform.Characteristic.Active.ACTIVE && !isMuted;
     return speakerActive ? this.platform.Characteristic.Active.ACTIVE : this.platform.Characteristic.Active.INACTIVE;
   }
@@ -608,7 +700,7 @@ export class TelevisionService extends BaseService {
         const isActive = event.value === 'on';
         this.televisionService.updateCharacteristic(
           this.platform.Characteristic.Active,
-          isActive ? this.platform.Characteristic.Active.ACTIVE : this.platform.Characteristic.Active.INACTIVE
+          isActive ? this.platform.Characteristic.Active.ACTIVE : this.platform.Characteristic.Active.INACTIVE,
         );
         break;
 
@@ -616,12 +708,12 @@ export class TelevisionService extends BaseService {
         this.isMuted = event.value === 'muted';
         this.televisionSpeakerService.updateCharacteristic(
           this.platform.Characteristic.Mute,
-          this.isMuted
+          this.isMuted,
         );
         // Update speaker active state based on mute status
         this.televisionSpeakerService.updateCharacteristic(
           this.platform.Characteristic.Active,
-          !this.isMuted ? this.platform.Characteristic.Active.ACTIVE : this.platform.Characteristic.Active.INACTIVE
+          !this.isMuted ? this.platform.Characteristic.Active.ACTIVE : this.platform.Characteristic.Active.INACTIVE,
         );
         break;
 
@@ -631,7 +723,7 @@ export class TelevisionService extends BaseService {
           if (this.televisionSpeakerService.testCharacteristic(this.platform.Characteristic.Volume)) {
             this.televisionSpeakerService.updateCharacteristic(
               this.platform.Characteristic.Volume,
-              this.currentVolume
+              this.currentVolume,
             );
           }
         }
@@ -644,7 +736,7 @@ export class TelevisionService extends BaseService {
             this.currentInputSource = inputIndex + 1;
             this.televisionService.updateCharacteristic(
               this.platform.Characteristic.ActiveIdentifier,
-              this.currentInputSource
+              this.currentInputSource,
             );
           }
         }
@@ -668,25 +760,25 @@ export class TelevisionService extends BaseService {
   // Static method to detect if a device is a TV
   public static isTelevisionDevice(device: any): boolean {
     // Check for Samsung TV-specific indicators
-    const hasDeviceCategory = device.components?.some(component => 
-      component.capabilities?.some(cap => cap.id === 'samsungvd.deviceCategory')
+    const hasDeviceCategory = device.components?.some(component =>
+      component.capabilities?.some(cap => cap.id === 'samsungvd.deviceCategory'),
     );
 
-    const hasMediaInput = device.components?.some(component => 
-      component.capabilities?.some(cap => cap.id === 'samsungvd.mediaInputSource')
+    const hasMediaInput = device.components?.some(component =>
+      component.capabilities?.some(cap => cap.id === 'samsungvd.mediaInputSource'),
     );
 
-    const hasAudioCapabilities = device.components?.some(component => 
-      component.capabilities?.some(cap => cap.id === 'audioVolume' || cap.id === 'audioMute')
+    const hasAudioCapabilities = device.components?.some(component =>
+      component.capabilities?.some(cap => cap.id === 'audioVolume' || cap.id === 'audioMute'),
     );
 
-    const hasTvChannel = device.components?.some(component => 
-      component.capabilities?.some(cap => cap.id === 'tvChannel')
+    const hasTvChannel = device.components?.some(component =>
+      component.capabilities?.some(cap => cap.id === 'tvChannel'),
     );
 
     // A device is considered a TV if it has multiple TV-specific capabilities
     const tvIndicatorCount = [hasDeviceCategory, hasMediaInput, hasAudioCapabilities, hasTvChannel].filter(Boolean).length;
-    
+
     return tvIndicatorCount >= 2; // Require at least 2 TV-specific capability groups
   }
 
@@ -701,7 +793,7 @@ export class TelevisionService extends BaseService {
       'tvChannel',
       'mediaPlayback',
       'custom.picturemode',
-      'custom.soundmode'
+      'custom.soundmode',
     ];
   }
 }
