@@ -66,7 +66,12 @@ export class VolumeSliderService extends BaseService {
 
     this.pollInterval = setInterval(async () => {
       try {
-        // Poll both On (mute) and Brightness (volume) to sync with IR remote changes
+        this.log.debug(`🔄 Volume slider polling for ${this.name}...`);
+        
+        // Force refresh of device status first to get latest data
+        await this.multiServiceAccessory.refreshStatus();
+        
+        // Then poll both On (mute) and Brightness (volume) to sync with IR remote changes
         const onValue = await this.getOn();
         const brightnessValue = await this.getBrightness();
 
@@ -127,14 +132,16 @@ export class VolumeSliderService extends BaseService {
         this.log.info(`✅ Volume slider muted successfully for ${this.name}`);
       }
 
-      // Refresh status after a short delay
+      // Update our characteristics immediately with fresh API calls (bypass cached status)
       setTimeout(async () => {
         try {
-          await this.multiServiceAccessory.refreshStatus();
+          this.log.debug(`🔄 Refreshing volume slider state after mute command for ${this.name}`);
+          const onValue = await this.getOn(); // This makes a fresh API call
+          this.service.updateCharacteristic(this.platform.Characteristic.On, onValue);
         } catch (error) {
           this.log.debug(`Status refresh after mute toggle failed for ${this.name}:`, error);
         }
-      }, 1000);
+      }, 2000); // Allow time for SmartThings to process the command
 
     } catch (error) {
       this.log.error(`❌ Failed to set mute state for volume slider ${this.name}:`, error);
@@ -207,14 +214,18 @@ export class VolumeSliderService extends BaseService {
 
       this.log.info(`✅ Volume slider set successfully to ${volume}% for ${this.name}`);
 
-      // Refresh status after a short delay
+      // Update our characteristics immediately with fresh API calls (bypass cached status)
       setTimeout(async () => {
         try {
-          await this.multiServiceAccessory.refreshStatus();
+          this.log.debug(`🔄 Refreshing volume slider state after volume command for ${this.name}`);
+          const brightnessValue = await this.getBrightness(); // This makes a fresh API call
+          const onValue = await this.getOn(); // This makes a fresh API call
+          this.service.updateCharacteristic(this.platform.Characteristic.Brightness, brightnessValue);
+          this.service.updateCharacteristic(this.platform.Characteristic.On, onValue);
         } catch (error) {
           this.log.debug(`Status refresh after volume change failed for ${this.name}:`, error);
         }
-      }, 1000);
+      }, 2000); // Allow time for SmartThings to process the command
 
     } catch (error) {
       this.log.error(`❌ Failed to set volume for slider ${this.name}:`, error);
