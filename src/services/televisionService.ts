@@ -153,7 +153,7 @@ export class TelevisionService extends BaseService {
   private loadInputSources(): void {
     // Try to load from Samsung's mediaInputSource capability from component status
     const component = this.multiServiceAccessory.components.find(c => c.componentId === this.componentId);
-    const inputSourceData = component?.status?.['samsungvd.mediaInputSource'];
+    const inputSourceData = component?.status?.['samsungvd.mediaInputSource'] as any;
     
     if (inputSourceData?.supportedInputSourcesMap?.value) {
       this.inputSourcesMap = inputSourceData.supportedInputSourcesMap.value;
@@ -219,7 +219,8 @@ export class TelevisionService extends BaseService {
         if (success) {
           try {
             const component = this.multiServiceAccessory.components.find(c => c.componentId === this.componentId);
-            const switchState = component?.status?.switch?.switch?.value;
+            const switchData = component?.status?.switch as any;
+            const switchState = switchData?.switch?.value;
             const isActive = switchState === 'on';
             this.log.debug(`TV active state for ${this.name}: ${isActive}`);
             resolve(isActive ? this.platform.Characteristic.Active.ACTIVE : this.platform.Characteristic.Active.INACTIVE);
@@ -264,7 +265,8 @@ export class TelevisionService extends BaseService {
           try {
             // Try to get current input from Samsung's mediaInputSource capability
             const component = this.multiServiceAccessory.components.find(c => c.componentId === this.componentId);
-            const currentInput = component?.status?.['samsungvd.mediaInputSource']?.inputSource?.value;
+            const mediaInputData = component?.status?.['samsungvd.mediaInputSource'] as any;
+            const currentInput = mediaInputData?.inputSource?.value;
             if (currentInput) {
               const inputIndex = this.inputSourcesMap.findIndex(input => input.id === currentInput);
               this.currentInputSource = inputIndex >= 0 ? inputIndex + 1 : 1;
@@ -382,14 +384,15 @@ export class TelevisionService extends BaseService {
         if (success) {
           try {
             const component = this.multiServiceAccessory.components.find(c => c.componentId === this.componentId);
-            const pictureMode = component?.status?.['custom.picturemode']?.pictureMode?.value;
+            const pictureModeData = component?.status?.['custom.picturemode'] as any;
+            const pictureMode = pictureModeData?.pictureMode?.value;
             if (pictureMode) {
               // Map Samsung picture modes to HomeKit values
               const pictureModeMap = {
                 'Standard': this.platform.Characteristic.PictureMode.STANDARD,
                 'Dynamic': this.platform.Characteristic.PictureMode.VIVID,
-                'Movie (Calibrated)': this.platform.Characteristic.PictureMode.MOVIE,
-                'FILMMAKER MODE': this.platform.Characteristic.PictureMode.MOVIE,
+                'Movie (Calibrated)': this.platform.Characteristic.PictureMode.STANDARD, // Fallback to STANDARD
+                'FILMMAKER MODE': this.platform.Characteristic.PictureMode.STANDARD, // Fallback to STANDARD
                 'Eco': this.platform.Characteristic.PictureMode.STANDARD,
               };
               const homekitMode = pictureModeMap[pictureMode] || this.platform.Characteristic.PictureMode.STANDARD;
@@ -420,7 +423,6 @@ export class TelevisionService extends BaseService {
     const reversePictureModeMap = {
       [this.platform.Characteristic.PictureMode.STANDARD]: 'Standard',
       [this.platform.Characteristic.PictureMode.VIVID]: 'Dynamic',
-      [this.platform.Characteristic.PictureMode.MOVIE]: 'FILMMAKER MODE',
     };
 
     const samsungMode = reversePictureModeMap[Number(value)];
@@ -445,7 +447,8 @@ export class TelevisionService extends BaseService {
         if (success) {
           try {
             const component = this.multiServiceAccessory.components.find(c => c.componentId === this.componentId);
-            const muteState = component?.status?.audioMute?.mute?.value;
+            const audioMuteData = component?.status?.audioMute as any;
+            const muteState = audioMuteData?.mute?.value;
             this.isMuted = muteState === 'muted';
             this.log.debug(`Mute state for ${this.name}: ${this.isMuted}`);
             resolve(this.isMuted);
@@ -488,7 +491,8 @@ export class TelevisionService extends BaseService {
         if (success) {
           try {
             const component = this.multiServiceAccessory.components.find(c => c.componentId === this.componentId);
-            const volume = component?.status?.audioVolume?.volume?.value;
+            const audioVolumeData = component?.status?.audioVolume as any;
+            const volume = audioVolumeData?.volume?.value;
             if (typeof volume === 'number') {
               this.currentVolume = volume;
               this.log.debug(`Volume for ${this.name}: ${volume}`);

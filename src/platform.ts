@@ -135,8 +135,10 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
           await this.auth.handleCrashLoopRecovery();
           // After attempting recovery, it's best to let Homebridge restart the plugin cleanly.
           // Or, if handleCrashLoopRecovery sets a state for re-auth, allow it to proceed.
-          // For now, we'll log and let the user know. A manual restart of Homebridge might be needed if the auth flow doesn't auto-trigger UI.
-          this.log.warn('[CRASH LOOP RECOVERY] Token clearing initiated. Monitor logs for re-authentication steps. A Homebridge restart may be required.');
+          // For now, we'll log and let the user know. A manual restart of Homebridge might be needed
+          // if the auth flow doesn't auto-trigger UI.
+          this.log.warn('[CRASH LOOP RECOVERY] Token clearing initiated. Monitor logs for re-authentication steps.' +
+            ' A Homebridge restart may be required.');
           // We might want to return here to prevent further execution in a potentially unstable state until re-auth completes.
           return;
         }
@@ -176,7 +178,8 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
         // Record that an initialization error occurred.
         // If this error is one that leads to a crash and restart, it will be logged by CrashLoopManager.
         await this.crashLoopManager.recordPotentialCrash(CrashErrorType.API_INIT_FAILURE);
-        this.log.error('Platform initialization failed. This might lead to a restart. If this persists, a crash loop recovery might be attempted.');
+        this.log.error('Platform initialization failed. This might lead to a restart.' +
+          ' If this persists, a crash loop recovery might be attempted.');
       }
     });
   }
@@ -233,11 +236,11 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
             this.log.warn(`Error getting device name for ${device.label}: ${error}`);
             deviceName = device.label;
           }
-          
+
           // Check if device should be ignored
           if (this.config.IgnoreDevices && Array.isArray(this.config.IgnoreDevices)) {
             this.log.debug(`Checking if device "${deviceName}" should be ignored against list: [${this.config.IgnoreDevices.join(', ')}]`);
-            
+
             const shouldIgnore = this.config.IgnoreDevices.find(ignoreName => {
               if (typeof ignoreName !== 'string') {
                 this.log.warn(`Invalid ignore device entry: ${ignoreName} (expected string)`);
@@ -246,11 +249,11 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
               // Normalize both names for comparison - handle special characters
               const normalizedIgnoreName = ignoreName.replace(/[\u2018\u2019]/g, '\'').replace(/[\u201C\u201D]/g, '"').toLowerCase().trim();
               const normalizedDeviceName = deviceName.toLowerCase().trim();
-              
+
               this.log.debug(`Comparing normalized names: "${normalizedDeviceName}" vs "${normalizedIgnoreName}"`);
               return normalizedIgnoreName === normalizedDeviceName;
             });
-            
+
             if (shouldIgnore) {
               this.log.info(`Ignoring ${device.label} because it is in the Ignore Devices list`);
               return;
