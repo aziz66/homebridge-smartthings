@@ -35,7 +35,10 @@ export class TelevisionService extends BaseService {
     // Setup Input Source services
     this.setupInputSources();
 
-    // Link services together
+    // Configure the Television service as the primary service
+    this.televisionService.setPrimaryService();
+
+    // Link services together - TelevisionSpeaker and InputSources must be linked to Television
     this.televisionService.addLinkedService(this.televisionSpeakerService);
     this.inputServices.forEach(inputService => {
       this.televisionService.addLinkedService(inputService);
@@ -94,25 +97,47 @@ export class TelevisionService extends BaseService {
     const speakerService = this.accessory.getService(this.platform.Service.TelevisionSpeaker) ||
       this.accessory.addService(this.platform.Service.TelevisionSpeaker, `${this.name} Speaker`, 'TelevisionSpeaker');
 
-    // Configure Mute characteristic
+    // Set the display name
+    speakerService.setCharacteristic(this.platform.Characteristic.Name, `${this.name} Speaker`);
+
+    // Configure Mute characteristic (required)
     speakerService.getCharacteristic(this.platform.Characteristic.Mute)
       .onGet(this.getMute.bind(this))
       .onSet(this.setMute.bind(this));
 
-    // Configure Volume Control Type (supports both relative and absolute)
-    speakerService.getCharacteristic(this.platform.Characteristic.VolumeControlType)
-      .onGet(() => this.platform.Characteristic.VolumeControlType.ABSOLUTE);
+    // Configure Volume Control Type - specify what type of volume control is supported
+    if (this.isCapabilitySupported('audioVolume')) {
+      // TV supports absolute volume control
+      speakerService.setCharacteristic(
+        this.platform.Characteristic.VolumeControlType,
+        this.platform.Characteristic.VolumeControlType.ABSOLUTE
+      );
 
-    // Configure Volume Selector (for volume up/down commands)
+      // Add Volume characteristic for absolute volume control
+      speakerService.getCharacteristic(this.platform.Characteristic.Volume)
+        .setProps({
+          minValue: 0,
+          maxValue: 100,
+          minStep: 1,
+        })
+        .onGet(this.getVolume.bind(this))
+        .onSet(this.setVolume.bind(this));
+    } else {
+      // Fallback to relative volume control only
+      speakerService.setCharacteristic(
+        this.platform.Characteristic.VolumeControlType,
+        this.platform.Characteristic.VolumeControlType.RELATIVE
+      );
+    }
+
+    // Configure Volume Selector (for volume up/down commands) - always available
     speakerService.getCharacteristic(this.platform.Characteristic.VolumeSelector)
       .onSet(this.setVolumeSelector.bind(this));
 
-    // Configure Volume if supported
-    if (this.isCapabilitySupported('audioVolume')) {
-      speakerService.getCharacteristic(this.platform.Characteristic.Volume)
-        .onGet(this.getVolume.bind(this))
-        .onSet(this.setVolume.bind(this));
-    }
+    // Configure Active characteristic (speaker active state)
+    speakerService.getCharacteristic(this.platform.Characteristic.Active)
+      .onGet(this.getSpeakerActive.bind(this))
+      .onSet(this.setSpeakerActive.bind(this));
 
     return speakerService;
   }
@@ -549,6 +574,31 @@ export class TelevisionService extends BaseService {
     }
   }
 
+  // Speaker Active Methods
+  private async getSpeakerActive(): Promise<CharacteristicValue> {
+    this.log.debug(`Getting speaker active state for ${this.name}`);
+    
+    // Speaker is active when TV is active and not muted
+    const tvActive = await this.getTelevisionActive();
+    const isMuted = await this.getMute();
+    
+    const speakerActive = tvActive === this.platform.Characteristic.Active.ACTIVE && !isMuted;
+    return speakerActive ? this.platform.Characteristic.Active.ACTIVE : this.platform.Characteristic.Active.INACTIVE;
+  }
+
+  private async setSpeakerActive(value: CharacteristicValue): Promise<void> {
+    this.log.debug(`Setting speaker active state for ${this.name} to ${value}`);
+
+    if (!this.multiServiceAccessory.isOnline()) {
+      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
+
+    // For speaker active/inactive, we control the mute state
+    // Active = unmute, Inactive = mute
+    const shouldMute = value === this.platform.Characteristic.Active.INACTIVE;
+    await this.setMute(shouldMute);
+  }
+
   // Event Processing
   public processEvent(event: ShortEvent): void {
     this.log.debug(`Processing event for TV ${this.name}: ${event.capability} = ${event.value}`);
@@ -567,6 +617,11 @@ export class TelevisionService extends BaseService {
         this.televisionSpeakerService.updateCharacteristic(
           this.platform.Characteristic.Mute,
           this.isMuted
+        );
+        // Update speaker active state based on mute status
+        this.televisionSpeakerService.updateCharacteristic(
+          this.platform.Characteristic.Active,
+          !this.isMuted ? this.platform.Characteristic.Active.ACTIVE : this.platform.Characteristic.Active.INACTIVE
         );
         break;
 

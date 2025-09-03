@@ -1,13 +1,37 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.16] - TelevisionSpeaker Control Improvements
+### Fixed
+- **🔊 TelevisionSpeaker Service**: Fixed speaker control issues that prevented audio controls from working in HomeKit
+  - Properly configured TelevisionSpeaker service as linked service to Television
+  - Added Speaker Active characteristic that responds to TV power and mute states
+  - Fixed volume control bounds and properties (0-100 range with proper step increments)
+  - Enhanced VolumeControlType detection (ABSOLUTE vs RELATIVE based on Samsung TV capabilities)
+- **🎛️ Service Architecture**: Improved HomeKit Television service implementation
+  - Set Television service as primary service using `setPrimaryService()`
+  - Corrected service linking hierarchy between Television, TelevisionSpeaker, and InputSource services
+  - Enhanced event processing to update both TV and speaker characteristics simultaneously
+
+### Changed
+- **🔇 Speaker State Management**: Speaker active/inactive state now properly reflects TV power and mute status
+- **📱 HomeKit Integration**: Improved native TV interface experience with proper audio controls
+- **🎚️ Volume Control**: Enhanced volume slider responsiveness and real-time updates
+
+### Technical Details
+- Added Speaker Active characteristic with proper state management
+- Implemented dynamic VolumeControlType configuration based on device capabilities
+- Enhanced service linking architecture following HomeKit Television service specifications
+- Improved event processing for synchronized TV and speaker state updates
+
 ## [1.0.15] - Television Service Support & IgnoreDevices Bug Fixes
 ### Added
 - **🎬 Television Service**: Samsung TVs now appear as proper Television accessories in HomeKit instead of simple switches
 - **📺 Input Source Control**: Full support for HDMI inputs, TV tuner, and custom input names from SmartThings
-- **🔊 Audio Controls**: Volume control, mute/unmute, and volume up/down buttons via TelevisionSpeaker service
+- **🔊 Audio Controls**: Complete volume control, mute/unmute, and volume up/down buttons via TelevisionSpeaker service
 - **🎨 Picture Mode Support**: Control Samsung picture modes (Standard, Dynamic, Movie, etc.) from HomeKit
 - **🎮 Remote Control**: Support for media playback controls (rewind, fast forward, channel up/down)
+- **🔇 TelevisionSpeaker Integration**: Proper speaker service with Active characteristic and volume bounds (0-100)
 - **⚙️ Configuration Options**:
   - `enableTelevisionService` (default: true) - Enable/disable Television service for TV devices
   - `removeLegacySwitchForTV` (default: false) - Option to remove legacy switch service for TVs
@@ -31,6 +55,10 @@ All notable changes to this project will be documented in this file.
 ### Technical Details
 - Created `TelevisionService` class extending `BaseService`
 - TV detection based on `samsungvd.deviceCategory`, `samsungvd.mediaInputSource`, audio capabilities, and TV channels
+- Proper HomeKit Television service implementation with primary service designation
+- TelevisionSpeaker service with both absolute and relative volume control support
+- Speaker Active characteristic properly linked to TV power and mute states
+- Volume characteristics with proper bounds (0-100) and step increments
 - Maintains backward compatibility - existing Switch services continue working
 - Stable UUIDs prevent service duplication across restarts
 - Graceful fallback for missing TV capabilities
