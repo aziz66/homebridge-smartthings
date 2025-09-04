@@ -50,38 +50,7 @@ export class VolumeSliderService extends BaseService {
       .onGet(this.getBrightness.bind(this))
       .onSet(this.setBrightness.bind(this));
 
-    // Start polling to keep slider synchronized with TV IR remote changes
-    this.startSliderPolling();
-
-    this.log.info(`🎚️ Volume Slider service created within ${this.name} TV tile (component: ${componentId})`);
-  }
-
-  private startSliderPolling(): void {
-    // Get TV-specific polling interval
-    let pollInterval = 15000; // default 15 seconds for TVs
-    if (this.platform.config.PollTelevisionsSeconds && this.platform.config.PollTelevisionsSeconds > 0) {
-      pollInterval = this.platform.config.PollTelevisionsSeconds * 1000;
-    }
-
-    this.log.info(`🎚️ Starting Volume Slider polling with ${pollInterval/1000}s interval for ${this.name} (syncs with IR remote)`);
-
-    this.pollInterval = setInterval(async () => {
-      try {
-        this.log.debug(`🔄 Volume slider polling for ${this.name}...`);
-        
-        // Use the proper status mechanism instead of direct API calls
-        if (await this.getStatus()) {
-          // Update characteristics from device status
-          const onValue = await this.getOn();
-          const brightnessValue = await this.getBrightness();
-
-          this.service.updateCharacteristic(this.platform.Characteristic.On, onValue);
-          this.service.updateCharacteristic(this.platform.Characteristic.Brightness, brightnessValue);
-        }
-      } catch (error) {
-        this.log.debug(`Volume slider polling error for ${this.name}:`, error);
-      }
-    }, pollInterval);
+    this.log.info(`🎚️ Volume Slider service created within ${this.name} TV tile (component: ${componentId}) - using global status polling`);
   }
 
   /**
@@ -235,6 +204,7 @@ export class VolumeSliderService extends BaseService {
 
   /**
    * Process webhook events for real-time updates
+   * Also called from global status polling to update characteristics
    */
   public processEvent(event: ShortEvent): void {
     this.log.debug(`Volume slider received event for ${this.name}: ${event.capability}.${event.attribute} = ${event.value}`);
@@ -243,11 +213,11 @@ export class VolumeSliderService extends BaseService {
       if (event.capability === 'audioMute' && event.attribute === 'mute') {
         const isNotMuted = event.value !== 'muted';
         this.service.updateCharacteristic(this.platform.Characteristic.On, isNotMuted);
-        this.log.debug(`Volume slider mute state updated via webhook for ${this.name}: ${isNotMuted}`);
+        this.log.debug(`Volume slider mute state updated via event for ${this.name}: ${isNotMuted}`);
       } else if (event.capability === 'audioVolume' && event.attribute === 'volume') {
         const volume = Math.max(0, Math.min(100, Number(event.value) || 0));
         this.service.updateCharacteristic(this.platform.Characteristic.Brightness, volume);
-        this.log.debug(`Volume slider volume updated via webhook for ${this.name}: ${volume}%`);
+        this.log.debug(`Volume slider volume updated via event for ${this.name}: ${volume}%`);
       }
     } catch (error) {
       this.log.debug(`Error processing event for volume slider ${this.name}:`, error);
@@ -255,13 +225,41 @@ export class VolumeSliderService extends BaseService {
   }
 
   /**
-   * Cleanup method to stop polling when accessory is removed
+   * Update characteristics from global status polling
+   * This method is called when the global device status is refreshed
+   */
+  public updateFromGlobalStatus(): void {
+    try {
+      // Get current status from the device components
+      const component = this.multiServiceAccessory.components.find(c => c.componentId === this.componentId);
+      
+      if (component?.status) {
+        // Update mute state if available
+        const audioMuteData = component.status.audioMute as any;
+        if (audioMuteData?.mute?.value !== undefined) {
+          const isNotMuted = audioMuteData.mute.value !== 'muted';
+          this.service.updateCharacteristic(this.platform.Characteristic.On, isNotMuted);
+          this.log.debug(`Volume slider mute state updated from global status for ${this.name}: ${isNotMuted}`);
+        }
+
+        // Update volume if available
+        const audioVolumeData = component.status.audioVolume as any;
+        if (audioVolumeData?.volume?.value !== undefined) {
+          const volume = Math.max(0, Math.min(100, Number(audioVolumeData.volume.value) || 0));
+          this.service.updateCharacteristic(this.platform.Characteristic.Brightness, volume);
+          this.log.debug(`Volume slider volume updated from global status for ${this.name}: ${volume}%`);
+        }
+      }
+    } catch (error) {
+      this.log.debug(`Error updating volume slider from global status for ${this.name}:`, error);
+    }
+  }
+
+  /**
+   * Cleanup method - no longer needed since we removed polling
    */
   public cleanup(): void {
-    if (this.pollInterval) {
-      clearInterval(this.pollInterval);
-      this.pollInterval = undefined;
-      this.log.debug(`Volume slider polling stopped for ${this.name}`);
-    }
+    // No cleanup needed since we removed the polling interval
+    this.log.debug(`Volume slider cleanup completed for ${this.name}`);
   }
 }

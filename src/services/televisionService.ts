@@ -116,8 +116,7 @@ export class TelevisionService extends BaseService {
           .onGet(this.getMute.bind(this))
           .onSet(this.setMute.bind(this));
 
-        // Start polling for Mute changes
-        this.startMutePolling(speakerService);
+        // Mute updates will come from global status polling and webhook events
       }
 
       // Configure Volume Control Type and characteristics
@@ -138,8 +137,7 @@ export class TelevisionService extends BaseService {
           .onGet(this.getVolume.bind(this))
           .onSet(this.setVolume.bind(this));
 
-        // Start polling for Volume changes
-        this.startVolumePolling(speakerService);
+        // Volume updates will come from global status polling and webhook events
       } else {
         // Fallback to relative volume control only
         speakerService.setCharacteristic(
@@ -165,47 +163,7 @@ export class TelevisionService extends BaseService {
     this.log.debug(`Characteristic polling setup completed for ${this.name}`);
   }
 
-  private startVolumePolling(speakerService: Service): void {
-    // Get TV-specific polling interval
-    let pollInterval = 15000; // default 15 seconds for TVs
-    if (this.platform.config.PollTelevisionsSeconds !== undefined) {
-      pollInterval = this.platform.config.PollTelevisionsSeconds * 1000;
-    }
-
-    if (pollInterval > 0) {
-      this.log.debug(
-        `🎚️ Starting Volume polling with ${pollInterval / 1000}s interval for ${this.name} (IR remote changes will be detected)`,
-      );
-      setInterval(async () => {
-        try {
-          const volume = await this.getVolume();
-          speakerService.updateCharacteristic(this.platform.Characteristic.Volume, volume);
-        } catch (error) {
-          this.log.error(`Error polling volume for ${this.name}:`, error);
-        }
-      }, pollInterval);
-    }
-  }
-
-  private startMutePolling(speakerService: Service): void {
-    // Get TV-specific polling interval
-    let pollInterval = 15000; // default 15 seconds for TVs
-    if (this.platform.config.PollTelevisionsSeconds !== undefined) {
-      pollInterval = this.platform.config.PollTelevisionsSeconds * 1000;
-    }
-
-    if (pollInterval > 0) {
-      this.log.debug(`🔇 Starting Mute polling with ${pollInterval / 1000}s interval for ${this.name} (IR remote changes will be detected)`);
-      setInterval(async () => {
-        try {
-          const mute = await this.getMute();
-          speakerService.updateCharacteristic(this.platform.Characteristic.Mute, mute);
-        } catch (error) {
-          this.log.error(`Error polling mute for ${this.name}:`, error);
-        }
-      }, pollInterval);
-    }
-  }
+  // Volume and mute polling removed - now uses global status polling and webhook events
 
   private async setupInputSources(): Promise<void> {
     // Register only physical input sources (HDMI, DTV, etc.) with custom TV names

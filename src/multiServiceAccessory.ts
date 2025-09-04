@@ -440,6 +440,10 @@ export class MultiServiceAccessory {
                 this.log.error(`Failed to get status for ${this.name}-${component.componentId}`);
               }
             });
+
+            // Notify VolumeSliderService about global status update
+            this.notifyVolumeSliderOfStatusUpdate();
+
             this.statusQueryInProgress = false;
             resolve(true);
             // if (res.data.components.main !== undefined) {
@@ -476,6 +480,18 @@ export class MultiServiceAccessory {
 
   public forceNextStatusRefresh() {
     this.deviceStatusTimestamp = 0;
+  }
+
+  /**
+   * Notify VolumeSliderService instances about global status updates
+   * This allows volume slider to update its characteristics without separate polling
+   */
+  private notifyVolumeSliderOfStatusUpdate(): void {
+    this.services.forEach(service => {
+      if (service instanceof VolumeSliderService) {
+        service.updateFromGlobalStatus();
+      }
+    });
   }
 
 
