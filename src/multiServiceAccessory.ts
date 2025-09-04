@@ -444,6 +444,9 @@ export class MultiServiceAccessory {
             // Notify VolumeSliderService about global status update
             this.notifyVolumeSliderOfStatusUpdate();
 
+            // Notify TelevisionService about global status update for input source monitoring
+            this.notifyTelevisionServiceOfStatusUpdate();
+
             this.statusQueryInProgress = false;
             resolve(true);
             // if (res.data.components.main !== undefined) {
@@ -489,6 +492,18 @@ export class MultiServiceAccessory {
   private notifyVolumeSliderOfStatusUpdate(): void {
     this.services.forEach(service => {
       if (service instanceof VolumeSliderService) {
+        service.updateFromGlobalStatus();
+      }
+    });
+  }
+
+  /**
+   * Notify TelevisionService instances about global status updates
+   * This allows TV services to monitor input source changes dynamically
+   */
+  private notifyTelevisionServiceOfStatusUpdate(): void {
+    this.services.forEach(service => {
+      if (service instanceof TelevisionService) {
         service.updateFromGlobalStatus();
       }
     });

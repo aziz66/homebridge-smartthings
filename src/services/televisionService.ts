@@ -12,6 +12,7 @@ export class TelevisionService extends BaseService {
   private currentInputSource = 1; // Default to first input
   private currentVolume = 0;
   private isMuted = false;
+  private lastKnownInputSourcesHash = ''; // Track changes to input sources
 
   constructor(
     platform: IKHomeBridgeHomebridgePlatform,
@@ -289,6 +290,10 @@ export class TelevisionService extends BaseService {
           this.log.info(`   ${index + 1}. "${source.name}" (${source.id})`);
         });
 
+        // Initialize the hash for future change detection
+        const sortedSources = uniqueInputSources.sort((a, b) => a.id.localeCompare(b.id));
+        this.lastKnownInputSourcesHash = JSON.stringify(sortedSources);
+
         return;
       } else {
         this.log.debug(`No supportedInputSourcesMap found in status for ${this.name}`);
@@ -306,6 +311,10 @@ export class TelevisionService extends BaseService {
       { id: 'HDMI4', name: 'HDMI 4' },
     ];
     this.log.warn(`⚠️  Using fallback input sources for ${this.name} - fresh data not available`);
+
+    // Initialize hash for fallback sources too
+    const sortedSources = [...this.inputSourcesMap].sort((a, b) => a.id.localeCompare(b.id));
+    this.lastKnownInputSourcesHash = JSON.stringify(sortedSources);
   }
 
   private getInputSourceType(inputId: string): number {
@@ -877,6 +886,196 @@ export class TelevisionService extends BaseService {
     const tvIndicatorCount = [hasDeviceCategory, hasMediaInput, hasAudioCapabilities, hasTvChannel].filter(Boolean).length;
 
     return tvIndicatorCount >= 2; // Require at least 2 TV-specific capability groups
+  }
+
+  /**
+   * Monitor input source changes and update HomeKit services dynamically
+   * This method is called from the global status polling in MultiServiceAccessory
+   */
+  public updateFromGlobalStatus(): void {
+    try {
+      // Check if input sources have changed
+      this.checkAndUpdateInputSources();
+    } catch (error) {
+      this.log.debug(`Error monitoring input sources for ${this.name}:`, error);
+    }
+  }
+
+  /**
+   * Check if input sources have changed and update them if necessary
+   */
+  private async checkAndUpdateInputSources(): Promise<void> {
+    try {
+      // Only check if we have the mediaInputSource capability
+      if (!this.isCapabilitySupported('samsungvd.mediaInputSource')) {
+        return;
+      }
+
+      const component = this.multiServiceAccessory.components.find(c => c.componentId === this.componentId);
+      const inputSourceData = component?.status?.['samsungvd.mediaInputSource'] as any;
+
+      if (inputSourceData?.supportedInputSourcesMap?.value) {
+        const supportedInputSources = inputSourceData.supportedInputSourcesMap.value as { id: string; name: string }[];
+
+        // Create a hash of the current input sources to detect changes
+        const currentInputSourcesHash = JSON.stringify(supportedInputSources.sort((a, b) => a.id.localeCompare(b.id)));
+
+        // Check if input sources have changed
+        if (this.lastKnownInputSourcesHash !== '' && this.lastKnownInputSourcesHash !== currentInputSourcesHash) {
+          this.log.info(`📺 Input source changes detected for ${this.name} - updating HomeKit services`);
+
+          // Parse the new input sources
+          const uniqueInputSources = supportedInputSources.reduce((acc: { id: string; name: string }[], current) => {
+            const existingIndex = acc.findIndex(item => item.id === current.id);
+            if (existingIndex >= 0) {
+              if (current.name.length > acc[existingIndex].name.length) {
+                acc[existingIndex] = current;
+              }
+              this.log.debug(`⚠️  Duplicate input ID "${current.id}" found - keeping "${acc[existingIndex].name}"`);
+            } else {
+              acc.push(current);
+            }
+            return acc;
+          }, []);
+
+          // Update the input sources map
+          const oldInputSources = [...this.inputSourcesMap];
+          this.inputSourcesMap = uniqueInputSources.map((source: any) => ({
+            id: source.id,
+            name: source.name,
+          }));
+
+          // Log the changes
+          this.logInputSourceChanges(oldInputSources, this.inputSourcesMap);
+
+          // Update existing input source services with new names
+          await this.updateExistingInputSources();
+
+          // Handle new input sources (add them)
+          await this.addNewInputSources(oldInputSources);
+
+          // Handle removed input sources (remove them)
+          await this.removeObsoleteInputSources(oldInputSources);
+
+          // Update HomeKit about the changes
+          this.platform.api.updatePlatformAccessories([this.accessory]);
+
+          this.log.info(`📺 Input source update completed for ${this.name}`);
+        }
+
+        // Update the hash for future comparisons
+        this.lastKnownInputSourcesHash = currentInputSourcesHash;
+      }
+    } catch (error) {
+      this.log.error(`Error checking input source changes for ${this.name}:`, error);
+    }
+  }
+
+  /**
+   * Log the changes between old and new input sources
+   */
+  private logInputSourceChanges(oldSources: Array<{id: string; name: string}>, newSources: Array<{id: string; name: string}>): void {
+    // Check for name changes
+    oldSources.forEach(oldSource => {
+      const newSource = newSources.find(ns => ns.id === oldSource.id);
+      if (newSource && newSource.name !== oldSource.name) {
+        this.log.info(`🔄 Input source name changed: "${oldSource.name}" -> "${newSource.name}" (${oldSource.id})`);
+      }
+    });
+
+    // Check for new sources
+    const newSourceIds = newSources.map(ns => ns.id);
+    const oldSourceIds = oldSources.map(os => os.id);
+    const addedSources = newSources.filter(ns => !oldSourceIds.includes(ns.id));
+    addedSources.forEach(source => {
+      this.log.info(`➕ New input source detected: "${source.name}" (${source.id})`);
+    });
+
+    // Check for removed sources
+    const removedSources = oldSources.filter(os => !newSourceIds.includes(os.id));
+    removedSources.forEach(source => {
+      this.log.info(`➖ Input source removed: "${source.name}" (${source.id})`);
+    });
+  }
+
+  /**
+   * Update existing input source services with new names
+   */
+  private async updateExistingInputSources(): Promise<void> {
+    this.inputServices.forEach((inputService) => {
+      const inputId = inputService.name; // Contains the SmartThings ID
+      const newInputSource = this.inputSourcesMap.find(source => source.id === inputId);
+
+      if (newInputSource) {
+        // Update the configured name if it has changed
+        const currentConfiguredName = inputService.getCharacteristic(this.platform.Characteristic.ConfiguredName).value;
+        if (currentConfiguredName !== newInputSource.name) {
+          inputService.setCharacteristic(this.platform.Characteristic.ConfiguredName, newInputSource.name);
+          this.log.info(`🔄 Updated input source name: "${currentConfiguredName}" -> "${newInputSource.name}" (${inputId})`);
+        }
+      }
+    });
+  }
+
+  /**
+   * Add new input sources that weren't previously registered
+   */
+  private async addNewInputSources(oldSources: Array<{id: string; name: string}>): Promise<void> {
+    const oldSourceIds = oldSources.map(os => os.id);
+    const newSources = this.inputSourcesMap.filter(ns => !oldSourceIds.includes(ns.id));
+
+    newSources.forEach(newSource => {
+      this.registerInputSource(
+        newSource.id,
+        newSource.name,
+        this.getInputSourceType(newSource.id),
+      );
+      this.log.info(`➕ Added new input source: "${newSource.name}" (${newSource.id}) -> HomeKit ID ${this.inputServices.length}`);
+    });
+  }
+
+  /**
+   * Remove input sources that are no longer available
+   */
+  private async removeObsoleteInputSources(oldSources: Array<{id: string; name: string}>): Promise<void> {
+    const newSourceIds = this.inputSourcesMap.map(ns => ns.id);
+    const removedSources = oldSources.filter(os => !newSourceIds.includes(os.id));
+
+    // Remove services for obsolete input sources
+    removedSources.forEach(removedSource => {
+      const serviceToRemove = this.inputServices.find(service => service.name === removedSource.id);
+      if (serviceToRemove) {
+        try {
+          // Remove the service from the accessory
+          this.accessory.removeService(serviceToRemove);
+
+          // Remove from our tracking arrays
+          const serviceIndex = this.inputServices.indexOf(serviceToRemove);
+          if (serviceIndex > -1) {
+            this.inputServices.splice(serviceIndex, 1);
+          }
+
+          this.log.info(`➖ Removed obsolete input source: "${removedSource.name}" (${removedSource.id})`);
+        } catch (error) {
+          this.log.error(`Error removing input source service "${removedSource.name}":`, error);
+        }
+      }
+    });
+
+    // Reindex remaining input sources to maintain sequential identifiers
+    this.reindexInputSources();
+  }
+
+  /**
+   * Reindex input source identifiers after removal to maintain sequential numbering
+   */
+  private reindexInputSources(): void {
+    this.inputServices.forEach((inputService, index) => {
+      const newIdentifier = index + 1;
+      inputService.setCharacteristic(this.platform.Characteristic.Identifier, newIdentifier);
+      const configuredName = inputService.getCharacteristic(this.platform.Characteristic.ConfiguredName).value;
+      this.log.debug(`🔢 Reindexed input source "${configuredName}" to identifier ${newIdentifier}`);
+    });
   }
 
   // Static method to get TV-related capabilities for the capability map
