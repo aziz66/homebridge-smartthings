@@ -2,6 +2,7 @@
   "pluginAlias": "HomeBridgeSmartThings",
   "pluginType": "platform",
   "singular": true,
+  "customUi": true,
   "schema": {
     "type": "object",
     "properties": {
@@ -31,17 +32,29 @@
         "description": "OAuth2 Client Secret from SmartThings. Obtained using the SmartThings CLI 'apps:create' command. Save this value securely! See [Setup Instructions](https://github.com/aziz66/homebridge-smartthings?tab=readme-ov-file#getting-started) for details."
       },
       "server_url": {
-        "title": "Server URL",
+        "title": "Server URL (Optional)",
         "type": "string",
-        "required": true,
-        "description": "The public URL of your server (e.g., https://your-domain.com)"
+        "required": false,
+        "description": "Only required if you want to use webhooks for real-time device updates. Leave empty if you only want polling."
+      },
+      "oauth_access_token": {
+        "title": "OAuth Access Token",
+        "type": "string",
+        "required": false,
+        "description": "Auto-filled by the OAuth wizard. Do not edit manually."
+      },
+      "oauth_refresh_token": {
+        "title": "OAuth Refresh Token",
+        "type": "string",
+        "required": false,
+        "description": "Auto-filled by the OAuth wizard. Do not edit manually."
       },
       "webhook_port": {
         "title": "Webhook Port",
         "type": "integer",
-        "required": true,
+        "required": false,
         "default": 3000,
-        "description": "Port for webhook server and OAuth callback"
+        "description": "Port for webhook server (only used if Server URL is configured)"
       },
       "GarageDoorMaxPoll": {
         "title": "Garage Door Max Poll",

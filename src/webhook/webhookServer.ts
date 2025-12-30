@@ -6,19 +6,32 @@ import { SmartThingsAuth } from '../auth/auth';
 import { ShortEvent } from './subscriptionHandler';
 
 export class WebhookServer {
-  private server: http.Server;
+  private server: http.Server | null = null;
   private eventHandlers: ((event: ShortEvent) => void)[] = [];
   private authHandler: SmartThingsAuth | null = null;
+  private isRunning = false;
 
   constructor(
     private readonly platform: IKHomeBridgeHomebridgePlatform,
     private readonly log: Logger,
   ) {
+    // Only start the webhook server if server_url is configured
+    // This is needed for both OAuth callback (traditional flow) and device events
+    if (this.platform.config.server_url && this.platform.config.server_url.trim() !== '') {
+      this.startServer();
+    } else {
+      this.log.debug('Webhook server not started - no server_url configured. ' +
+        'Real-time device updates via webhooks will not be available. ' +
+        'Using polling mode instead.');
+    }
+  }
+
+  private startServer(): void {
     const port = this.platform.config.webhook_port || 3000;
 
     this.server = http.createServer((req, res) => {
       const parsedUrl = url.parse(req.url!, true);
-      
+
       if (parsedUrl.pathname === '/oauth/callback') {
         if (this.authHandler) {
           this.handleOAuthCallback(parsedUrl.query, res);
@@ -37,6 +50,7 @@ export class WebhookServer {
 
     this.server.listen(port, () => {
       this.log.info(`Webhook server listening on port ${port}`);
+      this.isRunning = true;
     });
 
     this.server.on('error', (error) => {
@@ -104,6 +118,11 @@ export class WebhookServer {
   public stop(): void {
     if (this.server) {
       this.server.close();
+      this.isRunning = false;
     }
+  }
+
+  public isServerRunning(): boolean {
+    return this.isRunning;
   }
 } 

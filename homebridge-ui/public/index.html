@@ -1,0 +1,334 @@
+<div class="container">
+    <div id="oauth-start" class="alert alert-info" role="info">
+        To simplify OAuth setup, use the wizard below. This eliminates the need for tunnels like ngrok.<br>
+        The wizard will guide you through creating a SmartThings app and obtaining OAuth tokens.<br><br>
+        <button class="btn btn-primary" onclick="showWizard()">Open OAuth Setup Wizard</button>
+    </div>
+
+    <div id="wizard" style="display:none">
+        <h2 class="mb-4">OAuth Setup Wizard</h2>
+        <div class="nav nav-pills mb-3" id="wizardNav">
+            <a class="nav-link active" data-target="#step1">SmartThings App</a>
+            <a class="nav-link" data-target="#step2">Redirection</a>
+            <a class="nav-link" data-target="#step3">Authorization Code</a>
+            <a class="nav-link" data-target="#step4">Authorization Token</a>
+        </div>
+
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="step1">
+                <h4>Step 1: Create SmartThings App</h4>
+                <p>To use OAuth, you need to create a SmartThings application using the
+                    <a href="https://github.com/SmartThingsCommunity/smartthings-cli" target="_blank">SmartThings CLI</a>.
+                </p>
+                <p><strong>Installation:</strong> Follow the
+                    <a href="https://github.com/SmartThingsCommunity/smartthings-cli#installation" target="_blank">CLI installation guide</a>.
+                </p>
+                <p><strong>Create App:</strong> Use the
+                    <a href="https://github.com/SmartThingsCommunity/smartthings-cli?tab=readme-ov-file#smartthings-appscreate" target="_blank">apps:create command</a>
+                    with the redirect URL and scopes shown below.
+                </p>
+
+                <form id="step1Form">
+                    <div class="form-group row">
+                        <label for="oauth-redirect-url" class="col-sm-3 col-form-label font-weight-bold">OAuth Redirect URL</label>
+                        <div class="col-sm-9">
+                            <input type="text" class="form-control" id="oauth-redirect-url"
+                                value="https://httpbin.org/get" readonly onfocus="this.removeAttribute('readonly');"
+                                required>
+                            <small class="form-text text-muted">
+                                Use this URL when creating your SmartThings app. It displays the authorization code after login.
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="form-group row">
+                        <label for="oauth-scopes" class="col-sm-3 col-form-label font-weight-bold">OAuth Scopes</label>
+                        <div class="col-sm-9">
+                            <input type="text" class="form-control" id="oauth-scopes"
+                                value="r:devices:* x:devices:* r:locations:*" readonly
+                                onfocus="this.removeAttribute('readonly');" required>
+                            <small class="form-text text-muted">
+                                Required scopes for device access. Use these when creating your SmartThings app.
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="form-group row">
+                        <label for="oauth-client-id" class="col-sm-3 col-form-label font-weight-bold">OAuth Client ID</label>
+                        <div class="col-sm-9">
+                            <input type="text" class="form-control" id="oauth-client-id"
+                                placeholder="Paste the OAuth client ID from SmartThings CLI" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group row">
+                        <label for="oauth-client-secret" class="col-sm-3 col-form-label font-weight-bold">OAuth Client Secret</label>
+                        <div class="col-sm-9">
+                            <input type="password" class="form-control" id="oauth-client-secret"
+                                placeholder="Paste the OAuth client secret from SmartThings CLI" required>
+                        </div>
+                    </div>
+                </form>
+
+                <button class="btn btn-primary next" onclick="validateStep1()">Next</button>
+            </div>
+
+            <div class="tab-pane fade" id="step2">
+                <h4>Step 2: SmartThings Login</h4>
+                <p>Click "Next" to open the SmartThings login page in a new window.</p>
+                <p>After logging in:</p>
+                <ol>
+                    <li>Select the location you want to use</li>
+                    <li>Confirm access for the requested scopes</li>
+                    <li>You will be redirected to httpbin.org which displays the authorization response</li>
+                </ol>
+                <p class="alert alert-warning">
+                    <strong>Important:</strong> After authorization, copy the <code>args.code</code> value from the JSON response shown on httpbin.org.
+                </p>
+
+                <button class="btn btn-secondary prev" onclick="prevStep()">Back</button>
+                <button class="btn btn-primary next" onclick="validateStep2()">Next (Opens SmartThings Login)</button>
+            </div>
+
+            <div class="tab-pane fade" id="step3">
+                <h4>Step 3: Enter Authorization Code</h4>
+                <p>Paste the <code>args.code</code> value from the httpbin.org response below.</p>
+                <p class="text-muted">Example: The JSON response will look like <code>{"args": {"code": "xxxxxx"}, ...}</code>. Copy just the code value.</p>
+
+                <form id="step3Form">
+                    <div class="form-group row">
+                        <label for="oauth-code" class="col-sm-3 col-form-label font-weight-bold">Authorization Code</label>
+                        <div class="col-sm-9">
+                            <input type="text" class="form-control" id="oauth-code"
+                                placeholder="Paste the authorization code here" required>
+                        </div>
+                    </div>
+                </form>
+
+                <button class="btn btn-secondary prev" onclick="prevStep()">Back</button>
+                <button class="btn btn-primary next" onclick="validateStep3()">Next</button>
+            </div>
+
+            <div class="tab-pane fade" id="step4">
+                <h4>Step 4: Complete Setup</h4>
+                <p>Your access and refresh tokens have been obtained automatically.</p>
+                <p class="alert alert-success">Click "Save Configuration" to complete the setup. Then restart Homebridge.</p>
+
+                <form id="step4Form">
+                    <div class="form-group row">
+                        <label for="oauth-access-token" class="col-sm-3 col-form-label font-weight-bold">Access Token</label>
+                        <div class="col-sm-9">
+                            <input type="text" class="form-control" id="oauth-access-token"
+                                placeholder="Access token will appear here" required readonly>
+                        </div>
+                    </div>
+
+                    <div class="form-group row">
+                        <label for="oauth-refresh-token" class="col-sm-3 col-form-label font-weight-bold">Refresh Token</label>
+                        <div class="col-sm-9">
+                            <input type="text" class="form-control" id="oauth-refresh-token"
+                                placeholder="Refresh token will appear here" required readonly>
+                        </div>
+                    </div>
+                </form>
+
+                <button class="btn btn-secondary prev" onclick="prevStep()">Back</button>
+                <button class="btn btn-success" onclick="validateStep4()">Save Configuration</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function showWizard() {
+        try {
+            homebridge.disableSaveButton();
+            homebridge.hideSchemaForm();
+            document.getElementById('wizard').style.display = "block";
+            document.getElementById('oauth-start').style.display = "none";
+        } catch (err) {
+            console.error('showWizard error:', err);
+        }
+    }
+
+    function hideWizard() {
+        try {
+            homebridge.enableSaveButton();
+            homebridge.showSchemaForm();
+            document.getElementById('wizard').style.display = "none";
+            document.getElementById('oauth-start').style.display = "block";
+        } catch (err) {
+            console.error('hideWizard error:', err);
+        }
+    }
+
+    async function updateUi() {
+        try {
+            const pluginConfig = await homebridge.getPluginConfig();
+
+            if (pluginConfig.length === 0) {
+                pluginConfig[0] = {
+                    platform: "HomeBridgeSmartThings",
+                    name: "Smartthings Plug (IK)",
+                    BaseURL: "https://api.smartthings.com/v1/"
+                };
+                await homebridge.updatePluginConfig(pluginConfig);
+            }
+
+            // Pre-fill client ID and secret if they exist
+            if (pluginConfig[0].client_id) {
+                document.getElementById('oauth-client-id').value = pluginConfig[0].client_id;
+            }
+            if (pluginConfig[0].client_secret) {
+                document.getElementById('oauth-client-secret').value = pluginConfig[0].client_secret;
+            }
+
+            hideWizard();
+        } catch (err) {
+            console.error('updateUi error:', err);
+        }
+    }
+
+    function validateStep(id) {
+        var form = document.getElementById(id);
+        if (form.checkValidity() === false) {
+            form.classList.add('was-validated');
+            return false;
+        } else {
+            nextStep();
+            return true;
+        }
+    }
+
+    async function validateStep1() {
+        try {
+            if (validateStep('step1Form')) {
+                const pluginConfig = await homebridge.getPluginConfig();
+                pluginConfig[0].client_id = document.getElementById('oauth-client-id').value;
+                pluginConfig[0].client_secret = document.getElementById('oauth-client-secret').value;
+                await homebridge.updatePluginConfig(pluginConfig);
+            }
+        } catch (err) {
+            console.error('validateStep1 error:', err);
+        }
+    }
+
+    async function validateStep2() {
+        try {
+            nextStep();
+            requestAuthCode();
+        } catch (err) {
+            console.error('validateStep2 error:', err);
+        }
+    }
+
+    async function validateStep3() {
+        try {
+            if (validateStep('step3Form')) {
+                homebridge.showSpinner();
+                try {
+                    await requestAuthToken();
+                } catch (err) {
+                    console.error('requestAuthToken error:', err);
+                    homebridge.toast.error("Could not request authorization token. Please try again.");
+                } finally {
+                    homebridge.hideSpinner();
+                }
+            }
+        } catch (err) {
+            console.error('validateStep3 error:', err);
+        }
+    }
+
+    async function validateStep4() {
+        try {
+            if (validateStep('step4Form')) {
+                const pluginConfig = await homebridge.getPluginConfig();
+
+                // Store the tokens for the plugin to use
+                pluginConfig[0].oauth_access_token = document.getElementById('oauth-access-token').value;
+                pluginConfig[0].oauth_refresh_token = document.getElementById('oauth-refresh-token').value;
+
+                // Remove server_url requirement since we no longer need it for OAuth callback
+                // But keep it if it exists for webhook functionality
+                if (!pluginConfig[0].server_url) {
+                    pluginConfig[0].server_url = "";
+                }
+
+                await homebridge.updatePluginConfig(pluginConfig);
+                await homebridge.savePluginConfig();
+
+                homebridge.toast.success("Configuration saved! Please restart Homebridge.", "OAuth Setup Complete");
+
+                hideWizard();
+                updateUi();
+            }
+        } catch (err) {
+            console.error('validateStep4 error:', err);
+        }
+    }
+
+    function nextStep() {
+        let activeTab = document.querySelector('.nav-pills .active');
+        let nextTab = activeTab.nextElementSibling;
+        if (nextTab) changeTab(nextTab);
+    }
+
+    function prevStep() {
+        let activeTab = document.querySelector('.nav-pills .active');
+        let prevTab = activeTab.previousElementSibling;
+        if (prevTab) changeTab(prevTab);
+    }
+
+    function changeTab(targetTab) {
+        document.querySelector('.nav-pills .active').classList.remove('active');
+        document.querySelector('.tab-pane.show').classList.remove('show', 'active');
+
+        targetTab.classList.add('active');
+        document.querySelector(targetTab.getAttribute('data-target')).classList.add('show', 'active');
+    }
+
+    async function requestAuthCode() {
+        try {
+            const payload = {
+                clientId: document.getElementById('oauth-client-id').value,
+                clientSecret: document.getElementById('oauth-client-secret').value,
+                redirectUrl: document.getElementById('oauth-redirect-url').value,
+                scopes: document.getElementById('oauth-scopes').value
+            };
+
+            const authUrl = await homebridge.request('/authCode', payload);
+            window.open(authUrl, "_blank");
+            return authUrl;
+        } catch (err) {
+            console.error('requestAuthCode error:', err);
+            homebridge.toast.error("Could not generate authorization URL. Please check your credentials.");
+        }
+    }
+
+    async function requestAuthToken() {
+        try {
+            const payload = {
+                code: document.getElementById('oauth-code').value,
+                redirectUrl: document.getElementById('oauth-redirect-url').value,
+                scopes: document.getElementById('oauth-scopes').value
+            };
+
+            const authToken = await homebridge.request('/authToken', payload);
+
+            document.getElementById('oauth-access-token').value = authToken.access_token;
+            document.getElementById('oauth-refresh-token').value = authToken.refresh_token;
+            return authToken;
+        } catch (err) {
+            console.error('requestAuthToken error:', err);
+            throw err;
+        }
+    }
+
+    // Initialize
+    updateUi();
+
+    window.homebridge.addEventListener('configChanged', (event) => {
+        updateUi();
+    });
+</script>

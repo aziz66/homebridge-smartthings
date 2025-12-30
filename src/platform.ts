@@ -154,7 +154,12 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
             await this.getLocationsToIgnore();
           }
 
-          const devices = await this.getOnlineDevices();
+          const devices = await this.withRetry(
+            () => this.getOnlineDevices(),
+            3,    // maxRetries
+            3000, // baseDelayMs (3 seconds)
+            'SmartThings device discovery',
+          );
           if (this.config.UnregisterAll) {
             this.unregisterDevices(devices, true);
           }
@@ -408,6 +413,67 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
     return this.crashLoopManager;
   }
 
+  /**
+   * Retry wrapper for API calls with exponential backoff
+   * @param operation - Async function to execute
+   * @param maxRetries - Maximum number of retry attempts (default: 3)
+   * @param baseDelayMs - Base delay in milliseconds (default: 2000)
+   * @param operationName - Name for logging purposes
+   */
+  private async withRetry<T>(
+    operation: () => Promise<T>,
+    maxRetries = 3,
+    baseDelayMs = 2000,
+    operationName = 'API call',
+  ): Promise<T> {
+    let lastError: Error | undefined;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error as Error;
+        const isNetworkError = this.isNetworkError(error);
+
+        if (attempt < maxRetries && isNetworkError) {
+          const delayMs = baseDelayMs * Math.pow(2, attempt - 1); // Exponential backoff
+          this.log.warn(
+            `[Retry ${attempt}/${maxRetries}] ${operationName} failed: ${lastError.message}. ` +
+            `Retrying in ${delayMs / 1000} seconds...`,
+          );
+          await this.delay(delayMs);
+        } else if (!isNetworkError) {
+          // Non-network errors should not be retried
+          throw error;
+        }
+      }
+    }
+
+    this.log.error(`${operationName} failed after ${maxRetries} attempts`);
+    throw lastError;
+  }
+
+  /**
+   * Check if an error is a network-related error that should be retried
+   */
+  private isNetworkError(error: unknown): boolean {
+    if (error instanceof Error) {
+      const networkErrorCodes = ['ENOTFOUND', 'ETIMEDOUT', 'ECONNREFUSED', 'ECONNRESET', 'EAI_AGAIN'];
+      const errorCode = (error as NodeJS.ErrnoException).code;
+      return networkErrorCodes.includes(errorCode ?? '') ||
+             error.message.includes('getaddrinfo') ||
+             error.message.includes('timeout') ||
+             error.message.includes('network');
+    }
+    return false;
+  }
+
+  /**
+   * Utility function for async delay
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
 
 }
 

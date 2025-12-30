@@ -1,5 +1,51 @@
 # Changelog
 All notable changes to this project will be documented in this file.
+
+## [1.0.36] - Cleanup
+### Fixed
+- Removed unnecessary files from npm package (nul, issues/)
+- Updated .gitignore and .npmignore
+
+## [1.0.35] - Documentation Update
+### Changed
+- **Enhanced README**: Added detailed step-by-step wizard instructions
+  - Clear explanation of httpbin.org redirect and how to copy the authorization code
+  - Example JSON response showing exactly what users will see
+  - Troubleshooting section for common wizard issues
+  - Re-authentication instructions
+
+## [1.0.34] - OAuth Setup Wizard - No Tunnel Required!
+### Added
+- **OAuth Setup Wizard**: New 4-step UI wizard for easy OAuth authentication setup
+  - No tunnel (ngrok/Cloudflare) required for initial setup
+  - Uses httpbin.org as redirect URL to capture authorization code
+  - Guided step-by-step process in Homebridge UI
+  - Automatic token exchange and storage
+- **Homebridge UI Integration**: Custom UI using `@homebridge/plugin-ui-utils`
+  - Beautiful wizard interface with progress indicators
+  - Form validation and error handling
+  - Toast notifications for success/error states
+- **Token Management Improvements**:
+  - Tokens can now be loaded from config (wizard flow) or token file (existing flow)
+  - Seamless migration for existing users
+
+### Changed
+- **Server URL Now Optional**: No longer required for basic setup
+  - Only needed if you want webhook-based real-time updates
+  - Webhook server only starts when server_url is configured
+- **Webhook Port Now Optional**: Defaults to 3000, only used with webhooks
+- **Improved Auth Flow Messages**: Better guidance when authentication is needed
+  - Points users to the UI wizard instead of requiring manual URL visits
+- **Updated README**: Simplified setup instructions focusing on the new wizard
+
+### Technical Details
+- Added `@homebridge/plugin-ui-utils` and `simple-oauth2` dependencies
+- Created `homebridge-ui/server.js` for OAuth token exchange endpoints
+- Created `homebridge-ui/public/index.html` for wizard UI
+- Updated `config.schema.json` with `customUi: true` and new token fields
+- Updated `TokenManager` to support loading tokens from config
+- Updated `WebhookServer` to be optional (only starts with server_url)
+
 ## [1.0.33] - Complete Samsung TV Experience & Reference Implementation Alignment
 ### Fixed
 - **Bug Fixes**: Bug fixes

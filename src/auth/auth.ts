@@ -26,6 +26,7 @@ export class SmartThingsAuth {
       storagePath,
       this.startAuthFlow.bind(this),
       this.refreshTokens.bind(this),
+      platform.config, // Pass config for OAuth wizard token loading
     );
     this.webhookServer.setAuthHandler(this);
   }
@@ -113,29 +114,44 @@ export class SmartThingsAuth {
   }
 
   public startAuthFlow(): void {
-    this.state = crypto.randomBytes(32).toString('hex');
+    // Check if server_url is configured (traditional flow with tunnel)
+    if (this.platform.config.server_url && this.platform.config.server_url.trim() !== '') {
+      this.state = crypto.randomBytes(32).toString('hex');
 
-    const authUrl = new URL(SMARTTHINGS_AUTH_URL);
-    authUrl.searchParams.append('client_id', this.clientId);
-    authUrl.searchParams.append('response_type', 'code');
+      const authUrl = new URL(SMARTTHINGS_AUTH_URL);
+      authUrl.searchParams.append('client_id', this.clientId);
+      authUrl.searchParams.append('response_type', 'code');
 
-    // Build redirect URI with optional port
-    let redirectUri = this.platform.config.server_url;
-    if (!redirectUri.endsWith('/')) {
-      redirectUri += '/';
+      // Build redirect URI with optional port
+      let redirectUri = this.platform.config.server_url;
+      if (!redirectUri.endsWith('/')) {
+        redirectUri += '/';
+      }
+      redirectUri += 'oauth/callback';
+
+      authUrl.searchParams.append('redirect_uri', redirectUri);
+      authUrl.searchParams.append('scope', 'r:devices:* x:devices:* r:locations:*');
+      authUrl.searchParams.append('state', this.state);
+
+      this.log.warn('\n=================================================');
+      this.log.warn('SmartThings Authentication Required');
+      this.log.warn('Please visit this URL to authorize with SmartThings:');
+      this.log.warn(authUrl.toString());
+      this.log.warn('=================================================\n');
+      this.log.warn('Restart Homebridge after authentication');
+    } else {
+      // No server_url - recommend using the OAuth wizard
+      this.log.warn('\n=================================================');
+      this.log.warn('SmartThings Authentication Required');
+      this.log.warn('');
+      this.log.warn('Please use the OAuth Setup Wizard in Homebridge UI:');
+      this.log.warn('1. Go to Homebridge UI > Plugins > Settings for this plugin');
+      this.log.warn('2. Click "Open OAuth Setup Wizard"');
+      this.log.warn('3. Follow the wizard steps to complete authentication');
+      this.log.warn('');
+      this.log.warn('The wizard does not require a tunnel or public URL.');
+      this.log.warn('=================================================\n');
     }
-    redirectUri += 'oauth/callback';
-
-    authUrl.searchParams.append('redirect_uri', redirectUri);
-    authUrl.searchParams.append('scope', 'r:devices:* x:devices:* r:locations:*');
-    authUrl.searchParams.append('state', this.state);
-
-    this.log.warn('\n=================================================');
-    this.log.warn('SmartThings Authentication Required');
-    this.log.warn('Please visit this URL to authorize with SmartThings:');
-    this.log.warn(authUrl.toString());
-    this.log.warn('=================================================\n');
-    this.log.warn('Restart Homebridge after authentication');
   }
 
   public async initialize(): Promise<boolean> {

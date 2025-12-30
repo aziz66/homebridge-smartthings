@@ -495,7 +495,8 @@ export class AirConditionerService extends BaseService {
   // Set the target state of the thermostat and turns it on or off by using the switch capability
   private async setTargetHeatingCoolingState(value: CharacteristicValue): Promise<void> {
     const airConditionerMode = this.targetHeatingCoolingStateToAirConditionerMode(value);
-    this.log.info(`[${this.name}] set target heating cooling state to ${airConditionerMode}`);
+    const modeDescription = airConditionerMode ?? 'OFF';
+    this.log.info(`[${this.name}] set target heating cooling state to ${modeDescription}`);
     // When switching between modes, we always ask to turn on the air conditioner unless
     // the thermostat is set to off.
 
@@ -608,6 +609,13 @@ export class AirConditionerService extends BaseService {
   private async getDeviceStatus(): Promise<any> {
     this.multiServiceAccessory.forceNextStatusRefresh();
     if (!await this.getStatus()) {
+      // If we have cached status, return it instead of throwing an error
+      // This provides graceful degradation during temporary network failures
+      if (this.deviceStatus?.status) {
+        this.log.warn(`[${this.name}] Using cached status due to communication failure`);
+        return this.deviceStatus.status;
+      }
+      // Only throw if no cached data exists
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
     return this.deviceStatus.status;

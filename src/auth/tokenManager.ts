@@ -1,7 +1,6 @@
-import { Logger } from 'homebridge';
+import { Logger, PlatformConfig } from 'homebridge';
 import * as fs from 'fs';
 import * as path from 'path';
-import { IKHomeBridgeHomebridgePlatform } from '../platform';
 import fsExtra from 'fs-extra';
 
 export interface TokenData {
@@ -28,6 +27,7 @@ export class TokenManager {
     storagePath: string,
     startAuthFlowCallback: () => void,
     refreshTokenApiCallback: (refreshToken: string) => Promise<Partial<TokenData>>,
+    private readonly config?: PlatformConfig,
   ) {
     this.tokenPath = path.join(storagePath, 'smartthings_tokens.json');
     this.startAuthFlowCallback = startAuthFlowCallback;
@@ -79,10 +79,27 @@ export class TokenManager {
 
   private loadTokens(): void {
     try {
+      // First try to load from token file (existing flow)
       if (fs.existsSync(this.tokenPath)) {
         const data = fs.readFileSync(this.tokenPath, 'utf8');
         this.tokenData = JSON.parse(data);
-        this.log.debug('Loaded existing tokens from storage');
+        this.log.debug('Loaded existing tokens from storage file');
+        return;
+      }
+
+      // If no token file, check for tokens in config (OAuth wizard flow)
+      if (this.config?.oauth_access_token && this.config?.oauth_refresh_token) {
+        this.log.info('Loading tokens from config (OAuth wizard setup)');
+        this.tokenData = {
+          access_token: this.config.oauth_access_token,
+          refresh_token: this.config.oauth_refresh_token,
+          expires_in: 86400, // Assume 24 hours if not specified
+          expires_at: Date.now() + 86400 * 1000, // Assume valid for 24 hours initially
+          refresh_token_expires_at: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days
+        };
+        // Save to token file for future use
+        this.saveTokens();
+        this.log.info('Tokens from OAuth wizard saved to storage file');
       }
     } catch (error) {
       this.log.error('Error loading tokens:', error);

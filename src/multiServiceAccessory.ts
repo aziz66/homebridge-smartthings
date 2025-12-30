@@ -538,14 +538,29 @@ export class MultiServiceAccessory {
           getValue().then((v) => {
             service.updateCharacteristic(chracteristic, v);
             this.log.debug(`${this.name} value updated.`);
-          }).catch(() => {  // If we get an error, ignore
-            this.log.warn(`Poll failure on ${this.name}`);
-            return;
+            // Reset failure count on successful poll
+            this.failureCount = 0;
+          }).catch((error) => {
+            // Track polling failures but don't crash
+            this.failureCount++;
+            this.log.warn(`Poll failure on ${this.name} (attempt ${this.failureCount}): ${error?.message || error}`);
+
+            // If we've had too many consecutive failures, mark device offline
+            if (this.failureCount >= 5) {
+              this.log.error(`${this.name} marked offline after ${this.failureCount} consecutive poll failures`);
+              this.online = false;
+              this.giveUpTime = Date.now();
+            }
+            // Don't update characteristic with error during polling -
+            // this prevents crashing and allows recovery on next successful poll
           });
           // Update target if we have to
           if (targetStateCharacteristic && getTargetState) {
             //service.updateCharacteristic(targetStateCharacteristic, getTargetState());
-            getTargetState().then(value => service.updateCharacteristic(targetStateCharacteristic, value));
+            getTargetState().then(value => service.updateCharacteristic(targetStateCharacteristic, value))
+              .catch((error) => {
+                this.log.debug(`Failed to update target state for ${this.name}: ${error?.message || error}`);
+              });
           }
         } else {
           // If we failed this accessory due to errors. Reset the failure count and online status after 10 minutes.
