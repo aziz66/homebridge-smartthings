@@ -124,6 +124,7 @@
         "type": "string",
         "required": false,
         "enum": [
+          "None",
           "Sleep",
           "Speed",
           "WindFree",
