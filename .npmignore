@@ -137,3 +137,4 @@ web_modules/
 excluded/
 nul
 issues/
+.claude

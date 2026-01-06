@@ -10,7 +10,11 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "WebFetch(domain:developer.smartthings.com)",
+      "WebFetch(domain:www.home-assistant.io)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:rutg3r.com)"
     ]
   }
 }
