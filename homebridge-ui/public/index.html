@@ -243,6 +243,15 @@
     async function validateStep4() {
         try {
             if (validateStep('step4Form')) {
+                // Clear old token file before saving new config tokens
+                // This ensures the plugin uses the fresh tokens from the wizard
+                try {
+                    await homebridge.request('/clearTokens');
+                } catch (err) {
+                    console.warn('Could not clear old tokens:', err);
+                    // Continue anyway - the file might not exist
+                }
+
                 const pluginConfig = await homebridge.getPluginConfig();
 
                 // Store the tokens for the plugin to use

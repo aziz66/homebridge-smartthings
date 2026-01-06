@@ -1,5 +1,7 @@
 const { HomebridgePluginUiServer, RequestError } = require('@homebridge/plugin-ui-utils');
 const { AuthorizationCode } = require('simple-oauth2');
+const fs = require('fs');
+const path = require('path');
 
 class UiServer extends HomebridgePluginUiServer {
   constructor() {
@@ -7,6 +9,7 @@ class UiServer extends HomebridgePluginUiServer {
 
     this.onRequest('/authCode', this.authCode.bind(this));
     this.onRequest('/authToken', this.authToken.bind(this));
+    this.onRequest('/clearTokens', this.clearTokens.bind(this));
 
     this.client = undefined;
 
@@ -44,6 +47,19 @@ class UiServer extends HomebridgePluginUiServer {
       return accessToken.token;
     } catch (err) {
       throw new RequestError(err.message);
+    }
+  }
+
+  async clearTokens() {
+    try {
+      const tokenPath = path.join(this.homebridgeStoragePath, 'smartthings_tokens.json');
+      if (fs.existsSync(tokenPath)) {
+        fs.unlinkSync(tokenPath);
+        return { success: true, message: 'Token file cleared' };
+      }
+      return { success: true, message: 'No token file to clear' };
+    } catch (err) {
+      throw new RequestError('Failed to clear tokens: ' + err.message);
     }
   }
 }
