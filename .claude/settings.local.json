@@ -5,7 +5,12 @@
       "mcp__context7__query-docs",
       "WebFetch(domain:developers.homebridge.io)",
       "WebSearch",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(find:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(git push:*)"
     ]
   }
 }
