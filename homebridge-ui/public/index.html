@@ -130,6 +130,7 @@
                                 placeholder="Refresh token will appear here" required readonly>
                         </div>
                     </div>
+                    <input type="hidden" id="oauth-expires-in" value="">
                 </form>
 
                 <button class="btn btn-secondary prev" onclick="prevStep()">Back</button>
@@ -257,6 +258,7 @@
                 // Store the tokens for the plugin to use
                 pluginConfig[0].oauth_access_token = document.getElementById('oauth-access-token').value;
                 pluginConfig[0].oauth_refresh_token = document.getElementById('oauth-refresh-token').value;
+                pluginConfig[0].oauth_expires_in = parseInt(document.getElementById('oauth-expires-in').value) || 86400;
 
                 // Remove server_url requirement since we no longer need it for OAuth callback
                 // But keep it if it exists for webhook functionality
@@ -327,6 +329,7 @@
 
             document.getElementById('oauth-access-token').value = authToken.access_token;
             document.getElementById('oauth-refresh-token').value = authToken.refresh_token;
+            document.getElementById('oauth-expires-in').value = authToken.expires_in || 86400;
             return authToken;
         } catch (err) {
             console.error('requestAuthToken error:', err);

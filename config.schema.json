@@ -49,6 +49,12 @@
         "required": false,
         "description": "Auto-filled by the OAuth wizard. Do not edit manually."
       },
+      "oauth_expires_in": {
+        "title": "OAuth Token Expiry (seconds)",
+        "type": "integer",
+        "required": false,
+        "description": "Auto-filled by the OAuth wizard. Do not edit manually."
+      },
       "webhook_port": {
         "title": "Webhook Port",
         "type": "integer",

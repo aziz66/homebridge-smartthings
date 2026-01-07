@@ -90,11 +90,12 @@ export class TokenManager {
       // If no token file, check for tokens in config (OAuth wizard flow)
       if (this.config?.oauth_access_token && this.config?.oauth_refresh_token) {
         this.log.info('Loading tokens from config (OAuth wizard setup)');
+        const expiresIn = this.config.oauth_expires_in || 86400; // Use saved value or default to 24 hours
         this.tokenData = {
           access_token: this.config.oauth_access_token,
           refresh_token: this.config.oauth_refresh_token,
-          expires_in: 86400, // Assume 24 hours if not specified
-          expires_at: Date.now() + 86400 * 1000, // Assume valid for 24 hours initially
+          expires_in: expiresIn,
+          expires_at: Date.now() + expiresIn * 1000,
           refresh_token_expires_at: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days
         };
         // Save to token file for future use

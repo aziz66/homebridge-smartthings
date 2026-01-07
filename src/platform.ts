@@ -95,7 +95,8 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
             }
 
             // Attempt to refresh the token using the specific token
-            await this.auth.refreshTokens(refreshToken);
+            const newTokenData = await this.auth.refreshTokens(refreshToken);
+            await this.auth.tokenManager.updateTokens(newTokenData);
 
             // Update the Authorization header with the new token
             const newToken = this.auth.getAccessToken();

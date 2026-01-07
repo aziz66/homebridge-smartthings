@@ -163,7 +163,8 @@ export class SmartThingsAuth {
         try {
           const currentRefreshToken = this.tokenManager.getRefreshToken();
           if (currentRefreshToken) {
-            await this.refreshTokens(currentRefreshToken);
+            const newTokenData = await this.refreshTokens(currentRefreshToken);
+            await this.tokenManager.updateTokens(newTokenData);
           } else {
             this.log.warn('No refresh token found during initialization.');
             this.startAuthFlow();
