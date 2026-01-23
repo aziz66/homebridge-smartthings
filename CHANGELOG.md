@@ -1,6 +1,43 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.41] - Documentation Update
+### Changed
+- Updated CHANGELOG.md with entries for versions 1.0.37-1.0.40
+
+## [1.0.40] - Pagination & Whitelist Support
+### Fixed
+- **200 Device Limit**: Fixed pagination issue where only the first 200 devices were fetched from SmartThings API. The plugin now follows `_links.next` to fetch all devices regardless of total count.
+- **OAuth Token Refresh Bug**: Fixed critical bug where refresh tokens were not being saved after refresh in `auth.initialize()` and the 401 response interceptor. This caused "invalid_grant" errors after 24 hours for users who set up via the OAuth wizard.
+
+### Added
+- **ShowOnlyDevices (Whitelist)**: New configuration option to specify only the devices you want to expose to HomeKit. This is much easier than listing hundreds of devices to ignore when you only want a few.
+  - Takes precedence over `IgnoreDevices` when configured
+  - Case-insensitive matching with special character normalization
+  - Useful for users with many SmartThings devices who only want to expose a subset
+
+### Changed
+- **OAuth Wizard**: Now saves `expires_in` value from SmartThings for accurate token expiry tracking instead of assuming 24 hours
+- **Device Discovery Logging**: Now logs total number of devices discovered after fetching all pages
+
+## [1.0.39] - OAuth Enhancements
+### Fixed
+- **OAuth Wizard Token Updates**: Fixed issue where re-running the OAuth wizard wouldn't update tokens if a token file already existed. The wizard now clears the old token file before saving new configuration.
+
+### Changed
+- **Improved Token Management**: Better handling of token file vs config token precedence
+
+## [1.0.38] - Maintenance
+### Changed
+- Updated local settings and configurations
+- Minor internal improvements
+
+## [1.0.37] - Repository Cleanup
+### Changed
+- Updated .gitignore and .npmignore to include new exclusions
+- Removed .claude folder from git tracking
+- Enhanced settings configuration
+
 ## [1.0.36] - Cleanup
 ### Fixed
 - Removed unnecessary files from npm package (nul, issues/)
