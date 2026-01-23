@@ -162,9 +162,22 @@
         }
       },
       "IgnoreDevices": {
-        "title": "Devices to Ignore",
+        "title": "Devices to Ignore (Blacklist)",
         "type": "array",
-        "description": "List of device names to ignore. Device names are case-insensitive and whitespace is trimmed. Special characters like smart quotes (') are automatically normalized to regular quotes (').",
+        "description": "List of device names to ignore. Device names are case-insensitive and whitespace is trimmed. Special characters like smart quotes (') are automatically normalized to regular quotes ('). This is ignored if ShowOnlyDevices is configured.",
+        "items": {
+          "title": "Device Name",
+          "type": "string",
+          "description": "Exact device name as it appears in SmartThings (case-insensitive)"
+        },
+        "examples": [
+          ["Living Room Light", "Kitchen Switch", "Bedroom Fan"]
+        ]
+      },
+      "ShowOnlyDevices": {
+        "title": "Show Only Devices (Whitelist)",
+        "type": "array",
+        "description": "List of device names to exclusively show. When configured with at least one device, ONLY these devices will be exposed to HomeKit. This takes precedence over IgnoreDevices. Useful when you have many devices but only want to expose a few.",
         "items": {
           "title": "Device Name",
           "type": "string",

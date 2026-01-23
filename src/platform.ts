@@ -219,16 +219,22 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
     });
   }
 
-  getOnlineDevices(): Promise<Array<object>> {
+  async getOnlineDevices(): Promise<Array<object>> {
     this.log.debug('Discovering devices...');
 
-    const command = 'devices';
     const devices: Array<object> = [];
+    let nextPageUrl: string | null = 'devices';
 
-    return new Promise<Array<object>>((resolve, reject) => {
+    try {
+      // Fetch all pages of devices (SmartThings API returns max 200 per page by default)
+      while (nextPageUrl) {
+        this.log.debug(`Fetching devices from: ${nextPageUrl}`);
+        const res = await this.axInstance.get(nextPageUrl);
 
-      this.axInstance.get(command).then((res) => {
-        res.data.items.forEach((device) => {
+        const pageItems = res.data.items || [];
+        this.log.debug(`Fetched ${pageItems.length} devices from current page`);
+
+        for (const device of pageItems) {
           // If an apostrophe is included in the name of the device in SmartThings, it comes over as a Right Single
           // quote which will not match with a single quote in the config.  This replaces it so it will match
           if (!device.label) {
@@ -243,29 +249,47 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
             deviceName = device.label;
           }
 
-          // Check if device should be ignored
-          if (this.config.IgnoreDevices && Array.isArray(this.config.IgnoreDevices)) {
-            this.log.debug(`Checking if device "${deviceName}" should be ignored against list: [${this.config.IgnoreDevices.join(', ')}]`);
-
-            const shouldIgnore = this.config.IgnoreDevices.find(ignoreName => {
-              if (typeof ignoreName !== 'string') {
-                this.log.warn(`Invalid ignore device entry: ${ignoreName} (expected string)`);
+          // Check if device should be exclusively shown (whitelist takes precedence)
+          if (this.config.ShowOnlyDevices && Array.isArray(this.config.ShowOnlyDevices) && this.config.ShowOnlyDevices.length > 0) {
+            const shouldShow = this.config.ShowOnlyDevices.find(showName => {
+              if (typeof showName !== 'string') {
+                this.log.warn(`Invalid ShowOnlyDevices entry: ${showName} (expected string)`);
                 return false;
               }
-              // Normalize both names for comparison - handle special characters
-              const normalizedIgnoreName = ignoreName.replace(/[\u2018\u2019]/g, '\'').replace(/[\u201C\u201D]/g, '"').toLowerCase().trim();
+              const normalizedShowName = showName.replace(/[\u2018\u2019]/g, '\'').replace(/[\u201C\u201D]/g, '"').toLowerCase().trim();
               const normalizedDeviceName = deviceName.toLowerCase().trim();
-
-              this.log.debug(`Comparing normalized names: "${normalizedDeviceName}" vs "${normalizedIgnoreName}"`);
-              return normalizedIgnoreName === normalizedDeviceName;
+              return normalizedShowName === normalizedDeviceName;
             });
 
-            if (shouldIgnore) {
-              this.log.info(`Ignoring ${device.label} because it is in the Ignore Devices list`);
-              return;
+            if (!shouldShow) {
+              this.log.debug(`Skipping ${device.label} because it is not in the ShowOnlyDevices list`);
+              continue;
             }
-          } else if (this.config.IgnoreDevices) {
-            this.log.warn('IgnoreDevices configuration is not an array. Expected format: ["Device Name 1", "Device Name 2"]');
+          } else {
+            // Check if device should be ignored (only if ShowOnlyDevices is not active)
+            if (this.config.IgnoreDevices && Array.isArray(this.config.IgnoreDevices)) {
+              this.log.debug(`Checking if device "${deviceName}" should be ignored against list: [${this.config.IgnoreDevices.join(', ')}]`);
+
+              const shouldIgnore = this.config.IgnoreDevices.find(ignoreName => {
+                if (typeof ignoreName !== 'string') {
+                  this.log.warn(`Invalid ignore device entry: ${ignoreName} (expected string)`);
+                  return false;
+                }
+                // Normalize both names for comparison - handle special characters
+                const normalizedIgnoreName = ignoreName.replace(/[\u2018\u2019]/g, '\'').replace(/[\u201C\u201D]/g, '"').toLowerCase().trim();
+                const normalizedDeviceName = deviceName.toLowerCase().trim();
+
+                this.log.debug(`Comparing normalized names: "${normalizedDeviceName}" vs "${normalizedIgnoreName}"`);
+                return normalizedIgnoreName === normalizedDeviceName;
+              });
+
+              if (shouldIgnore) {
+                this.log.info(`Ignoring ${device.label} because it is in the Ignore Devices list`);
+                continue;
+              }
+            } else if (this.config.IgnoreDevices) {
+              this.log.warn('IgnoreDevices configuration is not an array. Expected format: ["Device Name 1", "Device Name 2"]');
+            }
           }
 
           if (!this.locationIDsToIgnore.find(locationID => device.locationId === locationID)) {
@@ -274,16 +298,33 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
           } else {
             this.log.info(`Ignoring ${device.label} because it is in a location to ignore (${device.locationId})`);
           }
-        });
-        this.log.debug('Stored all devices.');
-        resolve(devices);
-      }).catch(async error => {
-        this.log.error('Error getting devices from Smartthings: ' + error);
-        // Record this critical failure as it prevents device discovery
-        await this.crashLoopManager.recordPotentialCrash(CrashErrorType.API_INIT_FAILURE);
-        reject(error);
-      });
-    });
+        }
+
+        // Check for next page - SmartThings API uses _links.next for pagination
+        if (res.data._links?.next?.href) {
+          // The next href may be a full URL or a relative path
+          const nextHref = res.data._links.next.href;
+          // Extract just the path and query params if it's a full URL
+          if (nextHref.startsWith('http')) {
+            const url = new URL(nextHref);
+            nextPageUrl = url.pathname.replace('/v1/', '') + url.search;
+          } else {
+            nextPageUrl = nextHref;
+          }
+          this.log.debug(`Found next page: ${nextPageUrl}`);
+        } else {
+          nextPageUrl = null;
+        }
+      }
+
+      this.log.info(`Discovered ${devices.length} devices total from SmartThings`);
+      return devices;
+    } catch (error) {
+      this.log.error('Error getting devices from Smartthings: ' + error);
+      // Record this critical failure as it prevents device discovery
+      await this.crashLoopManager.recordPotentialCrash(CrashErrorType.API_INIT_FAILURE);
+      throw error;
+    }
   }
 
   unregisterDevices(devices, all = false) {
