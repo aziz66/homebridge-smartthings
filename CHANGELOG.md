@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.42] - OAuth Wizard UI Fix
+### Fixed
+- **OAuth Wizard Flashing/Disappearing**: Fixed issue where the OAuth setup wizard would briefly flash and then disappear. This was caused by the `configChanged` event triggering `updateUi()` which would hide the wizard. Added state tracking to prevent the wizard from being closed when intentionally opened.
+
 ## [1.0.41] - Documentation Update
 ### Changed
 - Updated CHANGELOG.md with entries for versions 1.0.37-1.0.40

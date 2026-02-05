@@ -141,8 +141,12 @@
 </div>
 
 <script>
+    // Track if wizard is intentionally open to prevent configChanged events from closing it
+    let wizardOpen = false;
+
     function showWizard() {
         try {
+            wizardOpen = true;
             homebridge.disableSaveButton();
             homebridge.hideSchemaForm();
             document.getElementById('wizard').style.display = "block";
@@ -154,6 +158,7 @@
 
     function hideWizard() {
         try {
+            wizardOpen = false;
             homebridge.enableSaveButton();
             homebridge.showSchemaForm();
             document.getElementById('wizard').style.display = "none";
@@ -184,7 +189,10 @@
                 document.getElementById('oauth-client-secret').value = pluginConfig[0].client_secret;
             }
 
-            hideWizard();
+            // Only hide wizard if it wasn't intentionally opened
+            if (!wizardOpen) {
+                hideWizard();
+            }
         } catch (err) {
             console.error('updateUi error:', err);
         }
