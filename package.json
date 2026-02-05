@@ -48,14 +48,8 @@
     "ts-node": "^10.3.0",
     "typescript": "^5.0.0"
   },
-  "funding": [
-    {
-      "type": "paypal",
-      "url": "https://www.paypal.com/paypalme/iklein99"
-    },
-    {
-      "type": "venmo",
-      "url": "https://venmo.com/?txn=pay&audience=public&recipients=ira-klein-3"
-    }
-  ]
+  "funding": {
+    "type": "ko-fi",
+    "url": "https://ko-fi.com/aziz66"
+  }
 }
