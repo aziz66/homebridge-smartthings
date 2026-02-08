@@ -1,5 +1,7 @@
 import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service, Characteristic } from 'homebridge';
 import { InternalAxiosRequestConfig, AxiosHeaders } from 'axios';
+import * as fs from 'fs';
+import * as path from 'path';
 
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import axios = require('axios');
@@ -8,6 +10,7 @@ import { MultiServiceAccessory } from './multiServiceAccessory';
 import { SubscriptionHandler } from './webhook/subscriptionHandler';
 import { SmartThingsAuth } from './auth/auth';
 import { WebhookServer } from './webhook/webhookServer';
+import { SmartThingsSubscriptionManager } from './webhook/smartthingsSubscriptionManager';
 import { CrashLoopManager, CrashErrorType, defaultCrashLoopConfig } from './auth/CrashLoopManager';
 
 /**
@@ -167,10 +170,13 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
           this.discoverDevices(devices);
           this.unregisterDevices(devices);
 
-          // Start subscription service if we have a webhook token
-          if (config.WebhookToken && config.WebhookToken !== '') {
+          // Set up real-time event handling if server_url is configured
+          if (config.server_url && config.server_url.trim() !== '') {
+            // Always create the event router so webhook-delivered events are handled
             this.subscriptionHandler = new SubscriptionHandler(this, this.accessoryObjects, webhookServer);
-            this.subscriptionHandler.startService();
+
+            // Attempt to set up SmartThings direct subscriptions (best-effort)
+            await this.setupSmartThingsSubscriptions(devices, webhookServer);
           }
         } else if (authFlowStarted) {
           // If auth flow was started, log the waiting message
@@ -268,7 +274,8 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
           } else {
             // Check if device should be ignored (only if ShowOnlyDevices is not active)
             if (this.config.IgnoreDevices && Array.isArray(this.config.IgnoreDevices)) {
-              this.log.debug(`Checking if device "${deviceName}" should be ignored against list: [${this.config.IgnoreDevices.join(', ')}]`);
+              const ignoreList = this.config.IgnoreDevices.join(', ');
+              this.log.debug(`Checking if device "${deviceName}" should be ignored against list: [${ignoreList}]`);
 
               const shouldIgnore = this.config.IgnoreDevices.find(ignoreName => {
                 if (typeof ignoreName !== 'string') {
@@ -276,7 +283,8 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
                   return false;
                 }
                 // Normalize both names for comparison - handle special characters
-                const normalizedIgnoreName = ignoreName.replace(/[\u2018\u2019]/g, '\'').replace(/[\u201C\u201D]/g, '"').toLowerCase().trim();
+                const normalizedIgnoreName = ignoreName
+                  .replace(/[\u2018\u2019]/g, '\'').replace(/[\u201C\u201D]/g, '"').toLowerCase().trim();
                 const normalizedDeviceName = deviceName.toLowerCase().trim();
 
                 this.log.debug(`Comparing normalized names: "${normalizedDeviceName}" vs "${normalizedIgnoreName}"`);
@@ -515,6 +523,162 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
    */
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Set up SmartThings direct subscriptions for real-time event delivery.
+   * This is best-effort — if it fails, polling continues to work.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async setupSmartThingsSubscriptions(devices: Array<any>, webhookServer: WebhookServer): Promise<void> {
+    try {
+      // Step 1: Extract locationId from discovered devices
+      const locationIds = new Set<string>();
+      for (const device of devices) {
+        if (device.locationId) {
+          locationIds.add(device.locationId);
+        }
+      }
+
+      if (locationIds.size === 0) {
+        this.log.warn('No locationId found in discovered devices. Cannot set up SmartThings subscriptions.');
+        return;
+      }
+
+      const locationId = [...locationIds][0]; // Use first location
+      if (locationIds.size > 1) {
+        this.log.info(`Multiple locations found (${locationIds.size}). Using first location: ${locationId}`);
+      }
+
+      // Persist locationId
+      await this.auth.tokenManager.updateTokens({ location_id: locationId } as any);
+
+      // Step 2: Get installedAppId — try stored value first, then API
+      let installedAppId = this.auth.tokenManager.getInstalledAppId();
+
+      if (!installedAppId) {
+        this.log.info('No stored installedAppId — attempting to discover via Installed Apps API...');
+        try {
+          const response = await this.axInstance.get('installedapps');
+          const installedApps = response.data?.items || [];
+
+          // Find an app matching our location
+          const matchingApp = installedApps.find((app: any) => app.locationId === locationId)
+            || installedApps[0];
+
+          if (matchingApp) {
+            installedAppId = matchingApp.installedAppId;
+            this.log.info(`Discovered installedAppId: ${installedAppId}`);
+            await this.auth.tokenManager.updateTokens({ installed_app_id: installedAppId } as any);
+          } else {
+            this.log.warn('No installed apps found via API. SmartThings subscriptions require an installed app. ' +
+              'Register your app in the SmartThings developer workspace and install it to your location.');
+            return;
+          }
+        } catch (error: any) {
+          const status = error?.response?.status;
+          if (status === 403) {
+            this.log.warn(
+              'Cannot access Installed Apps API (403 Forbidden). ' +
+              'Your current OAuth token may not have the required scopes. ' +
+              'SmartThings subscriptions will not be set up, but polling continues to work. ' +
+              'To enable subscriptions, re-authorize with installedapps scopes or ' +
+              'provide the installedAppId via a lifecycle event (INSTALL).',
+            );
+          } else {
+            this.log.warn(`Failed to discover installedAppId: ${error}. Subscriptions will not be set up.`);
+          }
+          return;
+        }
+      }
+
+      if (!installedAppId) {
+        this.log.warn('No installedAppId available. SmartThings subscriptions will not be set up.');
+        return;
+      }
+
+      // Step 3: Collect unique capabilities that have actual service handlers (processEvent)
+      // Only subscribe to capabilities with registered services, not raw device capabilities
+      const capabilityCounts = new Map<string, number>();
+      for (const accessory of this.accessoryObjects) {
+        for (const capability of accessory.getRegisteredCapabilities()) {
+          capabilityCounts.set(capability, (capabilityCounts.get(capability) || 0) + 1);
+        }
+      }
+
+      // Write discovered capabilities to disk for the UI
+      await this.writeAvailableCapabilities(capabilityCounts);
+
+      // Determine which capabilities to subscribe to
+      let prioritized: string[];
+      const selectedCaps: string[] | undefined = this.config.selectedCapabilities;
+
+      if (Array.isArray(selectedCaps) && selectedCaps.length > 0) {
+        // User has manually selected capabilities — use those (filtered to valid ones)
+        const valid = selectedCaps.filter(cap => {
+          if (capabilityCounts.has(cap)) {
+            return true;
+          }
+          this.log.warn(`Selected capability '${cap}' not found in discovered devices — skipping.`);
+          return false;
+        }).slice(0, 20);
+        if (valid.length === 0) {
+          this.log.warn('All user-selected capabilities were invalid. Falling back to automatic prioritization.');
+          prioritized = SmartThingsSubscriptionManager.prioritizeCapabilities(capabilityCounts, this.log);
+        } else {
+          this.log.info(`Using ${valid.length} user-selected capabilities for subscriptions: ${valid.join(', ')}`);
+          prioritized = valid;
+        }
+      } else {
+        prioritized = SmartThingsSubscriptionManager.prioritizeCapabilities(capabilityCounts, this.log);
+      }
+
+      if (prioritized.length === 0) {
+        this.log.warn('No capabilities found to subscribe to.');
+        return;
+      }
+
+      // Step 4: Create subscription manager and initialize
+      const subscriptionManager = new SmartThingsSubscriptionManager(
+        this,
+        installedAppId,
+        locationId,
+        this.log,
+      );
+
+      await subscriptionManager.initialize(prioritized);
+      this.log.info('SmartThings real-time subscriptions set up successfully.');
+    } catch (error) {
+      this.log.warn(`SmartThings subscription setup failed: ${error}. Polling continues to work.`);
+    }
+  }
+
+  /**
+   * Write discovered capabilities and their device counts to disk so the UI can read them.
+   * Uses atomic write (temp + rename) to avoid corrupted reads. Best-effort: non-blocking.
+   */
+  private async writeAvailableCapabilities(capabilityCounts: Map<string, number>): Promise<void> {
+    try {
+      const capabilities = [...capabilityCounts.entries()]
+        .map(([name, deviceCount]) => ({ name, deviceCount }))
+        .sort((a, b) => b.deviceCount - a.deviceCount);
+
+      const data = {
+        generatedAt: new Date().toISOString(),
+        capabilities,
+      };
+
+      const filePath = path.join(this.api.user.storagePath(), 'available_capabilities.json');
+      const tmpPath = filePath + '.tmp';
+      await fs.promises.writeFile(tmpPath, JSON.stringify(data, null, 2));
+      await fs.promises.rename(tmpPath, filePath);
+      this.log.info(`Wrote ${capabilities.length} available capabilities to ${filePath}`);
+    } catch (error) {
+      this.log.error(
+        `Failed to write available_capabilities.json: ${error}. ` +
+        'The capability selector UI will not work until this is resolved.',
+      );
+    }
   }
 
 }

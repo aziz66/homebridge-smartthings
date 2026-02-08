@@ -520,10 +520,6 @@ export class MultiServiceAccessory {
     chracteristic: WithUUID<new () => Characteristic>, targetStateCharacteristic?: WithUUID<new () => Characteristic>,
     getTargetState?: () => Promise<CharacteristicValue>): NodeJS.Timer | void {
 
-    if (this.platform.config.WebhookToken && this.platform.config.WebhookToken !== '') {
-      return;  // Don't poll if we have a webhook token
-    }
-
     if (pollSeconds > 0) {
       return setInterval(() => {
         // If we are in the middle of a commmand call, or it hasn't been at least 10 seconds, we don't want to poll.
@@ -626,6 +622,16 @@ export class MultiServiceAccessory {
         this.log.debug(`${this.name} still waiting...`);
       }, 250);
     });
+  }
+
+  public getRegisteredCapabilities(): string[] {
+    const caps = new Set<string>();
+    for (const service of this.services) {
+      for (const cap of service.capabilities) {
+        caps.add(cap);
+      }
+    }
+    return [...caps];
   }
 
   public processEvent(event: ShortEvent): void {

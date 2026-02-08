@@ -146,9 +146,6 @@ export abstract class BasePlatformAccessory {
     chracteristic: WithUUID<new () => Characteristic>, targetStateCharacteristic?: WithUUID<new () => Characteristic>,
     getTargetState?: () => Promise<CharacteristicValue>):NodeJS.Timer|void {
 
-    if (this.platform.config.WebhookToken && this.platform.config.WebhookToken !== '') {
-      return;  // Don't poll if we have a webhook token
-    }
     if (pollSeconds > 0) {
       return setInterval(() => {
         // If we are in the middle of a commmand call, or it hasn't been at least 10 seconds, we don't want to poll.

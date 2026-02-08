@@ -1,6 +1,27 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.43] - Real-Time Subscription Manager UI
+### Added
+- **Capability Subscription Selector**: New UI card in Homebridge settings to manually choose which capabilities get real-time SmartThings subscriptions (max 20). Available for users with webhooks configured.
+  - Checkbox list of all discovered capabilities sorted by device count
+  - Counter badge showing selected / 20 limit
+  - "Clear All" and "Auto (by device count)" quick-select buttons
+  - "Save & Apply Subscriptions" flushes and recreates subscriptions immediately without restarting the plugin
+  - "Refresh List" to reload discovered capabilities
+- **`selectedCapabilities` config field**: Optional array in config.schema.json to persist manual capability selections across restarts. Leave empty for automatic prioritization (existing behavior).
+- **`available_capabilities.json`**: Plugin now writes discovered capabilities and device counts to Homebridge storage after device discovery, enabling the UI to display them.
+- **Server endpoints**: `/capabilities` (read discovered list) and `/resubscribe` (flush + create subscriptions via SmartThings API) added to the UI server.
+
+### Fixed
+- **Security (XSS)**: Replaced all `innerHTML` string concatenation in the capability selector with safe `createElement`/`textContent` DOM building
+- **Security (Input Validation)**: `/resubscribe` endpoint now validates capability names against the discovered list before sending to SmartThings API
+- **Reliability**: `writeAvailableCapabilities` now uses async `fs.promises.writeFile` with atomic temp+rename instead of blocking `writeFileSync`
+- **Error Handling**: Added JSON schema validation for `available_capabilities.json` and `smartthings_tokens.json` reads in server endpoints
+- **Error Handling**: Plugin now logs a clear warning and falls back to automatic prioritization when all user-selected capabilities are invalid
+- **UX**: "Save & Apply" button disables during the request to prevent duplicate flush+create cycles
+- **UX**: Improved error messages in capability list loading with actionable guidance
+
 ## [1.0.42] - OAuth Wizard UI Fix
 ### Fixed
 - **OAuth Wizard Flashing/Disappearing**: Fixed issue where the OAuth setup wizard would briefly flash and then disappear. This was caused by the `configChanged` event triggering `updateUi()` which would hide the wizard. Added state tracking to prevent the wizard from being closed when intentionally opened.

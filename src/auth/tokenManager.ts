@@ -167,6 +167,14 @@ export class TokenManager {
     return this.tokenData?.refresh_token || null;
   }
 
+  public getInstalledAppId(): string | null {
+    return this.tokenData?.installed_app_id || null;
+  }
+
+  public getLocationId(): string | null {
+    return this.tokenData?.location_id || null;
+  }
+
   public isTokenValid(): boolean {
     if (!this.tokenData) {
 return false;

@@ -5,6 +5,35 @@
         <button class="btn btn-primary" onclick="showWizard()">Open OAuth Setup Wizard</button>
     </div>
 
+    <div id="cap-selector" style="display:none" class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <strong>Real-Time Subscription Manager</strong>
+            <span id="cap-counter" class="badge badge-primary">0 / 20 selected</span>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">
+                Choose which capabilities get real-time SmartThings subscriptions (max 20).
+                Unselected capabilities fall back to polling. Leave empty for automatic prioritization by device count.
+            </p>
+            <div id="cap-not-ready" class="alert alert-warning" style="display:none">
+                Capability list not yet available. Restart Homebridge so the plugin can discover devices first.
+            </div>
+            <div id="cap-ready" style="display:none">
+                <p class="small text-muted mb-2">Last discovered: <span id="cap-generated-at"></span></p>
+                <div class="btn-group btn-group-sm mb-3">
+                    <button class="btn btn-outline-secondary" onclick="capSelectNone()">Clear All</button>
+                    <button class="btn btn-outline-secondary" onclick="capSelectAuto()">Auto (by device count)</button>
+                    <button class="btn btn-outline-secondary" onclick="capRefreshList()">Refresh List</button>
+                </div>
+                <div id="cap-list" style="max-height:350px; overflow-y:auto; border:1px solid #dee2e6; border-radius:.25rem; padding:.5rem;"></div>
+                <div class="mt-3">
+                    <button class="btn btn-success" onclick="capSaveAndApply()">Save &amp; Apply Subscriptions</button>
+                </div>
+                <div id="cap-result" class="mt-3" style="display:none"></div>
+            </div>
+        </div>
+    </div>
+
     <div id="wizard" style="display:none">
         <h2 class="mb-4">OAuth Setup Wizard</h2>
         <div class="nav nav-pills mb-3" id="wizardNav">
@@ -193,6 +222,14 @@
             if (!wizardOpen) {
                 hideWizard();
             }
+
+            // Show capability selector if plugin is configured
+            if (pluginConfig[0].client_id) {
+                document.getElementById('cap-selector').style.display = 'block';
+                initCapabilitySelector();
+            } else {
+                document.getElementById('cap-selector').style.display = 'none';
+            }
         } catch (err) {
             console.error('updateUi error:', err);
         }
@@ -342,6 +379,177 @@
         } catch (err) {
             console.error('requestAuthToken error:', err);
             throw err;
+        }
+    }
+
+    // ── Capability Selector ──
+
+    let capAllCapabilities = []; // [{name, deviceCount}]
+    let capSelectedSet = new Set();
+    let capInitialized = false;
+    let capSaving = false;
+
+    async function initCapabilitySelector() {
+        if (capInitialized) return;
+        capInitialized = true;
+        await capRefreshList();
+    }
+
+    async function capRefreshList() {
+        try {
+            const res = await homebridge.request('/capabilities');
+            if (!res.success) {
+                document.getElementById('cap-not-ready').style.display = 'block';
+                document.getElementById('cap-not-ready').textContent = res.message || 'Capability list not available.';
+                document.getElementById('cap-ready').style.display = 'none';
+                return;
+            }
+            document.getElementById('cap-not-ready').style.display = 'none';
+            document.getElementById('cap-ready').style.display = 'block';
+            document.getElementById('cap-generated-at').textContent = new Date(res.generatedAt).toLocaleString();
+
+            capAllCapabilities = res.capabilities || [];
+
+            // Load saved selections from config
+            const pluginConfig = await homebridge.getPluginConfig();
+            const saved = pluginConfig[0].selectedCapabilities;
+            capSelectedSet = new Set(Array.isArray(saved) ? saved : []);
+
+            renderCapabilityList();
+        } catch (err) {
+            console.error('capRefreshList error:', err);
+            document.getElementById('cap-not-ready').style.display = 'block';
+            document.getElementById('cap-not-ready').textContent =
+                'Failed to load capability list from server. ' +
+                'Ensure Homebridge has restarted at least once with webhooks enabled. ' +
+                'Details: ' + (err.message || err);
+            document.getElementById('cap-ready').style.display = 'none';
+        }
+    }
+
+    function renderCapabilityList() {
+        const container = document.getElementById('cap-list');
+        container.innerHTML = '';
+
+        for (const cap of capAllCapabilities) {
+            const checked = capSelectedSet.has(cap.name);
+            const disabled = !checked && capSelectedSet.size >= 20;
+
+            const div = document.createElement('div');
+            div.className = 'form-check py-1';
+
+            const label = document.createElement('label');
+            label.className = 'form-check-label d-flex align-items-center';
+            label.style.cursor = 'pointer';
+
+            const input = document.createElement('input');
+            input.className = 'form-check-input mr-2';
+            input.type = 'checkbox';
+            input.value = cap.name;
+            input.checked = checked;
+            input.disabled = disabled;
+            input.addEventListener('change', function() { capToggle(this); });
+
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = cap.name;
+
+            const badge = document.createElement('span');
+            badge.className = 'badge badge-secondary ml-auto';
+            badge.textContent = cap.deviceCount + ' device' + (cap.deviceCount !== 1 ? 's' : '');
+
+            label.appendChild(input);
+            label.appendChild(nameSpan);
+            label.appendChild(badge);
+            div.appendChild(label);
+            container.appendChild(div);
+        }
+
+        updateCapCounter();
+    }
+
+    function capToggle(checkbox) {
+        if (checkbox.checked) {
+            capSelectedSet.add(checkbox.value);
+        } else {
+            capSelectedSet.delete(checkbox.value);
+        }
+        // Re-render to update disabled state on unchecked items
+        renderCapabilityList();
+    }
+
+    function updateCapCounter() {
+        document.getElementById('cap-counter').textContent = capSelectedSet.size + ' / 20 selected';
+    }
+
+    function capSelectNone() {
+        capSelectedSet.clear();
+        renderCapabilityList();
+    }
+
+    function capSelectAuto() {
+        capSelectedSet.clear();
+        // Select top 20 by device count (already sorted)
+        for (let i = 0; i < Math.min(20, capAllCapabilities.length); i++) {
+            capSelectedSet.add(capAllCapabilities[i].name);
+        }
+        renderCapabilityList();
+    }
+
+    async function capSaveAndApply() {
+        if (capSaving) return;
+        capSaving = true;
+        const saveBtn = document.querySelector('#cap-ready .btn-success');
+        if (saveBtn) saveBtn.disabled = true;
+
+        const resultDiv = document.getElementById('cap-result');
+        resultDiv.style.display = 'none';
+
+        try {
+            // Save selectedCapabilities to config
+            const pluginConfig = await homebridge.getPluginConfig();
+            pluginConfig[0].selectedCapabilities = [...capSelectedSet];
+            await homebridge.updatePluginConfig(pluginConfig);
+            await homebridge.savePluginConfig();
+
+            if (capSelectedSet.size === 0) {
+                resultDiv.className = 'mt-3 alert alert-info';
+                resultDiv.textContent = 'Saved: automatic mode (no manual selection). Restart Homebridge to apply.';
+                resultDiv.style.display = 'block';
+                return;
+            }
+
+            // Call resubscribe endpoint
+            resultDiv.className = 'mt-3 alert alert-info';
+            resultDiv.textContent = 'Applying subscriptions...';
+            resultDiv.style.display = 'block';
+
+            const res = await homebridge.request('/resubscribe', { capabilities: [...capSelectedSet] });
+
+            if (res.success) {
+                resultDiv.className = 'mt-3 alert alert-success';
+                resultDiv.textContent = res.message;
+            } else {
+                resultDiv.className = 'mt-3 alert alert-warning';
+                resultDiv.textContent = '';
+                var strong = document.createElement('strong');
+                strong.textContent = res.message;
+                resultDiv.appendChild(strong);
+                if (res.errors && res.errors.length > 0) {
+                    var errSmall = document.createElement('small');
+                    errSmall.style.display = 'block';
+                    errSmall.style.marginTop = '0.5rem';
+                    errSmall.textContent = res.errors.join(' | ');
+                    resultDiv.appendChild(errSmall);
+                }
+            }
+        } catch (err) {
+            console.error('capSaveAndApply error:', err);
+            resultDiv.className = 'mt-3 alert alert-danger';
+            resultDiv.textContent = 'Error: ' + (err.message || err);
+            resultDiv.style.display = 'block';
+        } finally {
+            capSaving = false;
+            if (saveBtn) saveBtn.disabled = false;
         }
     }
 
