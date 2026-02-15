@@ -184,6 +184,73 @@
           "type": "string"
         }
       },
+      "tvApps": {
+        "title": "TV App Shortcuts",
+        "type": "array",
+        "description": "Select apps to add to the TV input source list in Apple Home. These appear alongside HDMI inputs and launch the app when selected.",
+        "items": {
+          "type": "string",
+          "enum": [
+            "3201907018807", "3201910019365", "111299001912",
+            "3201611010983", "3201606009684", "3201901017640",
+            "3201601007625", "3201710014981", "3201807016597",
+            "3202006020991", "3201710015037", "3202301029760",
+            "111477000821", "3201608010191", "3201806016390",
+            "3201708014618", "3202410037239", "3201908019041"
+          ],
+          "enumNames": [
+            "Netflix", "Prime Video", "YouTube",
+            "YouTube Kids", "Spotify", "Disney+",
+            "Hulu", "Paramount+", "Apple TV",
+            "Peacock TV", "Gallery", "HBO Max",
+            "Shahid", "Deezer", "DAZN",
+            "ESPN", "BeIN Sports", "Apple Music"
+          ]
+        },
+        "default": [],
+        "uniqueItems": true
+      },
+      "frameTvDevices": {
+        "title": "Samsung Frame TV Devices (Local WebSocket Control)",
+        "type": "array",
+        "description": "Configure Samsung Frame TVs for full power off and art mode control via local WebSocket. Only needed for Frame TVs where the SmartThings power-off enters Art Mode instead of truly turning off.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "deviceName": {
+              "title": "Device Name",
+              "type": "string",
+              "minLength": 1,
+              "description": "Exact SmartThings device name to match (case-insensitive)"
+            },
+            "ip": {
+              "title": "TV IP Address",
+              "type": "string",
+              "minLength": 7,
+              "pattern": "^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$",
+              "description": "Static local IP address of the Samsung Frame TV"
+            },
+            "enableFullPowerOff": {
+              "title": "Enable Full Power Off",
+              "type": "boolean",
+              "default": true,
+              "description": "Use 3.5s long-press KEY_POWER via local WebSocket instead of SmartThings switch.off (which only enters Art Mode on Frame TVs)"
+            },
+            "enableArtModeSwitch": {
+              "title": "Enable Art Mode Switch",
+              "type": "boolean",
+              "default": true,
+              "description": "Expose a separate switch in HomeKit to toggle Art Mode on/off"
+            },
+            "token": {
+              "title": "TV Token (Auto-saved)",
+              "type": "string",
+              "description": "Authorization token from the TV. Usually auto-saved after first connection — leave empty unless troubleshooting."
+            }
+          },
+          "required": ["deviceName", "ip"]
+        }
+      },
       "ShowOnlyDevices": {
         "title": "Show Only Devices (Whitelist)",
         "type": "array",

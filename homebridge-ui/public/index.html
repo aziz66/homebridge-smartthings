@@ -6,11 +6,11 @@
     </div>
 
     <div id="cap-selector" style="display:none" class="card mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="toggleCapSelectorCard()">
             <strong>Real-Time Subscription Manager</strong>
             <span id="cap-counter" class="badge badge-primary">0 / 20 selected</span>
         </div>
-        <div class="card-body">
+        <div id="cap-selector-body" class="card-body" style="display:none">
             <p class="text-muted small">
                 Choose which capabilities get real-time SmartThings subscriptions (max 20).
                 Unselected capabilities fall back to polling. Leave empty for automatic prioritization by device count.
@@ -31,6 +31,44 @@
                 </div>
                 <div id="cap-result" class="mt-3" style="display:none"></div>
             </div>
+        </div>
+    </div>
+
+    <div id="frame-tv-settings" style="display:none" class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="toggleFrameTvCard()">
+            <strong>Samsung Frame TV Settings</strong>
+            <span id="frame-tv-count" class="badge badge-primary">0 devices</span>
+        </div>
+        <div id="frame-tv-body" class="card-body" style="display:none">
+            <p class="text-muted small">
+                Configure Samsung Frame TVs for full power off (3.5s long-press KEY_POWER via local WebSocket)
+                and Art Mode toggle. Only needed for Frame TVs where SmartThings power-off enters Art Mode instead of truly turning off.
+                Each TV must have a static IP address on your local network.
+            </p>
+            <div id="frame-tv-list"></div>
+            <button class="btn btn-sm btn-outline-primary mt-2" onclick="frameTvAdd()">+ Add Frame TV</button>
+            <div class="mt-3">
+                <button class="btn btn-success" onclick="frameTvSave()">Save Frame TV Settings</button>
+            </div>
+            <div id="frame-tv-result" class="mt-3" style="display:none"></div>
+        </div>
+    </div>
+
+    <div id="tv-apps-settings" style="display:none" class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="toggleTvAppsCard()">
+            <strong>TV App Shortcuts</strong>
+            <span id="tv-apps-count" class="badge badge-primary">0 selected</span>
+        </div>
+        <div id="tv-apps-body" class="card-body" style="display:none">
+            <p class="text-muted small">
+                Select apps to add to the TV input source list in Apple Home.
+                These appear alongside HDMI inputs and launch the app when selected from the input picker.
+            </p>
+            <div id="tv-apps-list"></div>
+            <div class="mt-3">
+                <button class="btn btn-success" onclick="tvAppsSave()">Save TV App Settings</button>
+            </div>
+            <div id="tv-apps-result" class="mt-3" style="display:none"></div>
         </div>
     </div>
 
@@ -223,12 +261,18 @@
                 hideWizard();
             }
 
-            // Show capability selector if plugin is configured
+            // Show capability selector and Frame TV settings if plugin is configured
             if (pluginConfig[0].client_id) {
                 document.getElementById('cap-selector').style.display = 'block';
                 initCapabilitySelector();
+                document.getElementById('frame-tv-settings').style.display = 'block';
+                initFrameTvSettings();
+                document.getElementById('tv-apps-settings').style.display = 'block';
+                initTvAppsSettings();
             } else {
                 document.getElementById('cap-selector').style.display = 'none';
+                document.getElementById('frame-tv-settings').style.display = 'none';
+                document.getElementById('tv-apps-settings').style.display = 'none';
             }
         } catch (err) {
             console.error('updateUi error:', err);
@@ -550,6 +594,267 @@
         } finally {
             capSaving = false;
             if (saveBtn) saveBtn.disabled = false;
+        }
+    }
+
+    // ── Frame TV Settings ──
+
+    let frameTvDevices = [];
+
+    function toggleCapSelectorCard() {
+        const body = document.getElementById('cap-selector-body');
+        body.style.display = body.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function toggleFrameTvCard() {
+        const body = document.getElementById('frame-tv-body');
+        body.style.display = body.style.display === 'none' ? 'block' : 'none';
+    }
+
+    async function initFrameTvSettings() {
+        try {
+            const pluginConfig = await homebridge.getPluginConfig();
+            frameTvDevices = pluginConfig[0].frameTvDevices || [];
+            renderFrameTvList();
+            updateFrameTvCount();
+        } catch (err) {
+            console.error('initFrameTvSettings error:', err);
+        }
+    }
+
+    function updateFrameTvCount() {
+        document.getElementById('frame-tv-count').textContent = frameTvDevices.length + ' device' + (frameTvDevices.length !== 1 ? 's' : '');
+    }
+
+    function renderFrameTvList() {
+        const container = document.getElementById('frame-tv-list');
+        container.innerHTML = '';
+
+        frameTvDevices.forEach(function(device, index) {
+            const card = document.createElement('div');
+            card.className = 'border rounded p-3 mb-2';
+            card.innerHTML =
+                '<div class="form-group row mb-2">' +
+                    '<label class="col-sm-3 col-form-label font-weight-bold">Device Name</label>' +
+                    '<div class="col-sm-9">' +
+                        '<input type="text" class="form-control form-control-sm" value="' + escapeHtml(device.deviceName || '') + '" ' +
+                            'onchange="frameTvUpdate(' + index + ', \'deviceName\', this.value)" ' +
+                            'placeholder="Exact SmartThings device name">' +
+                    '</div>' +
+                '</div>' +
+                '<div class="form-group row mb-2">' +
+                    '<label class="col-sm-3 col-form-label font-weight-bold">IP Address</label>' +
+                    '<div class="col-sm-9">' +
+                        '<input type="text" class="form-control form-control-sm" value="' + escapeHtml(device.ip || '') + '" ' +
+                            'onchange="frameTvUpdate(' + index + ', \'ip\', this.value)" ' +
+                            'placeholder="192.168.1.x">' +
+                    '</div>' +
+                '</div>' +
+                '<div class="form-check form-check-inline">' +
+                    '<input class="form-check-input" type="checkbox" id="ftv-power-' + index + '" ' +
+                        (device.enableFullPowerOff !== false ? 'checked' : '') +
+                        ' onchange="frameTvUpdate(' + index + ', \'enableFullPowerOff\', this.checked)">' +
+                    '<label class="form-check-label" for="ftv-power-' + index + '">Full Power Off</label>' +
+                '</div>' +
+                '<div class="form-check form-check-inline">' +
+                    '<input class="form-check-input" type="checkbox" id="ftv-art-' + index + '" ' +
+                        (device.enableArtModeSwitch !== false ? 'checked' : '') +
+                        ' onchange="frameTvUpdate(' + index + ', \'enableArtModeSwitch\', this.checked)">' +
+                    '<label class="form-check-label" for="ftv-art-' + index + '">Art Mode Switch</label>' +
+                '</div>' +
+                '<button class="btn btn-sm btn-outline-danger float-right" onclick="frameTvRemove(' + index + ')">Remove</button>';
+            container.appendChild(card);
+        });
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(text));
+        return div.innerHTML;
+    }
+
+    function frameTvAdd() {
+        frameTvDevices.push({ deviceName: '', ip: '', enableFullPowerOff: true, enableArtModeSwitch: true });
+        renderFrameTvList();
+        updateFrameTvCount();
+    }
+
+    function frameTvRemove(index) {
+        frameTvDevices.splice(index, 1);
+        renderFrameTvList();
+        updateFrameTvCount();
+    }
+
+    function frameTvUpdate(index, field, value) {
+        if (typeof value === 'string') {
+            value = value.trim();
+        }
+        frameTvDevices[index][field] = value;
+    }
+
+    async function frameTvSave() {
+        const resultDiv = document.getElementById('frame-tv-result');
+        var ipPattern = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+        try {
+            // Trim all string values before validation
+            for (var i = 0; i < frameTvDevices.length; i++) {
+                if (frameTvDevices[i].deviceName) frameTvDevices[i].deviceName = frameTvDevices[i].deviceName.trim();
+                if (frameTvDevices[i].ip) frameTvDevices[i].ip = frameTvDevices[i].ip.trim();
+            }
+            // Validate required fields
+            for (var i = 0; i < frameTvDevices.length; i++) {
+                if (!frameTvDevices[i].deviceName || !frameTvDevices[i].ip) {
+                    resultDiv.className = 'mt-3 alert alert-danger';
+                    resultDiv.textContent = 'Error: Device name and IP address are required for all Frame TV entries.';
+                    resultDiv.style.display = 'block';
+                    return;
+                }
+                if (!ipPattern.test(frameTvDevices[i].ip)) {
+                    resultDiv.className = 'mt-3 alert alert-danger';
+                    resultDiv.textContent = 'Error: "' + frameTvDevices[i].ip + '" is not a valid IP address (expected format: 192.168.1.100).';
+                    resultDiv.style.display = 'block';
+                    return;
+                }
+            }
+            // Check for duplicate device names
+            var seen = {};
+            for (var i = 0; i < frameTvDevices.length; i++) {
+                var key = frameTvDevices[i].deviceName.toLowerCase();
+                if (seen[key]) {
+                    resultDiv.className = 'mt-3 alert alert-danger';
+                    resultDiv.textContent = 'Error: Duplicate device name "' + frameTvDevices[i].deviceName + '". Each Frame TV must have a unique name.';
+                    resultDiv.style.display = 'block';
+                    return;
+                }
+                seen[key] = true;
+            }
+
+            const pluginConfig = await homebridge.getPluginConfig();
+            pluginConfig[0].frameTvDevices = frameTvDevices;
+            await homebridge.updatePluginConfig(pluginConfig);
+            await homebridge.savePluginConfig();
+
+            resultDiv.className = 'mt-3 alert alert-success';
+            resultDiv.textContent = 'Frame TV settings saved! Restart Homebridge to apply changes.';
+            resultDiv.style.display = 'block';
+        } catch (err) {
+            console.error('frameTvSave error:', err);
+            resultDiv.className = 'mt-3 alert alert-danger';
+            resultDiv.textContent = 'Error saving: ' + (err.message || err);
+            resultDiv.style.display = 'block';
+        }
+    }
+
+    // ── TV Apps Settings ──
+
+    var TV_APPS_CATALOG = [
+        { id: '3201907018807', name: 'Netflix' },
+        { id: '3201910019365', name: 'Prime Video' },
+        { id: '111299001912', name: 'YouTube' },
+        { id: '3201611010983', name: 'YouTube Kids' },
+        { id: '3201606009684', name: 'Spotify' },
+        { id: '3201901017640', name: 'Disney+' },
+        { id: '3201601007625', name: 'Hulu' },
+        { id: '3201710014981', name: 'Paramount+' },
+        { id: '3201807016597', name: 'Apple TV' },
+        { id: '3202006020991', name: 'Peacock TV' },
+        { id: '3201710015037', name: 'Gallery' },
+        { id: '3202301029760', name: 'HBO Max' },
+        { id: '111477000821', name: 'Shahid' },
+        { id: '3201608010191', name: 'Deezer' },
+        { id: '3201806016390', name: 'DAZN' },
+        { id: '3201708014618', name: 'ESPN' },
+        { id: '3202410037239', name: 'BeIN Sports' },
+        { id: '3201908019041', name: 'Apple Music' },
+    ];
+
+    var tvAppsSelectedSet = new Set();
+
+    function toggleTvAppsCard() {
+        var body = document.getElementById('tv-apps-body');
+        body.style.display = body.style.display === 'none' ? 'block' : 'none';
+    }
+
+    async function initTvAppsSettings() {
+        try {
+            var pluginConfig = await homebridge.getPluginConfig();
+            var saved = pluginConfig[0].tvApps;
+            if (Array.isArray(saved)) {
+                tvAppsSelectedSet = new Set(saved);
+            } else {
+                // No apps selected by default — user must choose
+                tvAppsSelectedSet = new Set();
+            }
+            renderTvAppsList();
+            updateTvAppsCount();
+        } catch (err) {
+            console.error('initTvAppsSettings error:', err);
+        }
+    }
+
+    function updateTvAppsCount() {
+        document.getElementById('tv-apps-count').textContent = tvAppsSelectedSet.size + ' selected';
+    }
+
+    function renderTvAppsList() {
+        var container = document.getElementById('tv-apps-list');
+        container.innerHTML = '';
+
+        for (var i = 0; i < TV_APPS_CATALOG.length; i++) {
+            var app = TV_APPS_CATALOG[i];
+            var checked = tvAppsSelectedSet.has(app.id);
+
+            var div = document.createElement('div');
+            div.className = 'form-check py-1';
+
+            var label = document.createElement('label');
+            label.className = 'form-check-label d-flex align-items-center';
+            label.style.cursor = 'pointer';
+
+            var input = document.createElement('input');
+            input.className = 'form-check-input mr-2';
+            input.type = 'checkbox';
+            input.value = app.id;
+            input.checked = checked;
+            input.addEventListener('change', function() { tvAppsToggle(this); });
+
+            var nameSpan = document.createElement('span');
+            nameSpan.textContent = app.name;
+
+            label.appendChild(input);
+            label.appendChild(nameSpan);
+            div.appendChild(label);
+            container.appendChild(div);
+        }
+
+        updateTvAppsCount();
+    }
+
+    function tvAppsToggle(checkbox) {
+        if (checkbox.checked) {
+            tvAppsSelectedSet.add(checkbox.value);
+        } else {
+            tvAppsSelectedSet.delete(checkbox.value);
+        }
+        updateTvAppsCount();
+    }
+
+    async function tvAppsSave() {
+        var resultDiv = document.getElementById('tv-apps-result');
+        try {
+            var pluginConfig = await homebridge.getPluginConfig();
+            pluginConfig[0].tvApps = Array.from(tvAppsSelectedSet);
+            await homebridge.updatePluginConfig(pluginConfig);
+            await homebridge.savePluginConfig();
+
+            resultDiv.className = 'mt-3 alert alert-success';
+            resultDiv.textContent = 'TV App settings saved! Restart Homebridge to apply changes.';
+            resultDiv.style.display = 'block';
+        } catch (err) {
+            console.error('tvAppsSave error:', err);
+            resultDiv.className = 'mt-3 alert alert-danger';
+            resultDiv.textContent = 'Error saving: ' + (err.message || err);
+            resultDiv.style.display = 'block';
         }
     }
 

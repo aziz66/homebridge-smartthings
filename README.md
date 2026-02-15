@@ -270,6 +270,112 @@ Once webhooks are working, you can control which capabilities get real-time subs
 
 ---
 
+## Samsung Frame TV Support (Optional)
+
+Samsung Frame TVs behave differently from standard TVs: when the SmartThings API sends a power-off command, the TV enters **Art Mode** instead of truly shutting down. This plugin provides optional local WebSocket control to fix this, enabling true power off and an Art Mode toggle switch in HomeKit.
+
+### Auto-Detection
+
+The plugin automatically detects Frame TVs by checking the `artSupported` field reported by SmartThings. If your TV supports Art Mode, you'll see a log message during startup:
+
+> `Frame TV detected: "Living Room TV" reports artSupported=true. To enable full power off and Art Mode control, add this device to the "frameTvDevices" config with its local IP address.`
+
+The local IP address cannot be auto-detected from SmartThings, so you'll need to provide it manually in the configuration.
+
+### What It Does
+
+- **Full Power Off** (optional, enabled by default): Sends a 3.5-second long-press of the power key via local WebSocket, which fully powers down the TV instead of entering Art Mode
+- **Art Mode Switch** (optional, enabled by default): Exposes a separate switch in HomeKit to toggle Art Mode on and off
+- Power **on** continues to work through the SmartThings API as normal
+
+### Configuration Options
+
+You can choose how the plugin handles your Frame TV:
+
+| Setting | Effect |
+|---------|--------|
+| **Full Power Off = ON** (default) | Turning off the TV in HomeKit sends a full power off via local WebSocket. Art Mode switch controls Art Mode separately. |
+| **Full Power Off = OFF** | Turning off the TV in HomeKit uses the standard SmartThings command (which enters Art Mode on Frame TVs). Useful if you prefer the default Samsung behavior. |
+| **Art Mode Switch = ON** (default) | A separate "Art Mode" switch appears in HomeKit for toggling Art Mode on/off. |
+| **Art Mode Switch = OFF** | No Art Mode switch. The TV behaves like a standard TV in HomeKit. |
+
+This means you can mix and match. For example, you could disable Full Power Off but still have the Art Mode switch — giving you the standard Samsung power behavior plus manual Art Mode control.
+
+### Setup
+
+1. Open plugin settings in the Homebridge UI
+2. Scroll down to the **"Samsung Frame TV Settings"** section
+3. Click **"Add Frame TV Device"**
+4. Enter the **device name** (must match exactly how it appears in SmartThings, case-insensitive)
+5. Enter the **TV's local IP address** (assign a static IP on your router for reliability)
+6. Toggle **Full Power Off** and **Art Mode Switch** as desired
+7. Save and restart Homebridge
+
+### First-Time TV Pairing
+
+When Homebridge starts with a Frame TV configured, the plugin will attempt to establish a local WebSocket connection to the TV. On the first connection, the TV needs to authorize the plugin:
+
+1. Make sure the TV is **powered on** before starting Homebridge
+2. After Homebridge starts, a popup will appear on the TV screen asking to allow the connection
+3. Using your TV remote, select **"Allow"** on the popup
+4. The plugin will automatically save an authorization token for future connections — the popup will not appear again
+
+If the pairing fails (e.g., the TV was off or the popup timed out), the plugin will log an error. Simply restart Homebridge with the TV on to retry the pairing process.
+
+### If You Clicked "Deny" by Mistake
+
+If you accidentally denied the connection, the TV remembers this decision and will reject all future connection attempts. To fix this:
+
+1. On your TV, go to **Settings > General > External Device Manager > Device Connection Manager > Device List**
+2. Find the "Homebridge SmartThings" entry and either change its permission to **Allow** or remove the entry entirely
+3. Restart Homebridge to initiate a new pairing
+
+### Troubleshooting Frame TV
+
+**"Connection timeout" errors in the logs**
+- Verify the TV is powered on and connected to the same network as Homebridge
+- Confirm the IP address is correct (check your router's DHCP client list)
+- Make sure no firewall is blocking port 8001 (Art Mode) or port 8002 (remote control)
+
+**"Authorization denied by TV" errors**
+- The saved token may have expired or been invalidated. The plugin will automatically clear the old token. Restart Homebridge with the TV on to get a new authorization popup.
+
+**Art Mode switch not appearing**
+- The Art Mode switch is enabled by default. Check that it hasn't been disabled in the Frame TV device settings.
+- Restart Homebridge after changing the configuration
+- The Art Mode switch appears as a separate tile in HomeKit, not inside the TV accessory
+
+---
+
+## TV App Launcher (Optional)
+
+Launch Samsung TV apps directly from the HomeKit TV input picker. Apps appear as additional input sources alongside your HDMI inputs.
+
+### Setup
+
+1. Open plugin settings in the Homebridge UI
+2. Scroll to the **"TV App Shortcuts"** section
+3. Select which apps to enable (Netflix, YouTube, Disney+, Shahid, and more)
+4. Save and restart Homebridge
+
+Selected apps will appear in the input source list of your TV accessory in HomeKit. Selecting an app input will launch it on the TV using the `custom.launchapp` SmartThings capability.
+
+No apps are enabled by default.
+
+---
+
+## Washer Support
+
+Samsung washers with the `washerOperatingState` capability are automatically discovered and exposed as a HomeKit **Valve** accessory with:
+
+- **Active**: Whether the washer is running
+- **In Use**: Whether a wash cycle is in progress
+- **Remaining Duration**: Countdown timer showing time left in the current cycle
+
+No additional configuration is needed — washers are detected and added automatically during device discovery.
+
+---
+
 ## Troubleshooting
 
 ### Common Issues

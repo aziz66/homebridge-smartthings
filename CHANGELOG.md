@@ -1,6 +1,37 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.44] - Samsung Frame TV, TV App Launcher & Washer Service
+
+### Added
+- **Samsung Frame TV Full Power Off**: Frame TVs now support true power off via a 3.5-second long-press of KEY_POWER sent over local WebSocket. The standard SmartThings `switch.off` command only puts Frame TVs into Art Mode — this bypasses that behavior entirely.
+- **Art Mode Switch**: A separate HomeKit switch to toggle Art Mode on and off for each configured Frame TV. Appears as its own tile in the Home app for easy access and automation.
+- **Local WebSocket Connection Manager** (`src/local/samsungWebSocket.ts`): Handles secure WebSocket connections to Samsung TVs on port 8002 (remote control) and port 8001 (Art Mode channel). Supports lazy connect-on-demand and automatic idle disconnect after 8 seconds.
+- **TV Authorization Token Flow**: First-time connections prompt an "Allow/Deny" popup on the TV. Once accepted, the token is saved automatically and reused for all future connections — no manual pairing code needed.
+- **Frame TV Configuration UI**: New "Samsung Frame TV Settings" section in the Homebridge UI to add/remove Frame TV devices with IP address, full power off toggle, and Art Mode toggle.
+- **Frame TV Auto-Detection**: The plugin automatically detects Frame TVs by checking the `artSupported` field from SmartThings device status. A helpful log message is shown during startup if a Frame TV is found but not yet configured, guiding users to add the TV's local IP address.
+- **`frameTvDevices` config field**: New array in `config.schema.json` for configuring Frame TV devices with `deviceName`, `ip`, `enableFullPowerOff`, `enableArtModeSwitch`, and optional `token` fields.
+- **TV App Shortcuts**: Launch Samsung TV apps (Netflix, YouTube, Disney+, etc.) directly from the HomeKit TV input picker. Apps appear as additional input sources (type APPLICATION) alongside HDMI inputs. Select which apps to enable from the "TV App Shortcuts" card in the Homebridge UI. Uses `custom.launchapp` capability — no apps enabled by default.
+- **TV App Shortcuts UI**: New "TV App Shortcuts" card in the Homebridge UI with a checkbox list of 18 predefined Samsung TV apps. Only selected apps appear in the HomeKit input picker.
+- **`tvApps` config field**: New array in `config.schema.json` for selecting TV app shortcuts by app ID (default: empty).
+- **Washer Service**: New service mapping `washerOperatingState` capability to a HomeKit Valve with Active, InUse, and RemainingDuration countdown for Samsung washers.
+- **README section**: Added documentation covering Frame TV auto-detection, configuration options, first-time pairing, troubleshooting, and how to recover from an accidental "Deny" on the TV popup.
+
+### Changed
+- **TelevisionService**: When a Frame TV is configured, power off is intercepted and routed through the local WebSocket instead of the SmartThings API. Power on continues to use the SmartThings API as normal. On WebSocket failure, falls back to SmartThings API with a warning log.
+- **MultiServiceAccessory**: Detects Frame TV devices by matching the SmartThings device name against `frameTvDevices` config entries (case-insensitive). Creates a shared `SamsungWebSocket` instance used by both the TV service and Art Mode switch.
+- **Platform**: Registers Art Mode accessories as separate platform accessories after device discovery, with UUIDs derived from `deviceId + '-artmode'` to ensure uniqueness.
+
+### Fixed
+- **Art Mode Accessory Registration**: Fixed incorrect `PLUGIN_NAME` (`homebridge-smartthings-ik` instead of `homebridge-smartthings-oauth`) which prevented the Art Mode switch from appearing in HomeKit.
+- **Art Mode Accessory Persistence**: Fixed a bug where the Art Mode accessory was unregistered and re-registered on every restart because its derived UUID didn't match any SmartThings device ID. Art Mode accessories are now excluded from the cleanup loop.
+
+### Security
+- **Dependency audit**: Fixed all 6 npm audit vulnerabilities (axios, form-data, glob, js-yaml, brace-expansion, diff) — 0 vulnerabilities remaining.
+
+### Dependencies
+- Added `ws` (^8.0.0) and `@types/ws` (^8.0.0) for local WebSocket communication with Samsung TVs.
+
 ## [1.0.43] - Real-Time Subscription Manager UI
 ### Added
 - **Capability Subscription Selector**: New UI card in Homebridge settings to manually choose which capabilities get real-time SmartThings subscriptions (max 20). Available for users with webhooks configured.

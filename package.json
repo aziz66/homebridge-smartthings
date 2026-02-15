@@ -2,7 +2,7 @@
   "private": false,
   "displayName": "Homebridge Smartthings oAuth Plugin",
   "name": "homebridge-smartthings-oauth",
-  "version": "1.0.43",
+  "version": "1.0.44",
   "description": "Connects SmartThings devices to Homebridge.  Automatically discovers devices.",
   "license": "Apache-2.0",
   "repository": {
@@ -33,10 +33,12 @@
     "@homebridge/plugin-ui-utils": "^2.1.2",
     "axios": "^1.0.0",
     "fs-extra": "^11.2.0",
-    "simple-oauth2": "^5.1.0"
+    "simple-oauth2": "^5.1.0",
+    "ws": "^8.0.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.14",
+    "@types/ws": "^8.0.0",
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^18.0.0",
     "@typescript-eslint/eslint-plugin": "^7.18.0",

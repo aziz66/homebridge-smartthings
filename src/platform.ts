@@ -12,6 +12,7 @@ import { SmartThingsAuth } from './auth/auth';
 import { WebhookServer } from './webhook/webhookServer';
 import { SmartThingsSubscriptionManager } from './webhook/smartthingsSubscriptionManager';
 import { CrashLoopManager, CrashErrorType, defaultCrashLoopConfig } from './auth/CrashLoopManager';
+import { ArtModeSwitchService } from './services/artModeSwitchService';
 
 /**
  * HomebridgePlatform
@@ -40,6 +41,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
   });
 
   private accessoryObjects: MultiServiceAccessory[] = [];
+  private artModeServices: ArtModeSwitchService[] = [];
   private subscriptionHandler: SubscriptionHandler | undefined = undefined;
 
   constructor(
@@ -127,6 +129,18 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
     // Dynamic Platform plugins should only register new accessories after this event was fired,
     // in order to ensure they weren't added to homebridge already. This event can also be used
     // to start discovery of new accessories.
+    this.api.on('shutdown', () => {
+      this.log.debug('Shutdown event received — cleaning up resources');
+      for (const artService of this.artModeServices) {
+        artService.stopPolling();
+      }
+      for (const accObj of this.accessoryObjects) {
+        if (accObj.samsungWebSocket) {
+          accObj.samsungWebSocket.destroy();
+        }
+      }
+    });
+
     this.api.on('didFinishLaunching', async () => {
       this.log.debug('Executed didFinishLaunching callback');
 
@@ -169,6 +183,9 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
           }
           this.discoverDevices(devices);
           this.unregisterDevices(devices);
+
+          // Register Art Mode accessories for configured Frame TVs
+          this.registerArtModeAccessories();
 
           // Set up real-time event handling if server_url is configured
           if (config.server_url && config.server_url.trim() !== '') {
@@ -351,6 +368,11 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
       if (!devices.find(device => {
         return device.deviceId === accessory.UUID;
       })) {
+        // Don't unregister Art Mode accessories — they use a derived UUID (deviceId + '-artmode')
+        // and will be managed by registerArtModeAccessories()
+        if (accessory.context.device?.deviceId?.endsWith('-artmode')) {
+          return;
+        }
         this.log.info('Will unregister ' + accessory.context.device.label);
         accessoriesToRemove.push(accessory);
       }
@@ -456,6 +478,43 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
     });
 
     return acc;
+  }
+
+  /**
+   * Register separate Art Mode switch accessories for configured Frame TVs.
+   * Each Art Mode switch is a standalone platform accessory with its own tile in HomeKit.
+   */
+  private registerArtModeAccessories(): void {
+    for (const accObj of this.accessoryObjects) {
+      if (!accObj.samsungWebSocket || !accObj.frameTvConfig?.enableArtModeSwitch) {
+        continue;
+      }
+
+      const deviceId = accObj['accessory'].context.device.deviceId;
+      const artModeUuid = this.api.hap.uuid.generate(deviceId + '-artmode');
+      const artModeName = `${accObj.name} Art Mode`;
+
+      const existingAccessory = this.accessories.find(a => a.UUID === artModeUuid);
+
+      if (existingAccessory) {
+        this.log.info(`Restoring Art Mode accessory from cache: ${artModeName}`);
+        this.artModeServices.push(
+          new ArtModeSwitchService(this, existingAccessory, accObj.samsungWebSocket, artModeName),
+        );
+      } else {
+        this.log.info(`Registering new Art Mode accessory: ${artModeName}`);
+        const artAccessory = new this.api.platformAccessory(artModeName, artModeUuid);
+        artAccessory.context.device = {
+          deviceId: deviceId + '-artmode',
+          label: artModeName,
+          manufacturerName: 'Samsung',
+        };
+        this.artModeServices.push(
+          new ArtModeSwitchService(this, artAccessory, accObj.samsungWebSocket, artModeName),
+        );
+        this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [artAccessory]);
+      }
+    }
   }
 
   // Method to allow MultiServiceAccessory to get the CrashLoopManager instance
