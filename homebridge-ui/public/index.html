@@ -159,6 +159,17 @@
 
             <div class="tab-pane fade" id="step3">
                 <h4>Step 3: Enter Authorization Code</h4>
+
+                <div id="oauth-auth-url-box" class="alert alert-info" style="display:none">
+                    <strong>A login page should have opened automatically.</strong> If it didn't, copy the URL below and open it in your browser:<br>
+                    <div class="input-group mt-2">
+                        <input type="text" class="form-control form-control-sm" id="oauth-auth-url" readonly>
+                        <div class="input-group-append">
+                            <button class="btn btn-sm btn-outline-secondary" type="button" onclick="copyAuthUrl()">Copy</button>
+                        </div>
+                    </div>
+                </div>
+
                 <p>Paste the <code>args.code</code> value from the httpbin.org response below.</p>
                 <p class="text-muted">Example: The JSON response will look like <code>{"args": {"code": "xxxxxx"}, ...}</code>. Copy just the code value.</p>
 
@@ -388,7 +399,19 @@
         document.querySelector(targetTab.getAttribute('data-target')).classList.add('show', 'active');
     }
 
+    function copyAuthUrl() {
+        var input = document.getElementById('oauth-auth-url');
+        input.select();
+        document.execCommand('copy');
+        homebridge.toast.success('URL copied to clipboard');
+    }
+
     async function requestAuthCode() {
+        // Open window synchronously (before await) to avoid popup blockers.
+        // Browsers only allow window.open() in direct response to user clicks;
+        // an await breaks that gesture context and the popup gets silently blocked.
+        const popup = window.open('about:blank', '_blank');
+
         try {
             const payload = {
                 clientId: document.getElementById('oauth-client-id').value,
@@ -398,9 +421,18 @@
             };
 
             const authUrl = await homebridge.request('/authCode', payload);
-            window.open(authUrl, "_blank");
+
+            // Always show the URL field as a fallback
+            document.getElementById('oauth-auth-url').value = authUrl;
+            document.getElementById('oauth-auth-url-box').style.display = 'block';
+
+            if (popup && !popup.closed) {
+                popup.location.href = authUrl;
+            }
+
             return authUrl;
         } catch (err) {
+            if (popup && !popup.closed) popup.close();
             console.error('requestAuthCode error:', err);
             homebridge.toast.error("Could not generate authorization URL. Please check your credentials.");
         }

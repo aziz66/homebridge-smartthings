@@ -1,6 +1,12 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.45] - OAuth Wizard Popup Fix
+
+### Fixed
+- **OAuth Wizard popup blocked**: The SmartThings login popup in step 3 of the OAuth wizard was silently blocked by browsers for many users. The `window.open()` call happened after an `await`, which breaks the browser's user-gesture context and triggers popup blockers. The window is now opened synchronously before the async call to preserve the gesture chain.
+- **Popup fallback URL field**: Step 3 now always displays a copyable URL field with the authorization link, so users can manually open it if the popup is still blocked by stricter browser settings.
+
 ## [1.0.44] - Samsung Frame TV, TV App Launcher & Washer Service
 
 ### Added
