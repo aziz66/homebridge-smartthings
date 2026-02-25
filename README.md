@@ -7,6 +7,18 @@
 
 <p align="center">
 <a href="https://github.com/homebridge/homebridge/wiki/Verified-Plugins"><img src="https://img.shields.io/badge/homebridge-verified-blueviolet?color=%23491F59&style=for-the-badge&logoColor=%23FFFFFF&logo=homebridge" alt="verified-by-homebridge"></a>
+<br>
+<a href="https://www.npmjs.com/package/homebridge-smartthings-oauth"><img src="https://img.shields.io/npm/v/homebridge-smartthings-oauth?style=for-the-badge" alt="npm version"></a>
+<a href="https://www.npmjs.com/package/homebridge-smartthings-oauth"><img src="https://img.shields.io/npm/dt/homebridge-smartthings-oauth?style=for-the-badge" alt="npm downloads"></a>
+<a href="https://github.com/aziz66/homebridge-smartthings/stargazers"><img src="https://img.shields.io/github/stars/aziz66/homebridge-smartthings?style=for-the-badge" alt="GitHub stars"></a>
+<br>
+<a href="https://github.com/aziz66/homebridge-smartthings/issues"><img src="https://img.shields.io/github/issues/aziz66/homebridge-smartthings?style=for-the-badge" alt="GitHub issues"></a>
+<a href="https://github.com/aziz66/homebridge-smartthings"><img src="https://img.shields.io/github/last-commit/aziz66/homebridge-smartthings?style=for-the-badge" alt="GitHub last commit"></a>
+<a href="https://github.com/aziz66/homebridge-smartthings/releases"><img src="https://img.shields.io/github/v/release/aziz66/homebridge-smartthings?style=for-the-badge" alt="GitHub release"></a>
+<br>
+<a href="https://www.npmjs.com/package/homebridge-smartthings-oauth"><img src="https://img.shields.io/node/v/homebridge-smartthings-oauth?style=for-the-badge" alt="Node.js version"></a>
+<a href="https://www.npmjs.com/package/homebridge-smartthings-oauth"><img src="https://img.shields.io/npm/l/homebridge-smartthings-oauth?style=for-the-badge" alt="license"></a>
+<a href="https://ko-fi.com/aziz66"><img src="https://img.shields.io/badge/Ko--fi-Support%20Me-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Ko-fi"></a>
 </p>
 
 # SmartThings Homebridge Plugin with OAuth Support
