@@ -202,8 +202,19 @@ export class AirPurifierService extends BaseService {
 
   private async getAirQuality(): Promise<CharacteristicValue> {
     const deviceStatus = await this.getDeviceStatus();
-    const caqi = deviceStatus.airQualitySensor.airQuality.value;
-    return this.caqiToAirQuality(caqi);
+
+    // Prefer PM2.5-based air quality when dustSensor is available, as SmartThings
+    // airQualitySensor.airQuality.value is unreliable (often returns 1 regardless of actual conditions)
+    if (this.isCapabilitySupported('dustSensor')) {
+      const pm25 = deviceStatus.dustSensor?.fineDustLevel?.value;
+      if (pm25 !== undefined && pm25 !== null) {
+        return this.pm25ToAirQuality(pm25);
+      }
+    }
+
+    // Fallback to SmartThings air quality value (1-5 scale)
+    const aqValue = deviceStatus.airQualitySensor.airQuality.value;
+    return this.stAirQualityToHomeKit(aqValue);
   }
 
   private async getPM25Density(): Promise<CharacteristicValue> {
@@ -262,18 +273,36 @@ export class AirPurifierService extends BaseService {
     return AirPurifierFanMode.High;
   }
 
-  private caqiToAirQuality(caqi: number): number {
+  // PM2.5 (µg/m³) to HomeKit AirQuality using WHO/EPA-based thresholds
+  private pm25ToAirQuality(pm25: number): number {
     // UNKNOWN=0, EXCELLENT=1, GOOD=2, FAIR=3, INFERIOR=4, POOR=5
-    if (caqi <= 20) {
+    if (pm25 <= 15) {
+      return 1; // Excellent (WHO guideline: 15 µg/m³ 24h mean)
+    }
+    if (pm25 <= 35) {
+      return 2; // Good
+    }
+    if (pm25 <= 55) {
+      return 3; // Fair
+    }
+    if (pm25 <= 75) {
+      return 4; // Inferior
+    }
+    return 5; // Poor
+  }
+
+  // SmartThings airQualitySensor value (1-5 scale) to HomeKit AirQuality
+  private stAirQualityToHomeKit(value: number): number {
+    if (value <= 1) {
       return 1;
     }
-    if (caqi <= 40) {
+    if (value <= 2) {
       return 2;
     }
-    if (caqi <= 60) {
+    if (value <= 3) {
       return 3;
     }
-    if (caqi <= 80) {
+    if (value <= 4) {
       return 4;
     }
     return 5;
@@ -331,12 +360,15 @@ export class AirPurifierService extends BaseService {
 
       case 'airQualitySensor':
         this.airQualitySensorService?.updateCharacteristic(this.platform.Characteristic.AirQuality,
-          this.caqiToAirQuality(event.value));
+          this.stAirQualityToHomeKit(event.value));
         break;
 
       case 'dustSensor':
         if (event.attribute === 'fineDustLevel') {
           this.airQualitySensorService?.updateCharacteristic(this.platform.Characteristic.PM2_5Density, event.value);
+          // Also update AirQuality based on PM2.5 since it's more reliable
+          this.airQualitySensorService?.updateCharacteristic(this.platform.Characteristic.AirQuality,
+            this.pm25ToAirQuality(event.value));
         } else if (event.attribute === 'dustLevel') {
           this.airQualitySensorService?.updateCharacteristic(this.platform.Characteristic.PM10Density, event.value);
         }

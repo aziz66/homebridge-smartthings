@@ -1,6 +1,12 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.48] - Air Quality Sensor Fix
+
+### Fixed
+- **Air Quality always showing "Excellent"**: SmartThings `airQualitySensor.airQuality.value` returns an unreliable value (often 1 regardless of actual air conditions). Air quality is now derived from PM2.5 readings when `dustSensor` capability is available, using WHO-based thresholds: <=15 Excellent, <=35 Good, <=55 Fair, <=75 Inferior, >75 Poor. Falls back to SmartThings 1-5 scale when dustSensor is unavailable.
+- **Real-time air quality updates**: Incoming `dustSensor` `fineDustLevel` events now also update the `AirQuality` characteristic based on PM2.5 values, ensuring the air quality level stays accurate between polls.
+
 ## [1.0.47] - Samsung Air Purifier Capability Fix
 
 ### Fixed
@@ -16,7 +22,7 @@ All notable changes to this project will be documented in this file.
   - Fan mode control via `airConditionerFanMode` capability (Auto, Low, Medium, High, Sleep) mapped to TargetAirPurifierState and RotationSpeed
   - Filter life monitoring via `custom.filterState` capability (FilterLifeLevel + FilterChangeIndication at <10%)
 - **Linked Air Quality Sensor**: Conditional `Service.AirQualitySensor` linked to the air purifier
-  - Air quality index via `airQualitySensor` capability (CAQI 0-100 mapped to HomeKit's 5-level scale)
+  - Air quality index derived from PM2.5 readings (WHO-based thresholds) with fallback to SmartThings `airQualitySensor` value
   - PM2.5 density via `dustSensor` (`fineDustLevel`)
   - PM10 density via `dustSensor` (`dustLevel`)
   - VOC density via `odorSensor` (`odorLevel`)
