@@ -158,7 +158,7 @@ export class AirPurifierService extends BaseService {
 
   private async getTargetAirPurifierState(): Promise<CharacteristicValue> {
     const deviceStatus = await this.getDeviceStatus();
-    const fanMode = deviceStatus.airPurifierFanMode.airPurifierFanMode.value;
+    const fanMode = deviceStatus.airConditionerFanMode.fanMode.value;
     // MANUAL = 0, AUTO = 1
     return fanMode === AirPurifierFanMode.Auto ? 1 : 0;
   }
@@ -167,21 +167,21 @@ export class AirPurifierService extends BaseService {
     // AUTO = 1, MANUAL = 0
     const fanMode = value === 1 ? AirPurifierFanMode.Auto : AirPurifierFanMode.Low;
     this.log.info(`[${this.name}] set target air purifier state to ${fanMode}`);
-    await this.sendCommandsOrFail([new Command('airPurifierFanMode', 'setAirPurifierFanMode', [fanMode])]);
+    await this.sendCommandsOrFail([new Command('airConditionerFanMode', 'setFanMode', [fanMode])]);
   }
 
   // --- RotationSpeed ---
 
   private async getRotationSpeed(): Promise<CharacteristicValue> {
     const deviceStatus = await this.getDeviceStatus();
-    const fanMode = deviceStatus.airPurifierFanMode.airPurifierFanMode.value as AirPurifierFanMode;
+    const fanMode = deviceStatus.airConditionerFanMode.fanMode.value as AirPurifierFanMode;
     return this.fanModeToLevel(fanMode);
   }
 
   private async setRotationSpeed(value: CharacteristicValue): Promise<void> {
     const fanMode = this.levelToFanMode(value as number);
     this.log.info(`[${this.name}] set rotation speed to ${fanMode} (from level ${value})`);
-    await this.sendCommandsOrFail([new Command('airPurifierFanMode', 'setAirPurifierFanMode', [fanMode])]);
+    await this.sendCommandsOrFail([new Command('airConditionerFanMode', 'setFanMode', [fanMode])]);
   }
 
   // --- Filter ---
@@ -313,7 +313,7 @@ export class AirPurifierService extends BaseService {
           event.value === SwitchState.On ? 2 : 0);
         break;
 
-      case 'airPurifierFanMode':
+      case 'airConditionerFanMode':
         this.airPurifierService.updateCharacteristic(this.platform.Characteristic.TargetAirPurifierState,
           event.value === AirPurifierFanMode.Auto ? 1 : 0);
         this.airPurifierService.updateCharacteristic(this.platform.Characteristic.RotationSpeed,

@@ -101,7 +101,7 @@ export class MultiServiceAccessory {
       service: AirConditionerService,
     },
     {
-      capabilities: ['switch', 'airPurifierFanMode'],
+      capabilities: ['switch', 'airConditionerFanMode'],
       optionalCapabilities: [
         'custom.filterState',
         'airQualitySensor',

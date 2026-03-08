@@ -1,12 +1,19 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.47] - Samsung Air Purifier Capability Fix
+
+### Fixed
+- **Air Purifier capability mismatch**: Samsung air purifiers report `airConditionerFanMode` (not `airPurifierFanMode`) for fan mode control. Updated the combo capability match and all command/status paths to use the correct SmartThings capability name. Previously, the air purifier would incorrectly appear as a plain switch in HomeKit.
+- **Fan mode command**: Changed from `setAirPurifierFanMode` to `setFanMode` to match the actual SmartThings API command for the `airConditionerFanMode` capability.
+- **Fan mode status path**: Fixed status read from `airConditionerFanMode.airConditionerFanMode.value` to `airConditionerFanMode.fanMode.value`.
+
 ## [1.0.46] - Samsung Air Purifier Support
 
 ### Added
 - **Air Purifier Service**: New `AirPurifierService` for Samsung air purifier devices, mapped to HomeKit's native `Service.AirPurifier`
   - Power on/off via `switch` capability (Active + CurrentAirPurifierState)
-  - Fan mode control via `airPurifierFanMode` capability (Auto, Low, Medium, High, Sleep) mapped to TargetAirPurifierState and RotationSpeed
+  - Fan mode control via `airConditionerFanMode` capability (Auto, Low, Medium, High, Sleep) mapped to TargetAirPurifierState and RotationSpeed
   - Filter life monitoring via `custom.filterState` capability (FilterLifeLevel + FilterChangeIndication at <10%)
 - **Linked Air Quality Sensor**: Conditional `Service.AirQualitySensor` linked to the air purifier
   - Air quality index via `airQualitySensor` capability (CAQI 0-100 mapped to HomeKit's 5-level scale)
