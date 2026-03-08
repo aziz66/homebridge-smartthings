@@ -29,6 +29,7 @@ import { ACLightingService } from './services/acLightingService';
 import { TelevisionService } from './services/televisionService';
 import { VolumeSliderService } from './services/volumeSliderService';
 import { WasherService } from './services/washerService';
+import { AirPurifierService } from './services/airPurifierService';
 import { Command } from './services/smartThingsCommand';
 import { CrashLoopManager, CrashErrorType } from './auth/CrashLoopManager';
 import { SamsungWebSocket } from './local/samsungWebSocket';
@@ -98,6 +99,17 @@ export class MultiServiceAccessory {
         'custom.airConditionerOptionalMode',
       ],
       service: AirConditionerService,
+    },
+    {
+      capabilities: ['switch', 'airPurifierFanMode'],
+      optionalCapabilities: [
+        'custom.filterState',
+        'airQualitySensor',
+        'dustSensor',
+        'odorSensor',
+        'relativeHumidityMeasurement',
+      ],
+      service: AirPurifierService,
     },
     {
       capabilities: ['switch', 'fanSpeed', 'switchLevel'],

@@ -1,6 +1,22 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.46] - Samsung Air Purifier Support
+
+### Added
+- **Air Purifier Service**: New `AirPurifierService` for Samsung air purifier devices, mapped to HomeKit's native `Service.AirPurifier`
+  - Power on/off via `switch` capability (Active + CurrentAirPurifierState)
+  - Fan mode control via `airPurifierFanMode` capability (Auto, Low, Medium, High, Sleep) mapped to TargetAirPurifierState and RotationSpeed
+  - Filter life monitoring via `custom.filterState` capability (FilterLifeLevel + FilterChangeIndication at <10%)
+- **Linked Air Quality Sensor**: Conditional `Service.AirQualitySensor` linked to the air purifier
+  - Air quality index via `airQualitySensor` capability (CAQI 0-100 mapped to HomeKit's 5-level scale)
+  - PM2.5 density via `dustSensor` (`fineDustLevel`)
+  - PM10 density via `dustSensor` (`dustLevel`)
+  - VOC density via `odorSensor` (`odorLevel`)
+- **Linked Humidity Sensor**: Conditional `Service.HumiditySensor` linked to the air purifier via `relativeHumidityMeasurement` capability
+- **Real-time event handling**: Full `processEvent()` support for all air purifier capabilities via webhooks
+- **Polling**: Automatic polling for Active state and RotationSpeed
+
 ## [1.0.45] - OAuth Wizard Popup Fix
 
 ### Fixed
