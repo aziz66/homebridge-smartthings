@@ -88,6 +88,7 @@ export class ThermostatService extends BaseService {
               return;
 
             case 'heat':
+            case 'emergency heat':
               resolve(this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.HEAT);
               return;
 
@@ -95,8 +96,14 @@ export class ThermostatService extends BaseService {
               resolve(this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.AUTO);
               return;
 
-            default:
+            case 'off':
               resolve(this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.OFF);
+              return;
+
+            default:
+              // Map unknown/custom modes (e.g. 'radiatingfloor', 'radiatingfloorandhotair')
+              // to HEAT since they represent active heating modes
+              resolve(this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.HEAT);
               return;
           }
         } else {
@@ -184,11 +191,18 @@ export class ThermostatService extends BaseService {
               break;
 
             case 'heat':
+            case 'emergency heat':
               resolve(this.platform.Characteristic.CurrentHeatingCoolingState.HEAT);
               break;
 
             default:
-              resolve(this.platform.Characteristic.CurrentHeatingCoolingState.OFF);
+              // Map any other non-off mode to HEAT or COOL based on name hint
+              // This handles custom modes like 'radiatingfloor', 'radiatingfloorandhotair', etc.
+              if (thermostatMode !== 'off' && thermostatMode !== 'idle') {
+                resolve(this.platform.Characteristic.CurrentHeatingCoolingState.HEAT);
+              } else {
+                resolve(this.platform.Characteristic.CurrentHeatingCoolingState.OFF);
+              }
           }
         } else {
           reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
@@ -232,11 +246,21 @@ export class ThermostatService extends BaseService {
   async getTargetTemperature():Promise<CharacteristicValue> {
     this.log.debug('Received GetTargetTemperature for ' + this.name);
     let temp;
-    if (await this.getTargetHeatingCoolingState() === this.platform.Characteristic.TargetHeatingCoolingState.COOL) {
+
+    // Devices using a single temperatureSetpoint (e.g. Koolnova HVAC)
+    if (this.capabilities.includes('temperatureSetpoint')) {
+      await this.getStatus();
+      try {
+        temp = this.deviceStatus.status.temperatureSetpoint?.temperatureSetpoint?.value;
+      } catch {
+        // fall through to null check below
+      }
+    } else if (await this.getTargetHeatingCoolingState() === this.platform.Characteristic.TargetHeatingCoolingState.COOL) {
       temp = this.deviceStatus.status.thermostatCoolingSetpoint.coolingSetpoint.value;
     } else {
       temp = this.deviceStatus.status.thermostatHeatingSetpoint.heatingSetpoint.value;
     }
+
     if (temp === null || temp === undefined) {
       throw(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.RESOURCE_DOES_NOT_EXIST));
     }
@@ -250,6 +274,16 @@ export class ThermostatService extends BaseService {
   async setTargetTemperature(value: CharacteristicValue) {
     this.log.debug('Received setTargetTemperature(' + value + ') event for ' + this.name);
     this.targetTemperature = value as number;
+
+    // If the thermostat's units is Farenheit, then we need to convert from celcius
+    const convertedTemp = this.units === 'F' ? (value as number * (9/5)) + 32 : value;
+
+    // Devices using a single temperatureSetpoint (e.g. Koolnova HVAC)
+    if (this.capabilities.includes('temperatureSetpoint')) {
+      this.multiServiceAccessory.sendCommand('temperatureSetpoint', 'setTemperatureSetpoint', [convertedTemp]);
+      return;
+    }
+
     let capability = '';
     let command = '';
 
@@ -260,9 +294,6 @@ export class ThermostatService extends BaseService {
       capability = 'thermostatHeatingSetpoint';
       command = 'setHeatingSetpoint';
     }
-
-    // If the thermostat's units is Farenheit, then we need to convert from celcius
-    const convertedTemp = this.units === 'F' ? (value as number * (9/5)) + 32 : value;
 
     this.multiServiceAccessory.sendCommand(capability, command, [convertedTemp]);
   }
@@ -288,7 +319,7 @@ export class ThermostatService extends BaseService {
     let characteristic = this.platform.Characteristic.TargetTemperature;
     let value: CharacteristicValue;
 
-    if (event.attribute === 'heatingSetpoint' || event.attribute === 'coolingSetpoint') {
+    if (event.attribute === 'heatingSetpoint' || event.attribute === 'coolingSetpoint' || event.attribute === 'temperatureSetpoint') {
       value = this.units === 'F' ? (event.value - 32) * (5 / 9): event.value;
     } else {
       characteristic = this.platform.Characteristic.TargetHeatingCoolingState;
@@ -298,6 +329,7 @@ export class ThermostatService extends BaseService {
           break;
 
         case 'heat':
+        case 'emergency heat':
           value = this.platform.Characteristic.TargetHeatingCoolingState.HEAT;
           break;
 
@@ -305,8 +337,13 @@ export class ThermostatService extends BaseService {
           value = this.platform.Characteristic.TargetHeatingCoolingState.AUTO;
           break;
 
-        default:
+        case 'off':
           value = this.platform.Characteristic.TargetHeatingCoolingState.OFF;
+          break;
+
+        default:
+          // Custom/unknown modes (e.g. 'radiatingfloor') treated as HEAT
+          value = this.platform.Characteristic.TargetHeatingCoolingState.HEAT;
       }
     }
     this.service.updateCharacteristic(characteristic, value);

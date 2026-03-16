@@ -1,6 +1,19 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.49] - Generic Thermostat Support (temperatureSetpoint)
+
+### Added
+- **Generic thermostat support**: Devices using the `temperatureSetpoint` capability (single unified setpoint) are now recognized as thermostats in HomeKit. Previously these devices appeared as a simple switch + temperature sensor. This supports third-party HVAC systems like Koolnova that integrate with SmartThings using `temperatureSetpoint` instead of the standard `thermostatHeatingSetpoint`/`thermostatCoolingSetpoint` split.
+  - View current temperature
+  - Set target temperature
+  - Thermostat mode control (heat/cool/off)
+  - Real-time webhook updates for `temperatureSetpoint` events
+- **Custom thermostat mode handling**: Non-standard thermostat modes (e.g. `radiatingfloor`, `radiatingfloorandhotair`) are now mapped to HEAT in HomeKit instead of being treated as OFF. This ensures active heating modes from third-party systems display correctly.
+
+### Note
+- Users with affected devices (previously showing as switch) will need to remove the cached accessory from Homebridge and restart to allow it to re-discover as a thermostat. This can be done from the Homebridge UI under Accessories > Remove Single Cached Accessory.
+
 ## [1.0.48] - Air Quality Sensor Fix
 
 ### Fixed

@@ -149,6 +149,15 @@ export class MultiServiceAccessory {
       service: ThermostatService,
     },
     {
+      // Thermostats using a single temperatureSetpoint (e.g. Koolnova HVAC)
+      // instead of separate heating/cooling setpoints
+      capabilities: ['temperatureMeasurement',
+        'thermostatMode',
+        'temperatureSetpoint'],
+      optionalCapabilities: ['switch'],
+      service: ThermostatService,
+    },
+    {
       capabilities: ['windowShade', 'windowShadeLevel'],
       service: WindowCoveringService,
     },
