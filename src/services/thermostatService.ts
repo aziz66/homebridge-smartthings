@@ -3,6 +3,7 @@ import { IKHomeBridgeHomebridgePlatform } from '../platform';
 import { BaseService } from './baseService';
 import { MultiServiceAccessory } from '../multiServiceAccessory';
 import { ShortEvent } from '../webhook/subscriptionHandler';
+import { Command } from './smartThingsCommand';
 
 export class ThermostatService extends BaseService {
   targetHeatingCoolingState: any;
@@ -74,41 +75,50 @@ export class ThermostatService extends BaseService {
         return;
       }
       this.getStatus().then(success => {
-        let state;
-        if (success) {
-          state = this.deviceStatus.status.thermostatMode.thermostatMode.value;
-          if (state === null || state === undefined) {
-            this.log.error(`Received invalid heating / cooling state from ${this.name}`);
-            resolve(this.targetHeatingCoolingState);
-            return;
-          }
-          switch(state) {
-            case 'cool':
-              resolve(this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.COOL);
-              return;
-
-            case 'heat':
-            case 'emergency heat':
-              resolve(this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.HEAT);
-              return;
-
-            case 'auto':
-              resolve(this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.AUTO);
-              return;
-
-            case 'off':
-              resolve(this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.OFF);
-              return;
-
-            default:
-              // Map unknown/custom modes (e.g. 'radiatingfloor', 'radiatingfloorandhotair')
-              // to HEAT since they represent active heating modes
-              resolve(this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.HEAT);
-              return;
-          }
-        } else {
+        if (!success) {
           resolve(this.targetHeatingCoolingState);
           return;
+        }
+
+        // For devices with switch capability (e.g. Koolnova), check switch first.
+        // These devices keep thermostatMode at its last value even when powered off.
+        if (this.capabilities.includes('switch')) {
+          const switchState = this.deviceStatus.status.switch?.switch?.value;
+          if (switchState === 'off') {
+            resolve(this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.OFF);
+            return;
+          }
+        }
+
+        const state = this.deviceStatus.status.thermostatMode?.thermostatMode?.value;
+        if (state === null || state === undefined) {
+          this.log.error(`Received invalid heating / cooling state from ${this.name}`);
+          resolve(this.targetHeatingCoolingState);
+          return;
+        }
+        switch(state) {
+          case 'cool':
+            resolve(this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.COOL);
+            return;
+
+          case 'heat':
+          case 'emergency heat':
+            resolve(this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.HEAT);
+            return;
+
+          case 'auto':
+            resolve(this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.AUTO);
+            return;
+
+          case 'off':
+            resolve(this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.OFF);
+            return;
+
+          default:
+            // Map unknown/custom modes (e.g. 'radiatingfloor', 'radiatingfloorandhotair')
+            // to HEAT since they represent active heating modes
+            resolve(this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.HEAT);
+            return;
         }
       });
     });
@@ -118,7 +128,7 @@ export class ThermostatService extends BaseService {
   async setTargetHeatingCoolingState(value: CharacteristicValue) {
     this.log.debug('Received setTargetHeatingCoolingState(' + value + ') event for ' + this.name);
 
-    if (!this.multiServiceAccessory.isOnline) {
+    if (!this.multiServiceAccessory.isOnline()) {
       this.log.error(this.name + ' is offline');
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
@@ -149,10 +159,17 @@ export class ThermostatService extends BaseService {
         break;
     }
 
-    this.multiServiceAccessory.sendCommand('thermostatMode', cmd).then((success) => {
+    // For devices with switch capability (e.g. Koolnova), bundle switch on/off
+    // with thermostatMode in a single API call to control the real power state
+    const commands: Command[] = [];
+    if (this.capabilities.includes('switch')) {
+      commands.push(new Command('switch', cmd === 'off' ? 'off' : 'on'));
+    }
+    commands.push(new Command('thermostatMode', cmd));
+
+    this.multiServiceAccessory.sendCommands(commands).then((success) => {
       if (success) {
         this.log.debug('setTargetHeatingCoolingState(' + value + ') SUCCESSFUL for ' + this.name);
-        //this.deviceStatus.timestamp = 0;  // Force a refresh next query.
       } else {
         this.log.error(`Command failed for ${this.name}`);
       }
@@ -175,6 +192,16 @@ export class ThermostatService extends BaseService {
 
       this.getStatus().then(success => {
         if (success) {
+          // For devices with switch capability (e.g. Koolnova), check switch first.
+          // These devices keep thermostatMode at its last value even when powered off.
+          if (this.capabilities.includes('switch')) {
+            const switchState = this.deviceStatus.status.switch?.switch?.value;
+            if (switchState === 'off') {
+              resolve(this.platform.Characteristic.CurrentHeatingCoolingState.OFF);
+              return;
+            }
+          }
+
           let thermostatMode;
           try {
             thermostatMode = this.deviceStatus.status.thermostatMode.thermostatMode.value;
@@ -321,6 +348,21 @@ export class ThermostatService extends BaseService {
 
     if (event.attribute === 'heatingSetpoint' || event.attribute === 'coolingSetpoint' || event.attribute === 'temperatureSetpoint') {
       value = this.units === 'F' ? (event.value - 32) * (5 / 9): event.value;
+    } else if (event.attribute === 'temperature') {
+      // Temperature measurement update
+      characteristic = this.platform.Characteristic.CurrentTemperature;
+      value = this.units === 'F' ? (event.value - 32) * (5 / 9) : event.value;
+    } else if (event.attribute === 'switch') {
+      // For devices with switch capability (e.g. Koolnova), switch off means thermostat off
+      if (event.value === 'off') {
+        this.service.updateCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState,
+          this.platform.Characteristic.TargetHeatingCoolingState.OFF);
+        this.service.updateCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState,
+          this.platform.Characteristic.CurrentHeatingCoolingState.OFF);
+        this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.OFF;
+      }
+      // switch on: the thermostatMode event will follow to set the correct mode
+      return;
     } else {
       characteristic = this.platform.Characteristic.TargetHeatingCoolingState;
       switch (event.value) {

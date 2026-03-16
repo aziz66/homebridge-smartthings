@@ -1,6 +1,15 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.52] - Generic Thermostat Switch-Based Power State Fix
+
+### Fixed
+- **Thermostat showing active when zone is off** (#25): For third-party thermostats (e.g. Koolnova) that expose both `switch` and `thermostatMode`, the plugin now checks `switch` first to determine the real power state. These devices keep `thermostatMode` at its last value (e.g. `heat`) even when the zone is powered off via `switch`. Previously this caused all zones to appear as active/heating in HomeKit regardless of actual state.
+- **Atomic switch + mode commands**: Setting thermostat state from HomeKit now bundles `switch` and `thermostatMode` into a single SmartThings API call (matching the AirConditionerService pattern), avoiding race conditions from separate fire-and-forget calls.
+- **Real-time temperature events**: Incoming `temperature` webhook events are now correctly handled by ThermostatService. Previously, temperature events would fall through to the thermostatMode handler and incorrectly set the heating/cooling state to HEAT.
+- **Real-time switch events**: Incoming `switch: off` webhook events for thermostat devices now immediately update both current and target state to OFF in HomeKit.
+- **isOnline() method call**: Fixed `isOnline` being checked as a property (always truthy) instead of called as a method, so the offline guard in `setTargetHeatingCoolingState` now works correctly.
+
 ## [1.0.51] - Air Purifier Command Debounce Improvements & Offline Log Spam Fix
 
 ### Fixed
