@@ -23,7 +23,14 @@ export class AirPurifierService extends BaseService {
   private airPurifierService: Service;
   private airQualitySensorService?: Service;
   private humiditySensorService?: Service;
-  private manualModeTimer?: ReturnType<typeof setTimeout>;
+
+  // Debounce: HomeKit sends setTargetAirPurifierState and setRotationSpeed near-simultaneously.
+  // We track them separately and resolve priority when the timer fires:
+  //   Auto > RotationSpeed > Manual default (low)
+  private pendingTargetState?: number; // 0 = manual, 1 = auto
+  private pendingRotationFanMode?: AirPurifierFanMode; // from setRotationSpeed
+  private fanModeTimer?: ReturnType<typeof setTimeout>;
+  private static readonly FAN_MODE_DEBOUNCE_MS = 500;
 
   constructor(platform: IKHomeBridgeHomebridgePlatform, accessory: PlatformAccessory, componentId: string, capabilities: string[],
     multiServiceAccessory: MultiServiceAccessory,
@@ -165,25 +172,9 @@ export class AirPurifierService extends BaseService {
   }
 
   private async setTargetAirPurifierState(value: CharacteristicValue): Promise<void> {
-    if (value === 1) {
-      // AUTO: cancel any pending manual mode fallback and send immediately
-      if (this.manualModeTimer) {
-        clearTimeout(this.manualModeTimer);
-        this.manualModeTimer = undefined;
-      }
-      this.log.info(`[${this.name}] set target air purifier state to auto`);
-      await this.sendCommandsOrFail([new Command('airConditionerFanMode', 'setFanMode', [AirPurifierFanMode.Auto])]);
-    } else {
-      // MANUAL: wait briefly for a RotationSpeed call (HomeKit typically sends both together).
-      // If setRotationSpeed fires within 500ms it cancels this timer and sends the actual fan mode.
-      // If no RotationSpeed follows, fall back to 'low' so the device exits Auto.
-      this.log.info(`[${this.name}] set target air purifier state to manual (waiting for rotation speed)`);
-      this.manualModeTimer = setTimeout(async () => {
-        this.manualModeTimer = undefined;
-        this.log.info(`[${this.name}] no rotation speed received, defaulting to low`);
-        await this.sendCommandsOrFail([new Command('airConditionerFanMode', 'setFanMode', [AirPurifierFanMode.Low])]);
-      }, 500);
-    }
+    this.log.info(`[${this.name}] set target air purifier state to ${value === 1 ? 'auto' : 'manual'}`);
+    this.pendingTargetState = value as number;
+    this.resetFanModeTimer();
   }
 
   // --- RotationSpeed ---
@@ -195,14 +186,40 @@ export class AirPurifierService extends BaseService {
   }
 
   private async setRotationSpeed(value: CharacteristicValue): Promise<void> {
-    // Cancel pending manual-mode fallback — this call supersedes it
-    if (this.manualModeTimer) {
-      clearTimeout(this.manualModeTimer);
-      this.manualModeTimer = undefined;
-    }
     const fanMode = this.levelToFanMode(value as number);
     this.log.info(`[${this.name}] set rotation speed to ${fanMode} (from level ${value})`);
-    await this.sendCommandsOrFail([new Command('airConditionerFanMode', 'setFanMode', [fanMode])]);
+    this.pendingRotationFanMode = fanMode;
+    this.resetFanModeTimer();
+  }
+
+  /**
+   * Reset the debounce timer. When it fires, resolve priority:
+   *   Auto (target=1) > RotationSpeed > Manual default (low)
+   * This ensures only one setFanMode command is sent regardless of
+   * how many characteristics HomeKit updates or in what order.
+   */
+  private resetFanModeTimer(): void {
+    if (this.fanModeTimer) {
+      clearTimeout(this.fanModeTimer);
+    }
+    this.fanModeTimer = setTimeout(async () => {
+      this.fanModeTimer = undefined;
+      let mode: AirPurifierFanMode;
+      if (this.pendingTargetState === 1) {
+        // Auto always wins — ignore any slider value sent alongside
+        mode = AirPurifierFanMode.Auto;
+      } else if (this.pendingRotationFanMode !== undefined) {
+        // Rotation speed was set — use it (whether or not Manual was also requested)
+        mode = this.pendingRotationFanMode;
+      } else {
+        // Manual was requested but no rotation speed followed — default to low
+        mode = AirPurifierFanMode.Low;
+      }
+      this.pendingTargetState = undefined;
+      this.pendingRotationFanMode = undefined;
+      this.log.info(`[${this.name}] sending debounced fan mode: ${mode}`);
+      await this.sendCommandsOrFail([new Command('airConditionerFanMode', 'setFanMode', [mode])]);
+    }, AirPurifierService.FAN_MODE_DEBOUNCE_MS);
   }
 
   // --- Filter ---

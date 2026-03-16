@@ -1,6 +1,12 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.51] - Air Purifier Command Debounce Improvements & Offline Log Spam Fix
+
+### Fixed
+- **Air Purifier double/triple beeps (improved)**: v1.0.50 debounce only handled the Manual direction. Switching between Auto and Manual still caused 2 beeps because HomeKit sends `setTargetAirPurifierState` and `setRotationSpeed` near-simultaneously in both directions. All fan mode commands now go through a unified debounce with order-independent priority resolution (Auto > RotationSpeed > Manual default), ensuring only a single `setFanMode` command is sent regardless of callback ordering.
+- **Offline device log spam** (#26): When a device is offline (e.g. washer in standby), every HomeKit characteristic query logged `"<device> is offline"` at info level. With multiple services and short poll intervals, this produced 10+ messages per cycle. Changed to debug level and added missing `return` to avoid unnecessary API calls to SmartThings for known-offline devices.
+
 ## [1.0.50] - Air Purifier Command Debounce & Sensor Fixes
 
 ### Fixed
