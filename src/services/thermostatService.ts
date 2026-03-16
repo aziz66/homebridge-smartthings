@@ -165,7 +165,7 @@ export class ThermostatService extends BaseService {
     if (this.capabilities.includes('switch')) {
       commands.push(new Command('switch', cmd === 'off' ? 'off' : 'on'));
     }
-    commands.push(new Command('thermostatMode', cmd));
+    commands.push(new Command('thermostatMode', 'setThermostatMode', [cmd]));
 
     this.multiServiceAccessory.sendCommands(commands).then((success) => {
       if (success) {

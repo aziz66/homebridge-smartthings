@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.54] - Fix Thermostat Custom Mode Commands (HTTP 422)
+
+### Fixed
+- **Custom thermostat modes fail with HTTP 422** (#25): Custom modes like `radiatingfloor` configured via `thermostatModeOverrides` were sent as direct command names (e.g. `{"command":"radiatingfloor"}`), which SmartThings rejects. Now uses the canonical `setThermostatMode` command with the mode as an argument (`{"command":"setThermostatMode","arguments":["radiatingfloor"]}`), which works for both standard and custom modes.
+
 ## [1.0.53] - Configurable Thermostat Mode Mapping
 
 ### Added
