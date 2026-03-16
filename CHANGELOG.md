@@ -1,6 +1,15 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.50] - Air Purifier Command Debounce & Sensor Fixes
+
+### Fixed
+- **Air Purifier double beeps**: Switching to Manual mode in HomeKit previously sent two SmartThings commands simultaneously (one from the mode selector, one from the rotation speed slider), causing the purifier to beep 2-3 times. Mode and speed commands are now debounced — when switching to Manual, the plugin waits 500ms for a rotation speed update before sending any command, ensuring only a single `setFanMode` is sent.
+- **Air quality event overwriting PM2.5-based value**: Real-time `airQualitySensor` webhook events would overwrite the accurate PM2.5-derived air quality with the unreliable SmartThings value (which often returns 1/"Excellent" regardless of actual conditions). The event handler now skips `airQualitySensor` events when `dustSensor` is available, matching the polling logic introduced in v1.0.48.
+
+### Added
+- **`veryFineDustSensor` optional capability**: Samsung air purifiers that report `veryFineDustSensor` (PM1.0) now have this capability consumed by the AirPurifierService, preventing it from being left unmatched during service registration.
+
 ## [1.0.49] - Generic Thermostat Support (temperatureSetpoint)
 
 ### Added

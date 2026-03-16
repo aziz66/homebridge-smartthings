@@ -23,6 +23,7 @@ export class AirPurifierService extends BaseService {
   private airPurifierService: Service;
   private airQualitySensorService?: Service;
   private humiditySensorService?: Service;
+  private manualModeTimer?: ReturnType<typeof setTimeout>;
 
   constructor(platform: IKHomeBridgeHomebridgePlatform, accessory: PlatformAccessory, componentId: string, capabilities: string[],
     multiServiceAccessory: MultiServiceAccessory,
@@ -164,10 +165,25 @@ export class AirPurifierService extends BaseService {
   }
 
   private async setTargetAirPurifierState(value: CharacteristicValue): Promise<void> {
-    // AUTO = 1, MANUAL = 0
-    const fanMode = value === 1 ? AirPurifierFanMode.Auto : AirPurifierFanMode.Low;
-    this.log.info(`[${this.name}] set target air purifier state to ${fanMode}`);
-    await this.sendCommandsOrFail([new Command('airConditionerFanMode', 'setFanMode', [fanMode])]);
+    if (value === 1) {
+      // AUTO: cancel any pending manual mode fallback and send immediately
+      if (this.manualModeTimer) {
+        clearTimeout(this.manualModeTimer);
+        this.manualModeTimer = undefined;
+      }
+      this.log.info(`[${this.name}] set target air purifier state to auto`);
+      await this.sendCommandsOrFail([new Command('airConditionerFanMode', 'setFanMode', [AirPurifierFanMode.Auto])]);
+    } else {
+      // MANUAL: wait briefly for a RotationSpeed call (HomeKit typically sends both together).
+      // If setRotationSpeed fires within 500ms it cancels this timer and sends the actual fan mode.
+      // If no RotationSpeed follows, fall back to 'low' so the device exits Auto.
+      this.log.info(`[${this.name}] set target air purifier state to manual (waiting for rotation speed)`);
+      this.manualModeTimer = setTimeout(async () => {
+        this.manualModeTimer = undefined;
+        this.log.info(`[${this.name}] no rotation speed received, defaulting to low`);
+        await this.sendCommandsOrFail([new Command('airConditionerFanMode', 'setFanMode', [AirPurifierFanMode.Low])]);
+      }, 500);
+    }
   }
 
   // --- RotationSpeed ---
@@ -179,6 +195,11 @@ export class AirPurifierService extends BaseService {
   }
 
   private async setRotationSpeed(value: CharacteristicValue): Promise<void> {
+    // Cancel pending manual-mode fallback — this call supersedes it
+    if (this.manualModeTimer) {
+      clearTimeout(this.manualModeTimer);
+      this.manualModeTimer = undefined;
+    }
     const fanMode = this.levelToFanMode(value as number);
     this.log.info(`[${this.name}] set rotation speed to ${fanMode} (from level ${value})`);
     await this.sendCommandsOrFail([new Command('airConditionerFanMode', 'setFanMode', [fanMode])]);
@@ -359,8 +380,12 @@ export class AirPurifierService extends BaseService {
         break;
 
       case 'airQualitySensor':
-        this.airQualitySensorService?.updateCharacteristic(this.platform.Characteristic.AirQuality,
-          this.stAirQualityToHomeKit(event.value));
+        // Skip unreliable airQualitySensor events when dustSensor is available,
+        // as PM2.5-based air quality (updated via dustSensor events) is more accurate
+        if (!this.isCapabilitySupported('dustSensor')) {
+          this.airQualitySensorService?.updateCharacteristic(this.platform.Characteristic.AirQuality,
+            this.stAirQualityToHomeKit(event.value));
+        }
         break;
 
       case 'dustSensor':

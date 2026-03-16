@@ -106,6 +106,7 @@ export class MultiServiceAccessory {
         'custom.filterState',
         'airQualitySensor',
         'dustSensor',
+        'veryFineDustSensor',
         'odorSensor',
         'relativeHumidityMeasurement',
       ],
