@@ -1,6 +1,14 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.53] - Configurable Thermostat Mode Mapping
+
+### Added
+- **Thermostat Mode Overrides** (#25): New `thermostatModeOverrides` config option to control which SmartThings thermostatMode is sent when HomeKit requests HEAT or COOL. This lets users with non-standard HVAC systems (e.g. Koolnova with `radiatingfloor`, `radiatingfloorandhotair`) choose which mode maps to HomeKit HEAT/COOL on a per-device basis. Devices without overrides continue to use the defaults (`heat`/`cool`).
+  - Configure per device by name (case-insensitive matching)
+  - Available in the Homebridge UI under "Thermostat Mode Overrides"
+  - Only affects the SET direction (HomeKit → SmartThings); GET direction already handles custom modes correctly
+
 ## [1.0.52] - Generic Thermostat Switch-Based Power State Fix
 
 ### Fixed

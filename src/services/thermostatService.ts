@@ -147,11 +147,11 @@ export class ThermostatService extends BaseService {
         break;
 
       case this.platform.Characteristic.TargetHeatingCoolingState.COOL:
-        cmd = 'cool';
+        cmd = this.getConfiguredMode('cool');
         break;
 
       case this.platform.Characteristic.TargetHeatingCoolingState.HEAT:
-        cmd = 'heat';
+        cmd = this.getConfiguredMode('heat');
         break;
 
       default:
@@ -339,6 +339,18 @@ export class ThermostatService extends BaseService {
     // Nothing to do as there is no way to send this off to Smartthings
     this.log.debug(`Received request to set display units to ${value}.  No equivalent in Smartthings...`);
     return;
+  }
+
+  private getConfiguredMode(homekitMode: 'heat' | 'cool'): string {
+    const overrides: Array<{ deviceName: string; heatMode?: string; coolMode?: string }>
+      = this.platform.config.thermostatModeOverrides || [];
+    const match = overrides.find(
+      o => o.deviceName?.toLowerCase().trim() === this.name.toLowerCase().trim(),
+    );
+    if (homekitMode === 'heat') {
+      return match?.heatMode || 'heat';
+    }
+    return match?.coolMode || 'cool';
   }
 
   public processEvent(event: ShortEvent): void {

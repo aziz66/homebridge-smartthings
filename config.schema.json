@@ -251,6 +251,35 @@
           "required": ["deviceName", "ip"]
         }
       },
+      "thermostatModeOverrides": {
+        "title": "Thermostat Mode Overrides",
+        "type": "array",
+        "description": "Override which SmartThings thermostatMode is sent when HomeKit requests HEAT or COOL. Only needed for HVAC systems with non-standard modes (e.g. Koolnova). Devices not listed here use the defaults (heat/cool).",
+        "items": {
+          "type": "object",
+          "properties": {
+            "deviceName": {
+              "title": "Device Name",
+              "type": "string",
+              "minLength": 1,
+              "description": "Exact SmartThings device name to match (case-insensitive)"
+            },
+            "heatMode": {
+              "title": "HomeKit HEAT sends",
+              "type": "string",
+              "default": "heat",
+              "description": "SmartThings thermostatMode to send when HomeKit requests HEAT (e.g. heat, radiatingfloor)"
+            },
+            "coolMode": {
+              "title": "HomeKit COOL sends",
+              "type": "string",
+              "default": "cool",
+              "description": "SmartThings thermostatMode to send when HomeKit requests COOL"
+            }
+          },
+          "required": ["deviceName"]
+        }
+      },
       "ShowOnlyDevices": {
         "title": "Show Only Devices (Whitelist)",
         "type": "array",
