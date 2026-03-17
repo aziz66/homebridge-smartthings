@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.55] - Air Purifier Double-Beep Fix on Mode Switch
+
+### Fixed
+- **Air Purifier double-beep when switching Auto↔Manual** (#24): When switching between Auto and Manual modes, HomeKit sends `setActive(1)` alongside mode/speed changes even when the device is already on. The fan mode debounce correctly collapses mode and speed into one command, but `setActive(1)` was sent immediately as a redundant `switch on` — causing the Samsung purifier to beep once for the no-op switch command and once for the actual mode change. The plugin now checks the cached device status before sending `switch on`; if the device is already on, the redundant command is skipped. Turning off always sends immediately, and turning on from off works normally.
+
 ## [1.0.54] - Fix Thermostat Custom Mode Commands (HTTP 422)
 
 ### Fixed

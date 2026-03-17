@@ -149,6 +149,16 @@ export class AirPurifierService extends BaseService {
 
   private async setActive(value: CharacteristicValue): Promise<void> {
     const switchState = value ? SwitchState.On : SwitchState.Off;
+
+    // Skip redundant "switch on" if device is already on (cached status).
+    // HomeKit sends setActive(1) alongside mode changes even when already on,
+    // causing a double-beep on Samsung air purifiers.
+    if (switchState === SwitchState.On
+      && this.deviceStatus?.status?.switch?.switch?.value === SwitchState.On) {
+      this.log.info(`[${this.name}] skipping redundant switch on (already on)`);
+      return;
+    }
+
     this.log.info(`[${this.name}] set active to ${switchState}`);
     await this.sendCommandsOrFail([new Command('switch', switchState)]);
   }
