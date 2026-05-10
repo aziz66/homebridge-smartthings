@@ -74,7 +74,7 @@ export class WindowCoveringService extends BaseService {
       command = 'setShadeLevel';
     }
 
-    this.multiServiceAccessory.sendCommand(capability, command, [value])
+    this.multiServiceAccessory.sendCommand(this.componentId, capability, command, [value])
       .then(() => {
         this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
         this.multiServiceAccessory.forceNextStatusRefresh();

@@ -67,10 +67,25 @@ export function getRefrigeratorComponentDisplayName(componentId: string): string
 
 // Pull the disabled-component IDs out of main's status. Returns [] if the
 // shape doesn't match (defensive — Samsung occasionally renames OCF keys).
+// SmartThings keys capabilities flat at the top of mainStatus
+// (e.g. mainStatus["custom.disabledComponents"]); a legacy nested shape
+// (mainStatus.custom.disabledComponents…) is checked as a fallback.
 export function extractDisabledComponents(mainStatus: Record<string, unknown> | undefined): string[] {
   if (!mainStatus || typeof mainStatus !== 'object') {
     return [];
   }
+
+  const flat = (mainStatus as Record<string, unknown>)['custom.disabledComponents'];
+  if (flat && typeof flat === 'object') {
+    const inner = (flat as Record<string, unknown>).disabledComponents;
+    if (inner && typeof inner === 'object') {
+      const value = (inner as Record<string, unknown>).value;
+      if (Array.isArray(value)) {
+        return value.filter((v): v is string => typeof v === 'string');
+      }
+    }
+  }
+
   const custom = (mainStatus as Record<string, unknown>).custom;
   if (!custom || typeof custom !== 'object') {
     return [];
@@ -116,6 +131,18 @@ function readDriverStateValue(mainStatus: Record<string, unknown> | undefined): 
   if (!mainStatus) {
     return null;
   }
+
+  const flat = (mainStatus as Record<string, unknown>)['samsungce.driverState'];
+  if (flat && typeof flat === 'object') {
+    const inner = (flat as Record<string, unknown>).driverState;
+    if (inner && typeof inner === 'object') {
+      const value = (inner as Record<string, unknown>).value;
+      if (value !== undefined && value !== null) {
+        return value as OcfDriverStateValue;
+      }
+    }
+  }
+
   const samsungce = (mainStatus as Record<string, unknown>).samsungce;
   if (!samsungce || typeof samsungce !== 'object') {
     return null;

@@ -49,7 +49,7 @@ export class ValveService extends BaseService {
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
     const command = value === this.platform.Characteristic.Active.ACTIVE ? 'open' : 'close';
-    this.multiServiceAccessory.sendCommand('valve', command).then((success) => {
+    this.multiServiceAccessory.sendCommand(this.componentId, 'valve', command).then((success) => {
       if (success) {
         this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
         this.multiServiceAccessory.forceNextStatusRefresh();

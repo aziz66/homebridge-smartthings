@@ -163,9 +163,9 @@ export class ThermostatService extends BaseService {
     // with thermostatMode in a single API call to control the real power state
     const commands: Command[] = [];
     if (this.capabilities.includes('switch')) {
-      commands.push(new Command('switch', cmd === 'off' ? 'off' : 'on'));
+      commands.push(new Command(this.componentId, 'switch', cmd === 'off' ? 'off' : 'on'));
     }
-    commands.push(new Command('thermostatMode', 'setThermostatMode', [cmd]));
+    commands.push(new Command(this.componentId, 'thermostatMode', 'setThermostatMode', [cmd]));
 
     this.multiServiceAccessory.sendCommands(commands).then((success) => {
       if (success) {
@@ -307,7 +307,7 @@ export class ThermostatService extends BaseService {
 
     // Devices using a single temperatureSetpoint (e.g. Koolnova HVAC)
     if (this.capabilities.includes('temperatureSetpoint')) {
-      this.multiServiceAccessory.sendCommand('temperatureSetpoint', 'setTemperatureSetpoint', [convertedTemp]);
+      this.multiServiceAccessory.sendCommand(this.componentId, 'temperatureSetpoint', 'setTemperatureSetpoint', [convertedTemp]);
       return;
     }
 
@@ -322,7 +322,7 @@ export class ThermostatService extends BaseService {
       command = 'setHeatingSetpoint';
     }
 
-    this.multiServiceAccessory.sendCommand(capability, command, [convertedTemp]);
+    this.multiServiceAccessory.sendCommand(this.componentId, capability, command, [convertedTemp]);
   }
 
   // DISPLAY UNITS

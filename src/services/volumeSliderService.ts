@@ -94,7 +94,7 @@ export class VolumeSliderService extends BaseService {
     const command = value as boolean ? 'unmute' : 'mute';
     this.log.debug(`Volume slider turning ${value ? 'ON (unmuting)' : 'OFF (muting)'} ${this.name}`);
     
-    const success = await this.multiServiceAccessory.sendCommand('audioMute', command);
+    const success = await this.multiServiceAccessory.sendCommand(this.componentId, 'audioMute', command);
     
     if (success) {
       this.log.info(`✅ Volume slider ${command}d successfully for ${this.name}`);
@@ -154,7 +154,7 @@ export class VolumeSliderService extends BaseService {
     this.log.debug(`Volume slider setting brightness to ${volume}% for ${this.name}`);
     
     // Set volume using proper command mechanism
-    const success = await this.multiServiceAccessory.sendCommand('audioVolume', 'setVolume', [volume]);
+    const success = await this.multiServiceAccessory.sendCommand(this.componentId, 'audioVolume', 'setVolume', [volume]);
     
     if (success) {
       this.log.info(`✅ Volume slider set successfully to ${volume}% for ${this.name}`);
@@ -170,7 +170,7 @@ export class VolumeSliderService extends BaseService {
             
             if (muteValue === 'muted') {
               this.log.debug(`Auto-unmuting ${this.name} because volume was set to ${volume}%`);
-              await this.multiServiceAccessory.sendCommand('audioMute', 'unmute');
+              await this.multiServiceAccessory.sendCommand(this.componentId, 'audioMute', 'unmute');
             }
           }
         } catch (error) {

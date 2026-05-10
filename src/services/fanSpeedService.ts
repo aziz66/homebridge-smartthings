@@ -43,7 +43,7 @@ export class FanSpeedService extends BaseService {
       this.log.error(this.name + ' is offline');
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
-    this.multiServiceAccessory.sendCommand('switch', value ? 'on' : 'off').then((success) => {
+    this.multiServiceAccessory.sendCommand(this.componentId, 'switch', value ? 'on' : 'off').then((success) => {
       if (success) {
         this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
       } else {
@@ -94,7 +94,7 @@ export class FanSpeedService extends BaseService {
       }
 
       this.log.debug(`Setting value of ${this.name} to ${level}`);
-      this.multiServiceAccessory.sendCommand('fanSpeed', 'setFanSpeed', [level]).then(success => {
+      this.multiServiceAccessory.sendCommand(this.componentId, 'fanSpeed', 'setFanSpeed', [level]).then(success => {
         if (success) {
           this.log.debug('setLevel(' + value + ') SUCCESSFUL for ' + this.name);
           this.multiServiceAccessory.forceNextStatusRefresh();

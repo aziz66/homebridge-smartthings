@@ -474,7 +474,7 @@ export class TelevisionService extends BaseService {
     }
 
     // Standard path: use SmartThings API
-    const success = await this.multiServiceAccessory.sendCommand('switch', command);
+    const success = await this.multiServiceAccessory.sendCommand(this.componentId, 'switch', command);
 
     if (success) {
       this.log.debug(`TV power ${command} successful for ${this.name}`);
@@ -546,16 +546,16 @@ export class TelevisionService extends BaseService {
       if (this.appIds.has(inputId)) {
         // App launch via custom.launchapp
         this.log.info(`Launching app "${targetInput.name}" (${inputId}) on ${this.name}`);
-        success = await this.multiServiceAccessory.sendCommand('custom.launchapp', 'launchApp', [inputId]);
+        success = await this.multiServiceAccessory.sendCommand(this.componentId, 'custom.launchapp', 'launchApp', [inputId]);
       } else {
         // Physical input source — use Samsung-specific mediaInputSource
         this.log.debug(`Using Samsung-specific input source command: samsungvd.mediaInputSource.setInputSource("${inputId}")`);
-        success = await this.multiServiceAccessory.sendCommand('samsungvd.mediaInputSource', 'setInputSource', [inputId]);
+        success = await this.multiServiceAccessory.sendCommand(this.componentId, 'samsungvd.mediaInputSource', 'setInputSource', [inputId]);
 
         // Fallback to standard mediaInputSource capability if Samsung-specific fails
         if (!success) {
           this.log.debug(`Fallback: Using standard input source command: mediaInputSource.setInputSource("${inputId}")`);
-          success = await this.multiServiceAccessory.sendCommand('mediaInputSource', 'setInputSource', [inputId]);
+          success = await this.multiServiceAccessory.sendCommand(this.componentId, 'mediaInputSource', 'setInputSource', [inputId]);
         }
       }
 
@@ -645,7 +645,7 @@ export class TelevisionService extends BaseService {
     if (command && capability) {
       try {
         this.log.debug(`Sending remote key command: ${capability}.${command} for ${this.name}`);
-        const success = await this.multiServiceAccessory.sendCommand(capability, command);
+        const success = await this.multiServiceAccessory.sendCommand(this.componentId, capability, command);
         if (success) {
           this.log.info(`✅ Remote key command ${capability}.${command} successful for ${this.name}`);
           setTimeout(() => {
@@ -714,7 +714,7 @@ export class TelevisionService extends BaseService {
 
     const samsungMode = reversePictureModeMap[Number(value)];
     if (samsungMode) {
-      const success = await this.multiServiceAccessory.sendCommand('custom.picturemode', 'setPictureMode', [samsungMode]);
+      const success = await this.multiServiceAccessory.sendCommand(this.componentId, 'custom.picturemode', 'setPictureMode', [samsungMode]);
       if (success) {
         this.log.debug(`Picture mode changed to ${samsungMode} for ${this.name}`);
         this.multiServiceAccessory.forceNextStatusRefresh();
@@ -764,13 +764,13 @@ export class TelevisionService extends BaseService {
     const muteState = value ? 'muted' : 'unmuted';
     this.log.debug(`Sending mute command: audioMute.setMute("${muteState}") for ${this.name}`);
 
-    let success = await this.multiServiceAccessory.sendCommand('audioMute', 'setMute', [muteState]);
+    let success = await this.multiServiceAccessory.sendCommand(this.componentId, 'audioMute', 'setMute', [muteState]);
 
     // Fallback to simple mute/unmute commands if setMute fails
     if (!success) {
       const fallbackCommand = value ? 'mute' : 'unmute';
       this.log.debug(`Fallback: Sending audioMute.${fallbackCommand} for ${this.name}`);
-      success = await this.multiServiceAccessory.sendCommand('audioMute', fallbackCommand);
+      success = await this.multiServiceAccessory.sendCommand(this.componentId, 'audioMute', fallbackCommand);
     }
 
     if (success) {
@@ -831,7 +831,7 @@ export class TelevisionService extends BaseService {
 
       if (muteState === 'muted' && volumeLevel > 0) {
         this.log.debug(`TV is muted, unmuting before setting volume for ${this.name}`);
-        await this.multiServiceAccessory.sendCommand('audioMute', 'unmute');
+        await this.multiServiceAccessory.sendCommand(this.componentId, 'audioMute', 'unmute');
         // Small delay to ensure unmute command processes
         await new Promise(resolve => setTimeout(resolve, 500));
       }
@@ -844,7 +844,7 @@ export class TelevisionService extends BaseService {
     const boundedVolume = Math.max(0, Math.min(100, Math.round(volumeLevel)));
 
     this.log.debug(`Sending volume command: audioVolume.setVolume with value [${boundedVolume}] for ${this.name}`);
-    const success = await this.multiServiceAccessory.sendCommand('audioVolume', 'setVolume', [boundedVolume]);
+    const success = await this.multiServiceAccessory.sendCommand(this.componentId, 'audioVolume', 'setVolume', [boundedVolume]);
 
     if (success) {
       this.currentVolume = boundedVolume;
@@ -874,7 +874,7 @@ export class TelevisionService extends BaseService {
 
     // For Samsung TVs, volumeUp/volumeDown might work better than setVolume
     // These commands don't require specific volume levels and work incrementally
-    const success = await this.multiServiceAccessory.sendCommand('audioVolume', command);
+    const success = await this.multiServiceAccessory.sendCommand(this.componentId, 'audioVolume', command);
 
     if (success) {
       this.log.debug(`Volume ${command} successful for ${this.name}`);

@@ -160,7 +160,7 @@ export class AirPurifierService extends BaseService {
     }
 
     this.log.info(`[${this.name}] set active to ${switchState}`);
-    await this.sendCommandsOrFail([new Command('switch', switchState)]);
+    await this.sendCommandsOrFail([new Command(this.componentId, 'switch', switchState)]);
   }
 
   // --- CurrentAirPurifierState ---
@@ -228,7 +228,7 @@ export class AirPurifierService extends BaseService {
       this.pendingTargetState = undefined;
       this.pendingRotationFanMode = undefined;
       this.log.info(`[${this.name}] sending debounced fan mode: ${mode}`);
-      await this.sendCommandsOrFail([new Command('airConditionerFanMode', 'setFanMode', [mode])]);
+      await this.sendCommandsOrFail([new Command(this.componentId, 'airConditionerFanMode', 'setFanMode', [mode])]);
     }, AirPurifierService.FAN_MODE_DEBOUNCE_MS);
   }
 

@@ -127,22 +127,22 @@ export class SecuritySystemService extends BaseService {
 
     switch (value) {
       case C.STAY_ARM:
-        cmd = new Command('securitySystem', 'armStay', [false]);
+        cmd = new Command(this.componentId, 'securitySystem', 'armStay', [false]);
         break;
       case C.AWAY_ARM:
-        cmd = new Command('securitySystem', 'armAway', [false]);
+        cmd = new Command(this.componentId, 'securitySystem', 'armAway', [false]);
         break;
       case C.NIGHT_ARM:
         if (this.supportsArmNight) {
-          cmd = new Command('securitySystem', 'armNight', [false]);
+          cmd = new Command(this.componentId, 'securitySystem', 'armNight', [false]);
         } else {
           this.log.warn(`${this.name} does not support armNight; falling back to armStay`);
-          cmd = new Command('securitySystem', 'armStay', [false]);
+          cmd = new Command(this.componentId, 'securitySystem', 'armStay', [false]);
         }
         break;
       case C.DISARM:
       default:
-        cmd = new Command('securitySystem', 'disarm');
+        cmd = new Command(this.componentId, 'securitySystem', 'disarm');
         break;
     }
 

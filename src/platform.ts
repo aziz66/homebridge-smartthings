@@ -463,13 +463,14 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
 
       const isTv = TelevisionService.isTelevisionDevice(device)
         && this.config.enableTelevisionService !== false;
+      const publishExternal = isTv && this.config.publishTVsAsExternal === true;
       const existingAccessory = this.accessories.find(accessory => accessory.UUID === device.deviceId);
 
-      if (isTv) {
-        // TVs must be published as external accessories so HomeKit advertises
-        // ci=TELEVISION via Bonjour and renders the proper TV tile + Control
-        // Center remote. Bridged accessories share the bridge's category, which
-        // is why they fall back to the generic icon (issue #31).
+      if (publishExternal) {
+        // Opt-in external publishing: gives HomeKit the proper TV tile + Control
+        // Center remote because the accessory advertises ci=TELEVISION on its own
+        // Bonjour record. Bridged accessories share the bridge's category and
+        // therefore always render with the generic icon (issue #31).
         this.externalTvUuids.add(device.deviceId);
 
         if (existingAccessory) {
@@ -481,7 +482,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
           );
           this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
         } else {
-          this.log.info('Registering new TV accessory: ' + device.label);
+          this.log.info('Registering new external TV accessory: ' + device.label);
           this.log.info(
             `To use ${device.label} in Apple Home: open Home app → + → Add Accessory → More options → ` +
             'select the TV from nearby accessories → enter your bridge PIN ' +
@@ -545,20 +546,36 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
     // compartments the user has disabled in the SmartThings app before
     // creating any HomeKit services for them.
     if (this.config.ExposeMultiZoneRefrigerator === true
-        && hasRefrigeratorOcfDriver(device)
-        && hasDisabledComponentsCapability(device)) {
-      try {
-        const res = await this.axInstance.get(`devices/${device.deviceId}/status`);
-        const disabled = extractDisabledComponents(res.data?.components?.main);
-        if (disabled.length > 0) {
-          this.log.info(`Refrigerator ${device.label}: skipping disabled compartments [${disabled.join(', ')}]`);
-          components = components.filter(c => c.id === 'main' || !disabled.includes(c.id));
+        && hasRefrigeratorOcfDriver(device)) {
+
+      // main and cooler usually mirror the same temperatureMeasurement reading;
+      // strip it from cooler so HomeKit doesn't get a duplicate Refrigerator tile.
+      // Clone rather than mutate — `device` is shared with `accessory.context.device`,
+      // which Homebridge persists to disk.
+      const mainComp = components.find(c => c.id === 'main');
+      const coolerComp = components.find(c => c.id === 'cooler');
+      if (mainComp && coolerComp && mainComp.capabilities.some(cap => cap.id === 'temperatureMeasurement')) {
+        const strippedCooler = {
+          ...coolerComp,
+          capabilities: coolerComp.capabilities.filter(cap => cap.id !== 'temperatureMeasurement'),
+        };
+        components = components.map(c => c === coolerComp ? strippedCooler : c);
+      }
+
+      if (hasDisabledComponentsCapability(device)) {
+        try {
+          const res = await this.axInstance.get(`devices/${device.deviceId}/status`);
+          const disabled = extractDisabledComponents(res.data?.components?.main);
+          if (disabled.length > 0) {
+            this.log.info(`Refrigerator ${device.label}: skipping disabled compartments [${disabled.join(', ')}]`);
+            components = components.filter(c => c.id === 'main' || !disabled.includes(c.id));
+          }
+        } catch (error) {
+          this.log.warn(
+            `Failed to prefetch status for refrigerator ${device.label}: ${error}. ` +
+            'Disabled compartments may appear as "No Response".',
+          );
         }
-      } catch (error) {
-        this.log.warn(
-          `Failed to prefetch status for refrigerator ${device.label}: ${error}. ` +
-          'Disabled compartments may appear as "No Response".',
-        );
       }
     }
 
