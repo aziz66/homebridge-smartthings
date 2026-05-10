@@ -149,9 +149,11 @@ export class MultiServiceAccessory {
       service: ThermostatService,
     },
     {
-      // There is a heater out there that just supports thermostatMode and thermostatHeatingSetpoint
+      // Heating-only thermostats (Stelpro, Danfoss, baseboard, in-floor) often expose mode
+      // and operating state without a cooling setpoint — keep them when the device has them.
       capabilities: ['temperatureMeasurement',
         'thermostatHeatingSetpoint'],
+      optionalCapabilities: ['thermostatMode', 'thermostatOperatingState'],
       service: ThermostatService,
     },
     {
@@ -281,27 +283,25 @@ export class MultiServiceAccessory {
       }
     }
 
-    // Initialize device health check
+    // Initialize device health check (advisory only — see checkDeviceHealth below)
     this.checkDeviceHealth().catch(error => {
-      this.log.error(`Error checking device health for ${this.name}:`, error);
-      this.online = false;
+      this.log.debug(`Health check error for ${this.name}: ${error?.message || error}`);
     });
   }
 
+  // Cloud /health is unreliable for locally-executing Edge drivers (it can report OFFLINE
+  // even when the device is fully reachable via /status). Treat it as advisory: log only,
+  // never flip `online` to false from here. The failureCount mechanism in refreshStatus()
+  // and startPollingState() remains the source of truth for offline state.
   private async checkDeviceHealth(): Promise<void> {
     try {
       const response = await this.axInstance.get(this.healthURL);
-      this.online = response.data.state === 'ONLINE';
-      this.log.debug(`Device ${this.name} is ${this.online ? 'online' : 'offline'}`);
-      // If successfully checked health, and previously we might have been in a loop,
-      // this doesn't reset the loop counter directly, but successful init is good.
+      const reportedOnline = response.data.state === 'ONLINE';
+      this.log.debug(`Device ${this.name} cloud /health reports ${reportedOnline ? 'ONLINE' : response.data.state}`);
     } catch (error) {
-      this.log.error(`Failed to check device health for ${this.name}:`, error);
-      this.online = false;
-      // Record this specific failure type for crash loop detection
-      // This assumes checkDeviceHealth is critical and its failure might lead to a crash loop
+      this.log.debug(`Failed to check device health for ${this.name}: ${(error as Error)?.message || error}`);
       await this.crashLoopManager.recordPotentialCrash(CrashErrorType.DEVICE_HEALTH_FAILURE);
-      throw error; // Re-throw to be caught by the platform initialization or calling function
+      throw error;
     }
   }
 
@@ -356,7 +356,7 @@ export class MultiServiceAccessory {
     return capabilitiesToCover.filter(e => !allCapabilities.includes(e));
   }
 
-  public addComponent(componentId: string, capabilities: string[]) {
+  public async addComponent(componentId: string, capabilities: string[]) {
     const component = {
       componentId,
       capabilities,
@@ -394,17 +394,17 @@ export class MultiServiceAccessory {
 
         this.services.push(serviceInstance);
 
-        // Trigger input source registration if mediaInputSource capability is available
+        // Trigger input source registration if mediaInputSource capability is available.
+        // Done synchronously so all input services are present on the accessory before
+        // it gets registered/published — avoids needing updatePlatformAccessories() later
+        // (which corrupts the bridge's cache for externally-published TVs, issue #31).
         if (tvCapabilities.includes('samsungvd.mediaInputSource')) {
           this.log.debug(`🔄 Triggering input source registration for ${this.name}`);
-          // Use setTimeout to allow constructor to complete first
-          setTimeout(async () => {
-            try {
-              await serviceInstance.registerInputSourceCapability();
-            } catch (error) {
-              this.log.error(`Failed to register input sources for ${this.name}:`, error);
-            }
-          }, 100);
+          try {
+            await serviceInstance.registerInputSourceCapability();
+          } catch (error) {
+            this.log.error(`Failed to register input sources for ${this.name}:`, error);
+          }
         }
 
                      // Remove TV capabilities from the list to avoid duplicate services

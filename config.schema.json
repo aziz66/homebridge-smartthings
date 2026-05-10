@@ -196,8 +196,8 @@
         "title": "Publish TVs as External Accessories (proper TV icon + Control Center remote)",
         "type": "boolean",
         "required": false,
-        "default": false,
-        "description": "When enabled, Samsung TVs are published as standalone (external) HomeKit accessories instead of bridged children. This is the only way HomeKit will render the proper TV tile icon and offer the iOS Control Center remote — the TV-specific UI requires the accessory to advertise its category over its own Bonjour record, which bridged accessories cannot do. Trade-offs: each TV needs to be paired separately via Apple Home → + → Add Accessory → 'More options…' → Nearby Accessories → enter your bridge or child-bridge PIN; switching this option on or off later will leave orphan tiles in HomeKit that you must remove manually. Leave disabled (default) to keep TVs as bridged accessories with the generic icon — TV functionality (inputs, power, volume) works either way."
+        "default": true,
+        "description": "When enabled (default), Samsung TVs are published as standalone (external) HomeKit accessories so HomeKit renders the proper TV tile icon and the iOS Control Center remote works (issue #31). Each TV must be paired individually: Apple Home → + → Add Accessory → 'More options…' → Nearby Accessories → enter your bridge or child-bridge PIN. Set this to false to fall back to bridged TVs with the generic icon and the standard Add Accessory flow (issue #37) — TV functionality (inputs, power, volume) works either way. Switching this option on or off later will leave orphan tiles in HomeKit that you must remove manually."
       },
       "IgnoreLocations": {
         "title": "Locations to Ignore",

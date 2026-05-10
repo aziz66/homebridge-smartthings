@@ -32,7 +32,12 @@ export class ThermostatService extends BaseService {
       .onSet(this.setTargetHeatingCoolingState.bind(this));
     this.service.getCharacteristic(platform.Characteristic.CurrentTemperature)
       .onGet(this.getCurrentTemperature.bind(this));
+    // Lower the default HomeKit min (10 °C) so frost-protection setpoints (5 °C) used by
+    // EU/Canada baseboard/in-floor/radiator thermostats stop tripping the "exceeded
+    // minimum of 10" warning. maxValue/minStep keep HAP defaults so Samsung thermostats
+    // retain their 0.1 °C slider precision and high setpoints aren't clamped.
     this.service.getCharacteristic(platform.Characteristic.TargetTemperature)
+      .setProps({ minValue: 5 })
       .onGet(this.getTargetTemperature.bind(this))
       .onSet(this.setTargetTemperature.bind(this));
     this.service.getCharacteristic(platform.Characteristic.TemperatureDisplayUnits)
@@ -211,6 +216,27 @@ export class ThermostatService extends BaseService {
             return;
           }
           this.log.debug(`thermostatMode value from ${this.name}: ${thermostatMode}`);
+
+          // When the device exposes thermostatOperatingState, use it to downgrade to OFF
+          // while idle/pending. HAP's CurrentHeatingCoolingState is "what the device is doing
+          // RIGHT NOW", not "what mode it is set to" — so a heater set to 'heat' but currently
+          // at setpoint (operating='idle') should report OFF, not HEAT.
+          if (this.supportsOperatingState) {
+            const opState = this.deviceStatus.status.thermostatOperatingState?.thermostatOperatingState?.value;
+            if (opState === 'idle' || opState === 'pending heat' || opState === 'pending cool') {
+              resolve(this.platform.Characteristic.CurrentHeatingCoolingState.OFF);
+              return;
+            }
+            if (opState === 'heating') {
+              resolve(this.platform.Characteristic.CurrentHeatingCoolingState.HEAT);
+              return;
+            }
+            if (opState === 'cooling') {
+              resolve(this.platform.Characteristic.CurrentHeatingCoolingState.COOL);
+              return;
+            }
+            // Unknown opState (null, fan only, etc.) → fall through to mode-based mapping
+          }
 
           switch (thermostatMode) {
             case 'cool':

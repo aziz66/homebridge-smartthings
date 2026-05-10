@@ -308,12 +308,6 @@ export class TelevisionService extends BaseService {
     if (this.inputServices.length === 0) {
       this.log.info(`🔄 Input source capability available - registering input sources for ${this.name}`);
       await this.setupInputSources();
-
-      // CRITICAL: Update HomeKit about the new input source services
-      this.log.debug(
-        `📱 Updating HomeKit with ${this.inputServices.length} new input sources for ${this.name}`,
-      );
-      this.platform.api.updatePlatformAccessories([this.accessory]);
     } else {
       this.log.debug(`Input sources already registered for ${this.name}`);
     }
@@ -1098,9 +1092,6 @@ export class TelevisionService extends BaseService {
 
           // Re-append app input sources (they're config-based, not from SmartThings)
           this.reappendAppInputSources();
-
-          // Update HomeKit about the changes
-          this.platform.api.updatePlatformAccessories([this.accessory]);
 
           this.log.info(`📺 Input source update completed for ${this.name}`);
         }

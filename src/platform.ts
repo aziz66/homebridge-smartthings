@@ -463,7 +463,10 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
 
       const isTv = TelevisionService.isTelevisionDevice(device)
         && this.config.enableTelevisionService !== false;
-      const publishExternal = isTv && this.config.publishTVsAsExternal === true;
+      // Default to external publishing (proper TV icon + Control Center remote, issue #31).
+      // Set publishTVsAsExternal: false in config to keep TVs bridged (avoids the
+      // "More options → Nearby Accessories" pairing flow — issue #37).
+      const publishExternal = isTv && this.config.publishTVsAsExternal !== false;
       const existingAccessory = this.accessories.find(accessory => accessory.UUID === device.deviceId);
 
       if (publishExternal) {
@@ -579,9 +582,9 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
       }
     }
 
-    components.forEach(component => {
-      acc.addComponent(component.id, component.capabilities.map((c) => c.id));
-    });
+    for (const component of components) {
+      await acc.addComponent(component.id, component.capabilities.map((c) => c.id));
+    }
 
     return acc;
   }
