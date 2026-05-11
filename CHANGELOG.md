@@ -1,6 +1,32 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.61] - Multi-Component Refrigerator, Thermostat Robustness, OAuth Diagnostics, TV Stability
+
+> Stable release graduating the `1.0.61-beta.0` → `beta.3` series. The per-beta entries below preserve the technical detail behind each fix and the contributors credited along the way.
+
+### Added
+- **Multi-Component Samsung Refrigerator support** (#35) — new `ExposeMultiZoneRefrigerator` config option exposes per-compartment temperatures (Freezer, FlexZone, CVRoom, etc.) on Samsung Family Hub fridges by reading their OCF driver-state blob; compartments disabled in the SmartThings app are pruned at discovery. Standard single-zone fridges are unaffected. Contributed by @grecine.
+- **OAuth wizard diagnostic errors** (#36) — Step 4 of the wizard now surfaces the actual SmartThings OAuth2 error (`invalid_grant`, `redirect_uri_mismatch`, etc.) in both the toast and the Homebridge log, instead of the generic "Please try again" message.
+
+### Fixed
+- **Cloud `/health` no longer marks devices permanently offline** (#33) — locally-executing SmartThings Edge drivers frequently report stale OFFLINE on cloud `/health` while remaining fully reachable; `/health` is now treated as advisory and the `failureCount`-based detection in `refreshStatus()` is the source of truth for real outages.
+- **Heating-only thermostats retain mode and operating state** (#33) — devices like Stelpro ST218 (heat + mode, no cooling setpoint) were silently stripped of `thermostatMode` and reported `OFF` for everything; they now keep the capability and report correct state.
+- **`CurrentHeatingCoolingState` reflects what the device is actually doing** (#33) — consults `thermostatOperatingState` when present, so thermostats correctly show `OFF` when idle/at setpoint and `HEAT`/`COOL` only when actively cycling.
+- **Target Temperature min lowered to 5 °C** (#33) — fixes the "exceeded minimum of 10" HAP warning on frost-protection setpoints common to EU/Canada baseboard and in-floor thermostats.
+- **Samsung TV cache serialization error** (#31) — two `updatePlatformAccessories()` calls on externally-published TVs caused the bridge to abort cache saves for *every* plugin sharing the bridge; both calls are removed and input-source registration runs synchronously during accessory construction instead. Patch contributed by @apexad.
+- **Sub-component commands no longer 422** (#35) — commands now carry their `componentId`, so toggling an Ice Maker switch on a Family Hub fridge (and any other multi-component device) reaches the right component instead of being silently routed to `main`.
+- **Disabled-compartment pruning actually works** (#35 follow-up) — the OCF/disabledComponents parser was reading a nested shape SmartThings never returns; it now reads the correct flat shape, eliminating ghost tiles for compartments disabled in the SmartThings app.
+- **Duplicate Refrigerator tile from `main`/`cooler` mirroring** (#35 follow-up) — Family Hub fridges expose the same temperature on both components; `cooler` is now de-duplicated at discovery.
+
+### Changed
+- **`publishTVsAsExternal` default restored to `true`** (#31, #37) — with the serialization bug fixed, externally-published TVs are safe again, restoring the proper TV icon and Control Center remote that v1.0.59 introduced. Set `publishTVsAsExternal: false` in plugin config if you prefer bridged TVs (simpler pairing flow, generic icon). Users on `1.0.61-beta.2` who never set the option will silently flip back to external — see the migration note in the beta.3 section below for the re-pairing flow.
+
+### Credit
+- **@grecine** — refrigerator multi-component support contributed via #35, end-to-end verified on Samsung RF29DB9600QLA, plus follow-up OCF parser fixes.
+- **@apexad** — TV serialization fix contributed via patch on issue #31.
+- **@maxbaillargeon** — thermostat + online-recovery diagnosis on issue #33, debug-mode logs and `/status` payloads that pointed straight at three real bugs.
+
 ## [1.0.61-beta.3] - Thermostat & Online-Recovery Fixes, TV Serialization Fix, External-by-Default Restoration
 
 > Bundled fixes spanning two community-reported issues — #33 (thermostat + online-flag work from @maxbaillargeon on Stelpro Zigbee hardware) and #31 (TV cache-serialization fix from @apexad) — plus a decision to restore external-by-default TV publishing now that the underlying serialization bug is fixed (reverting the beta.2 default-flip).
