@@ -82,7 +82,7 @@ export class LockService extends BaseService {
     }
     this.lockInTransitionStart = Date.now();
     this.service.updateCharacteristic(this.platform.Characteristic.LockTargetState, value);
-    this.multiServiceAccessory.sendCommand('lock', value ? 'lock' : 'unlock').then((success) => {
+    this.multiServiceAccessory.sendCommand(this.componentId, 'lock', value ? 'lock' : 'unlock').then((success) => {
       if (success) {
         this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
         this.multiServiceAccessory.forceNextStatusRefresh();

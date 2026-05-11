@@ -125,3 +125,4 @@ excluded/
 **/.DS_Store
 .DS_Store
 nul
+.claude

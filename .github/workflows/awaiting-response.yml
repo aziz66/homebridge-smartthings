@@ -1,0 +1,39 @@
+name: Awaiting Response Label
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    if: ${{ github.event.issue.pull_request == null && github.event.issue.state == 'open' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const LABEL = 'awaiting-response';
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.issue.number;
+            const commenter = context.payload.comment.user.login;
+            const author = context.payload.issue.user.login;
+
+            if (commenter === 'aziz66' && commenter !== author) {
+              await github.rest.issues.addLabels({
+                owner, repo, issue_number, labels: [LABEL],
+              });
+              core.info(`Added ${LABEL} (owner replied).`);
+            } else if (commenter === author) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner, repo, issue_number, name: LABEL,
+                });
+                core.info(`Removed ${LABEL} (author replied).`);
+              } catch (e) {
+                if (e.status !== 404) throw e;
+              }
+            }

@@ -81,7 +81,7 @@ export class LightService extends BaseService {
       this.log.error(this.name + ' is offline');
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
-    this.multiServiceAccessory.sendCommand('switch', value ? 'on' : 'off').then((success) => {
+    this.multiServiceAccessory.sendCommand(this.componentId, 'switch', value ? 'on' : 'off').then((success) => {
       if (success) {
         this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
         this.multiServiceAccessory.forceNextStatusRefresh();
@@ -120,7 +120,7 @@ export class LightService extends BaseService {
         return reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
       }
 
-      this.multiServiceAccessory.sendCommand('switchLevel', 'setLevel', [value]).then(success => {
+      this.multiServiceAccessory.sendCommand(this.componentId, 'switchLevel', 'setLevel', [value]).then(success => {
         if (success) {
           this.log.debug('setLevel(' + value + ') SUCCESSFUL for ' + this.name);
           this.multiServiceAccessory.forceNextStatusRefresh();
@@ -176,7 +176,7 @@ export class LightService extends BaseService {
       }
       const stValue = 6500 - Math.round((value as number - 140) / 360 * 6500) + 1;
       this.log.debug(`Sending converted temperature value of ${stValue} to ${this.name}`);
-      this.multiServiceAccessory.sendCommand('colorTemperature', 'setColorTemperature', [stValue])
+      this.multiServiceAccessory.sendCommand(this.componentId, 'colorTemperature', 'setColorTemperature', [stValue])
         .then(() => resolve())
         .catch((value) => reject(value));
     });
@@ -215,7 +215,7 @@ export class LightService extends BaseService {
   async setColor(hue: number, saturation: number): Promise<boolean> {
     this.log.debug(`setColor called with hue: ${hue}, saturation: ${saturation}}`);
     return new Promise((resolve) => {
-      this.multiServiceAccessory.sendCommand('colorControl', 'setColor', [{
+      this.multiServiceAccessory.sendCommand(this.componentId, 'colorControl', 'setColor', [{
         hue: this.currentColor.hue,
         saturation: this.currentColor.saturation,
       }])
@@ -236,7 +236,7 @@ export class LightService extends BaseService {
           .catch((value) => reject(value));
 
       } else {
-        this.multiServiceAccessory.sendCommand('colorControl', 'setHue', [huePct])
+        this.multiServiceAccessory.sendCommand(this.componentId, 'colorControl', 'setHue', [huePct])
           .then((success) => {
             if (success) {
               resolve();
@@ -294,7 +294,7 @@ export class LightService extends BaseService {
           .catch((value) => reject(value));
       } else {
 
-        this.multiServiceAccessory.sendCommand('colorControl', 'setSaturation', [value])
+        this.multiServiceAccessory.sendCommand(this.componentId, 'colorControl', 'setSaturation', [value])
           .then((success) => {
             if (success) {
               resolve();

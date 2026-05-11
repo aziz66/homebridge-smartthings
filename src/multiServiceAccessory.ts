@@ -28,8 +28,16 @@ import { AirConditionerService } from './services/airConditionerService';
 import { ACLightingService } from './services/acLightingService';
 import { TelevisionService } from './services/televisionService';
 import { VolumeSliderService } from './services/volumeSliderService';
+import { WasherService } from './services/washerService';
+import { DryerService } from './services/dryerService';
+import { DishwasherService } from './services/dishwasherService';
+import { AirPurifierService } from './services/airPurifierService';
+import { SecuritySystemService } from './services/securitySystemService';
+import { RefrigeratorTemperatureService } from './services/refrigeratorTemperatureService';
+import { extractDisabledComponents } from './util/samsungRefrigerator';
 import { Command } from './services/smartThingsCommand';
 import { CrashLoopManager, CrashErrorType } from './auth/CrashLoopManager';
+import { SamsungWebSocket } from './local/samsungWebSocket';
 import { ZigbangSmartDoorlockService } from './services/zigbangSmartDoorlockService';
 // type DeviceStatus = {
 //   timestamp: number;
@@ -100,6 +108,18 @@ export class MultiServiceAccessory {
       service: AirConditionerService,
     },
     {
+      capabilities: ['switch', 'airConditionerFanMode'],
+      optionalCapabilities: [
+        'custom.filterState',
+        'airQualitySensor',
+        'dustSensor',
+        'veryFineDustSensor',
+        'odorSensor',
+        'relativeHumidityMeasurement',
+      ],
+      service: AirPurifierService,
+    },
+    {
       capabilities: ['switch', 'fanSpeed', 'switchLevel'],
       service: FanSwitchLevelService,
     },
@@ -131,9 +151,20 @@ export class MultiServiceAccessory {
       service: ThermostatService,
     },
     {
-      // There is a heater out there that just supports thermostatMode and thermostatHeatingSetpoint
+      // Heating-only thermostats (Stelpro, Danfoss, baseboard, in-floor) often expose mode
+      // and operating state without a cooling setpoint — keep them when the device has them.
       capabilities: ['temperatureMeasurement',
         'thermostatHeatingSetpoint'],
+      optionalCapabilities: ['thermostatMode', 'thermostatOperatingState'],
+      service: ThermostatService,
+    },
+    {
+      // Thermostats using a single temperatureSetpoint (e.g. Koolnova HVAC)
+      // instead of separate heating/cooling setpoints
+      capabilities: ['temperatureMeasurement',
+        'thermostatMode',
+        'temperatureSetpoint'],
+      optionalCapabilities: ['switch'],
       service: ThermostatService,
     },
     {
@@ -143,6 +174,26 @@ export class MultiServiceAccessory {
     {
       capabilities: ['windowShade', 'switchLevel'],
       service: WindowCoveringService,
+    },
+    {
+      capabilities: ['washerOperatingState'],
+      optionalCapabilities: ['washerMode', 'remoteControlStatus'],
+      service: WasherService,
+    },
+    {
+      capabilities: ['dryerOperatingState'],
+      optionalCapabilities: ['dryerMode', 'remoteControlStatus'],
+      service: DryerService,
+    },
+    {
+      capabilities: ['dishwasherOperatingState'],
+      optionalCapabilities: ['dishwasherMode', 'remoteControlStatus'],
+      service: DishwasherService,
+    },
+    {
+      capabilities: ['securitySystem'],
+      optionalCapabilities: ['alarm', 'panicAlarm', 'temperatureAlarm'],
+      service: SecuritySystemService,
     },
   ];
 
@@ -168,9 +219,14 @@ export class MultiServiceAccessory {
 
   protected statusQueryInProgress = false;
   protected lastStatusResult = true;
+  protected hasInitialStatus = false;
 
   // Add a field for CrashLoopManager
   private crashLoopManager: CrashLoopManager;
+
+  // Frame TV: optional local WebSocket for full power off and art mode
+  public samsungWebSocket: SamsungWebSocket | null = null;
+  public frameTvConfig: { enableFullPowerOff: boolean; enableArtModeSwitch: boolean } | null = null;
 
   get id() {
     return this.accessory.UUID;
@@ -182,7 +238,7 @@ export class MultiServiceAccessory {
   ) {
     this.accessory = accessory;
     this.platform = platform;
-    this.name = accessory.context.device.label;
+    this.name = accessory.context.device.label || accessory.context.device.name || 'Unknown Device';
     this.log = platform.log;
     this.baseURL = platform.config.BaseURL;
     this.key = platform.config.AccessToken;
@@ -205,28 +261,64 @@ export class MultiServiceAccessory {
     // Use platform's axios instance to benefit from token refresh handling
     this.axInstance = platform.axInstance;
 
-    // Initialize device health check
+    // Check if this device is a configured Frame TV
+    const frameTvDevices: Array<{ deviceName: string; ip: string; enableFullPowerOff?: boolean; enableArtModeSwitch?: boolean; token?: string }>
+      = platform.config.frameTvDevices || [];
+    const matchedFrameTv = frameTvDevices.find(
+      ftv => ftv.deviceName && ftv.deviceName.toLowerCase().trim() === this.name.toLowerCase().trim(),
+    );
+    if (matchedFrameTv) {
+      if (!matchedFrameTv.ip || matchedFrameTv.ip.trim() === '') {
+        this.log.warn(`Frame TV config for "${this.name}" is missing IP address — skipping WebSocket setup`);
+      } else {
+        this.log.info(`Frame TV detected: ${this.name} at ${matchedFrameTv.ip}`);
+        this.samsungWebSocket = new SamsungWebSocket(
+          matchedFrameTv.ip,
+          this.log,
+          this.api.user.storagePath(),
+          matchedFrameTv.token,
+        );
+        this.frameTvConfig = {
+          enableFullPowerOff: matchedFrameTv.enableFullPowerOff !== false, // default true
+          enableArtModeSwitch: matchedFrameTv.enableArtModeSwitch !== false, // default true
+        };
+      }
+    }
+
+    // Initialize device health check (advisory only — see checkDeviceHealth below)
     this.checkDeviceHealth().catch(error => {
-      this.log.error(`Error checking device health for ${this.name}:`, error);
-      this.online = false;
+      this.log.debug(`Health check error for ${this.name}: ${error?.message || error}`);
     });
   }
 
+  // Cloud /health is unreliable for locally-executing Edge drivers (it can report OFFLINE
+  // even when the device is fully reachable via /status). Treat it as advisory: log only,
+  // never flip `online` to false from here. The failureCount mechanism in refreshStatus()
+  // and startPollingState() remains the source of truth for offline state.
   private async checkDeviceHealth(): Promise<void> {
     try {
       const response = await this.axInstance.get(this.healthURL);
-      this.online = response.data.state === 'ONLINE';
-      this.log.debug(`Device ${this.name} is ${this.online ? 'online' : 'offline'}`);
-      // If successfully checked health, and previously we might have been in a loop,
-      // this doesn't reset the loop counter directly, but successful init is good.
+      const reportedOnline = response.data.state === 'ONLINE';
+      this.log.debug(`Device ${this.name} cloud /health reports ${reportedOnline ? 'ONLINE' : response.data.state}`);
     } catch (error) {
-      this.log.error(`Failed to check device health for ${this.name}:`, error);
-      this.online = false;
-      // Record this specific failure type for crash loop detection
-      // This assumes checkDeviceHealth is critical and its failure might lead to a crash loop
+      this.log.debug(`Failed to check device health for ${this.name}: ${(error as Error)?.message || error}`);
       await this.crashLoopManager.recordPotentialCrash(CrashErrorType.DEVICE_HEALTH_FAILURE);
-      throw error; // Re-throw to be caught by the platform initialization or calling function
+      throw error;
     }
+  }
+
+  public mainHasCapability(capabilityId: string): boolean {
+    return this.components.find(c => c.componentId === 'main')?.capabilities.includes(capabilityId) ?? false;
+  }
+
+  // Runtime safety net for the disabled-compartments prune in platform.ts.
+  // Returns true only after main's status has been refreshed at least once.
+  public isComponentDisabled(componentId: string): boolean {
+    if (componentId === 'main') {
+      return false;
+    }
+    const mainStatus = this.components.find(c => c.componentId === 'main')?.status;
+    return extractDisabledComponents(mainStatus).includes(componentId);
   }
 
   private registerServiceIfMatchesCapabilities(
@@ -246,8 +338,19 @@ export class MultiServiceAccessory {
 
     const allCapabilities = capabilities.concat(optionalCapabilities.filter(e => capabilitiesToCover.includes(e)));
 
-    this.log.debug(`Creating instance of ${serviceConstructor.name} for capabilities ${allCapabilities}`);
-    const serviceInstance = new serviceConstructor(this.platform, this.accessory, componentId, allCapabilities, this, this.name, component);
+    // Route temperature sensors on Samsung Family Hub fridges to the OCF-aware
+    // subclass so per-compartment readings work (sub-components return null on
+    // standard temperatureMeasurement).
+    let resolvedConstructor = serviceConstructor;
+    if (serviceConstructor === TemperatureService
+        && this.platform.config.ExposeMultiZoneRefrigerator === true
+        && this.mainHasCapability('samsungce.driverState')) {
+      resolvedConstructor = RefrigeratorTemperatureService;
+    }
+
+    this.log.debug(`Creating instance of ${resolvedConstructor.name} for capabilities ${allCapabilities}`);
+    const serviceInstance = new resolvedConstructor(
+      this.platform, this.accessory, componentId, allCapabilities, this, this.name, component);
     this.services.push(serviceInstance);
 
     this.log.debug(`Registered ${serviceConstructor.name} for capabilities ${allCapabilities}`);
@@ -255,7 +358,7 @@ export class MultiServiceAccessory {
     return capabilitiesToCover.filter(e => !allCapabilities.includes(e));
   }
 
-  public addComponent(componentId: string, capabilities: string[]) {
+  public async addComponent(componentId: string, capabilities: string[]) {
     const component = {
       componentId,
       capabilities,
@@ -286,19 +389,24 @@ export class MultiServiceAccessory {
           this.name,
           component,
         );
+        // If this is a Frame TV, configure the WebSocket for power off
+        if (this.samsungWebSocket && this.frameTvConfig) {
+          serviceInstance.setFrameTvWebSocket(this.samsungWebSocket, this.frameTvConfig.enableFullPowerOff);
+        }
+
         this.services.push(serviceInstance);
 
-        // Trigger input source registration if mediaInputSource capability is available
+        // Trigger input source registration if mediaInputSource capability is available.
+        // Done synchronously so all input services are present on the accessory before
+        // it gets registered/published — avoids needing updatePlatformAccessories() later
+        // (which corrupts the bridge's cache for externally-published TVs, issue #31).
         if (tvCapabilities.includes('samsungvd.mediaInputSource')) {
           this.log.debug(`🔄 Triggering input source registration for ${this.name}`);
-          // Use setTimeout to allow constructor to complete first
-          setTimeout(async () => {
-            try {
-              await serviceInstance.registerInputSourceCapability();
-            } catch (error) {
-              this.log.error(`Failed to register input sources for ${this.name}:`, error);
-            }
-          }, 100);
+          try {
+            await serviceInstance.registerInputSourceCapability();
+          } catch (error) {
+            this.log.error(`Failed to register input sources for ${this.name}:`, error);
+          }
         }
 
                      // Remove TV capabilities from the list to avoid duplicate services
@@ -358,6 +466,19 @@ export class MultiServiceAccessory {
         );
       });
 
+    // Suppress the legacy Switch tile on laundry accessories when the user
+    // opts in. Mirrors the removeLegacySwitchForTV pattern above.
+    const removeLaundrySwitch = this.platform.config.removeLegacySwitchForLaundry === true;
+    if (removeLaundrySwitch && capabilitiesToCover.includes('switch')) {
+      const hasLaundryService = this.services.some(s =>
+        s instanceof WasherService || s instanceof DryerService || s instanceof DishwasherService,
+      );
+      if (hasLaundryService) {
+        this.log.debug(`Removing legacy switch service for laundry device: ${this.name}`);
+        capabilitiesToCover = capabilitiesToCover.filter(cap => cap !== 'switch');
+      }
+    }
+
     Object.keys(MultiServiceAccessory.capabilityMap).forEach((capability) => {
       const service = MultiServiceAccessory.capabilityMap[capability];
 
@@ -388,6 +509,12 @@ export class MultiServiceAccessory {
       return true;
     }
 
+    // Check combo capability map for capabilities only registered there
+    if (MultiServiceAccessory.comboCapabilityMap.some(entry =>
+      entry.capabilities.includes(capability))) {
+      return true;
+    }
+
     // Check if it's a TV-related capability
     if (TelevisionService.getTvCapabilities().includes(capability)) {
       return true;
@@ -397,8 +524,6 @@ export class MultiServiceAccessory {
     if (VolumeSliderService.getVolumeSliderCapabilities().includes(capability)) {
       return true;
     }
-
-
 
     return false;
   }
@@ -449,6 +574,7 @@ export class MultiServiceAccessory {
             // Notify TelevisionService about global status update for input source monitoring
             this.notifyTelevisionServiceOfStatusUpdate();
 
+            this.hasInitialStatus = true;
             this.statusQueryInProgress = false;
             resolve(true);
             // if (res.data.components.main !== undefined) {
@@ -487,6 +613,10 @@ export class MultiServiceAccessory {
     this.deviceStatusTimestamp = 0;
   }
 
+  public hasCachedStatus(): boolean {
+    return this.hasInitialStatus;
+  }
+
   /**
    * Notify VolumeSliderService instances about global status updates
    * This allows volume slider to update its characteristics without separate polling
@@ -521,10 +651,6 @@ export class MultiServiceAccessory {
   startPollingState(pollSeconds: number, getValue: () => Promise<CharacteristicValue>, service: Service,
     chracteristic: WithUUID<new () => Characteristic>, targetStateCharacteristic?: WithUUID<new () => Characteristic>,
     getTargetState?: () => Promise<CharacteristicValue>): NodeJS.Timer | void {
-
-    if (this.platform.config.WebhookToken && this.platform.config.WebhookToken !== '') {
-      return;  // Don't poll if we have a webhook token
-    }
 
     if (pollSeconds > 0) {
       return setInterval(() => {
@@ -581,8 +707,8 @@ export class MultiServiceAccessory {
     }
   }
 
-  async sendCommand(capability: string, command: string, args?: unknown[]): Promise<boolean> {
-    const cmd = new Command(capability, command, args);
+  async sendCommand(componentId: string, capability: string, command: string, args?: unknown[]): Promise<boolean> {
+    const cmd = new Command(componentId, capability, command, args);
     return this.sendCommands([cmd]);
   }
 
@@ -628,6 +754,16 @@ export class MultiServiceAccessory {
         this.log.debug(`${this.name} still waiting...`);
       }, 250);
     });
+  }
+
+  public getRegisteredCapabilities(): string[] {
+    const caps = new Set<string>();
+    for (const service of this.services) {
+      for (const cap of service.capabilities) {
+        caps.add(cap);
+      }
+    }
+    return [...caps];
   }
 
   public processEvent(event: ShortEvent): void {

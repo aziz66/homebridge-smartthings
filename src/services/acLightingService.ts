@@ -71,7 +71,7 @@ export class ACLightingService extends BaseService {
   private async setLightState(value: CharacteristicValue): Promise<void> {
     const cmd = value ? 'on' : 'off';
     this.log.info(`[${this.name}] Setting AC lighting to: ${cmd}`);
-    await this.sendCommandsOrFail([new Command(CAP, cmd, [])]);
+    await this.sendCommandsOrFail([new Command(this.componentId, CAP, cmd, [])]);
   }
 
   // Handle events from SmartThings

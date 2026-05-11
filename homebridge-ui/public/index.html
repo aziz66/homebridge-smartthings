@@ -5,6 +5,73 @@
         <button class="btn btn-primary" onclick="showWizard()">Open OAuth Setup Wizard</button>
     </div>
 
+    <div id="cap-selector" style="display:none" class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="toggleCapSelectorCard()">
+            <strong>Real-Time Subscription Manager</strong>
+            <span id="cap-counter" class="badge badge-primary">0 / 20 selected</span>
+        </div>
+        <div id="cap-selector-body" class="card-body" style="display:none">
+            <p class="text-muted small">
+                Choose which capabilities get real-time SmartThings subscriptions (max 20).
+                Unselected capabilities fall back to polling. Leave empty for automatic prioritization by device count.
+            </p>
+            <div id="cap-not-ready" class="alert alert-warning" style="display:none">
+                Capability list not yet available. Restart Homebridge so the plugin can discover devices first.
+            </div>
+            <div id="cap-ready" style="display:none">
+                <p class="small text-muted mb-2">Last discovered: <span id="cap-generated-at"></span></p>
+                <div class="btn-group btn-group-sm mb-3">
+                    <button class="btn btn-outline-secondary" onclick="capSelectNone()">Clear All</button>
+                    <button class="btn btn-outline-secondary" onclick="capSelectAuto()">Auto (by device count)</button>
+                    <button class="btn btn-outline-secondary" onclick="capRefreshList()">Refresh List</button>
+                </div>
+                <div id="cap-list" style="max-height:350px; overflow-y:auto; border:1px solid #dee2e6; border-radius:.25rem; padding:.5rem;"></div>
+                <div class="mt-3">
+                    <button class="btn btn-success" onclick="capSaveAndApply()">Save &amp; Apply Subscriptions</button>
+                </div>
+                <div id="cap-result" class="mt-3" style="display:none"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="frame-tv-settings" style="display:none" class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="toggleFrameTvCard()">
+            <strong>Samsung Frame TV Settings</strong>
+            <span id="frame-tv-count" class="badge badge-primary">0 devices</span>
+        </div>
+        <div id="frame-tv-body" class="card-body" style="display:none">
+            <p class="text-muted small">
+                Configure Samsung Frame TVs for full power off (3.5s long-press KEY_POWER via local WebSocket)
+                and Art Mode toggle. Only needed for Frame TVs where SmartThings power-off enters Art Mode instead of truly turning off.
+                Each TV must have a static IP address on your local network.
+            </p>
+            <div id="frame-tv-list"></div>
+            <button class="btn btn-sm btn-outline-primary mt-2" onclick="frameTvAdd()">+ Add Frame TV</button>
+            <div class="mt-3">
+                <button class="btn btn-success" onclick="frameTvSave()">Save Frame TV Settings</button>
+            </div>
+            <div id="frame-tv-result" class="mt-3" style="display:none"></div>
+        </div>
+    </div>
+
+    <div id="tv-apps-settings" style="display:none" class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="toggleTvAppsCard()">
+            <strong>TV App Shortcuts</strong>
+            <span id="tv-apps-count" class="badge badge-primary">0 selected</span>
+        </div>
+        <div id="tv-apps-body" class="card-body" style="display:none">
+            <p class="text-muted small">
+                Select apps to add to the TV input source list in Apple Home.
+                These appear alongside HDMI inputs and launch the app when selected from the input picker.
+            </p>
+            <div id="tv-apps-list"></div>
+            <div class="mt-3">
+                <button class="btn btn-success" onclick="tvAppsSave()">Save TV App Settings</button>
+            </div>
+            <div id="tv-apps-result" class="mt-3" style="display:none"></div>
+        </div>
+    </div>
+
     <div id="wizard" style="display:none">
         <h2 class="mb-4">OAuth Setup Wizard</h2>
         <div class="nav nav-pills mb-3" id="wizardNav">
@@ -92,6 +159,17 @@
 
             <div class="tab-pane fade" id="step3">
                 <h4>Step 3: Enter Authorization Code</h4>
+
+                <div id="oauth-auth-url-box" class="alert alert-info" style="display:none">
+                    <strong>A login page should have opened automatically.</strong> If it didn't, copy the URL below and open it in your browser:<br>
+                    <div class="input-group mt-2">
+                        <input type="text" class="form-control form-control-sm" id="oauth-auth-url" readonly>
+                        <div class="input-group-append">
+                            <button class="btn btn-sm btn-outline-secondary" type="button" onclick="copyAuthUrl()">Copy</button>
+                        </div>
+                    </div>
+                </div>
+
                 <p>Paste the <code>args.code</code> value from the httpbin.org response below.</p>
                 <p class="text-muted">Example: The JSON response will look like <code>{"args": {"code": "xxxxxx"}, ...}</code>. Copy just the code value.</p>
 
@@ -130,6 +208,7 @@
                                 placeholder="Refresh token will appear here" required readonly>
                         </div>
                     </div>
+                    <input type="hidden" id="oauth-expires-in" value="">
                 </form>
 
                 <button class="btn btn-secondary prev" onclick="prevStep()">Back</button>
@@ -140,8 +219,12 @@
 </div>
 
 <script>
+    // Track if wizard is intentionally open to prevent configChanged events from closing it
+    let wizardOpen = false;
+
     function showWizard() {
         try {
+            wizardOpen = true;
             homebridge.disableSaveButton();
             homebridge.hideSchemaForm();
             document.getElementById('wizard').style.display = "block";
@@ -153,6 +236,7 @@
 
     function hideWizard() {
         try {
+            wizardOpen = false;
             homebridge.enableSaveButton();
             homebridge.showSchemaForm();
             document.getElementById('wizard').style.display = "none";
@@ -183,7 +267,24 @@
                 document.getElementById('oauth-client-secret').value = pluginConfig[0].client_secret;
             }
 
-            hideWizard();
+            // Only hide wizard if it wasn't intentionally opened
+            if (!wizardOpen) {
+                hideWizard();
+            }
+
+            // Show capability selector and Frame TV settings if plugin is configured
+            if (pluginConfig[0].client_id) {
+                document.getElementById('cap-selector').style.display = 'block';
+                initCapabilitySelector();
+                document.getElementById('frame-tv-settings').style.display = 'block';
+                initFrameTvSettings();
+                document.getElementById('tv-apps-settings').style.display = 'block';
+                initTvAppsSettings();
+            } else {
+                document.getElementById('cap-selector').style.display = 'none';
+                document.getElementById('frame-tv-settings').style.display = 'none';
+                document.getElementById('tv-apps-settings').style.display = 'none';
+            }
         } catch (err) {
             console.error('updateUi error:', err);
         }
@@ -230,7 +331,11 @@
                     await requestAuthToken();
                 } catch (err) {
                     console.error('requestAuthToken error:', err);
-                    homebridge.toast.error("Could not request authorization token. Please try again.");
+                    const detail = err && (err.message || err.error_description || err.error);
+                    const msg = detail
+                        ? "Token exchange failed: " + detail
+                        : "Could not request authorization token. Please try again.";
+                    homebridge.toast.error(msg, "OAuth Error");
                 } finally {
                     homebridge.hideSpinner();
                 }
@@ -243,11 +348,21 @@
     async function validateStep4() {
         try {
             if (validateStep('step4Form')) {
+                // Clear old token file before saving new config tokens
+                // This ensures the plugin uses the fresh tokens from the wizard
+                try {
+                    await homebridge.request('/clearTokens');
+                } catch (err) {
+                    console.warn('Could not clear old tokens:', err);
+                    // Continue anyway - the file might not exist
+                }
+
                 const pluginConfig = await homebridge.getPluginConfig();
 
                 // Store the tokens for the plugin to use
                 pluginConfig[0].oauth_access_token = document.getElementById('oauth-access-token').value;
                 pluginConfig[0].oauth_refresh_token = document.getElementById('oauth-refresh-token').value;
+                pluginConfig[0].oauth_expires_in = parseInt(document.getElementById('oauth-expires-in').value) || 86400;
 
                 // Remove server_url requirement since we no longer need it for OAuth callback
                 // But keep it if it exists for webhook functionality
@@ -288,7 +403,19 @@
         document.querySelector(targetTab.getAttribute('data-target')).classList.add('show', 'active');
     }
 
+    function copyAuthUrl() {
+        var input = document.getElementById('oauth-auth-url');
+        input.select();
+        document.execCommand('copy');
+        homebridge.toast.success('URL copied to clipboard');
+    }
+
     async function requestAuthCode() {
+        // Open window synchronously (before await) to avoid popup blockers.
+        // Browsers only allow window.open() in direct response to user clicks;
+        // an await breaks that gesture context and the popup gets silently blocked.
+        const popup = window.open('about:blank', '_blank');
+
         try {
             const payload = {
                 clientId: document.getElementById('oauth-client-id').value,
@@ -298,9 +425,18 @@
             };
 
             const authUrl = await homebridge.request('/authCode', payload);
-            window.open(authUrl, "_blank");
+
+            // Always show the URL field as a fallback
+            document.getElementById('oauth-auth-url').value = authUrl;
+            document.getElementById('oauth-auth-url-box').style.display = 'block';
+
+            if (popup && !popup.closed) {
+                popup.location.href = authUrl;
+            }
+
             return authUrl;
         } catch (err) {
+            if (popup && !popup.closed) popup.close();
             console.error('requestAuthCode error:', err);
             homebridge.toast.error("Could not generate authorization URL. Please check your credentials.");
         }
@@ -318,10 +454,443 @@
 
             document.getElementById('oauth-access-token').value = authToken.access_token;
             document.getElementById('oauth-refresh-token').value = authToken.refresh_token;
+            document.getElementById('oauth-expires-in').value = authToken.expires_in || 86400;
             return authToken;
         } catch (err) {
             console.error('requestAuthToken error:', err);
             throw err;
+        }
+    }
+
+    // ── Capability Selector ──
+
+    let capAllCapabilities = []; // [{name, deviceCount}]
+    let capSelectedSet = new Set();
+    let capInitialized = false;
+    let capSaving = false;
+
+    async function initCapabilitySelector() {
+        if (capInitialized) return;
+        capInitialized = true;
+        await capRefreshList();
+    }
+
+    async function capRefreshList() {
+        try {
+            const res = await homebridge.request('/capabilities');
+            if (!res.success) {
+                document.getElementById('cap-not-ready').style.display = 'block';
+                document.getElementById('cap-not-ready').textContent = res.message || 'Capability list not available.';
+                document.getElementById('cap-ready').style.display = 'none';
+                return;
+            }
+            document.getElementById('cap-not-ready').style.display = 'none';
+            document.getElementById('cap-ready').style.display = 'block';
+            document.getElementById('cap-generated-at').textContent = new Date(res.generatedAt).toLocaleString();
+
+            capAllCapabilities = res.capabilities || [];
+
+            // Load saved selections from config
+            const pluginConfig = await homebridge.getPluginConfig();
+            const saved = pluginConfig[0].selectedCapabilities;
+            capSelectedSet = new Set(Array.isArray(saved) ? saved : []);
+
+            renderCapabilityList();
+        } catch (err) {
+            console.error('capRefreshList error:', err);
+            document.getElementById('cap-not-ready').style.display = 'block';
+            document.getElementById('cap-not-ready').textContent =
+                'Failed to load capability list from server. ' +
+                'Ensure Homebridge has restarted at least once with webhooks enabled. ' +
+                'Details: ' + (err.message || err);
+            document.getElementById('cap-ready').style.display = 'none';
+        }
+    }
+
+    function renderCapabilityList() {
+        const container = document.getElementById('cap-list');
+        container.innerHTML = '';
+
+        for (const cap of capAllCapabilities) {
+            const checked = capSelectedSet.has(cap.name);
+            const disabled = !checked && capSelectedSet.size >= 20;
+
+            const div = document.createElement('div');
+            div.className = 'form-check py-1';
+
+            const label = document.createElement('label');
+            label.className = 'form-check-label d-flex align-items-center';
+            label.style.cursor = 'pointer';
+
+            const input = document.createElement('input');
+            input.className = 'form-check-input mr-2';
+            input.type = 'checkbox';
+            input.value = cap.name;
+            input.checked = checked;
+            input.disabled = disabled;
+            input.addEventListener('change', function() { capToggle(this); });
+
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = cap.name;
+
+            const badge = document.createElement('span');
+            badge.className = 'badge badge-secondary ml-auto';
+            badge.textContent = cap.deviceCount + ' device' + (cap.deviceCount !== 1 ? 's' : '');
+
+            label.appendChild(input);
+            label.appendChild(nameSpan);
+            label.appendChild(badge);
+            div.appendChild(label);
+            container.appendChild(div);
+        }
+
+        updateCapCounter();
+    }
+
+    function capToggle(checkbox) {
+        if (checkbox.checked) {
+            capSelectedSet.add(checkbox.value);
+        } else {
+            capSelectedSet.delete(checkbox.value);
+        }
+        // Re-render to update disabled state on unchecked items
+        renderCapabilityList();
+    }
+
+    function updateCapCounter() {
+        document.getElementById('cap-counter').textContent = capSelectedSet.size + ' / 20 selected';
+    }
+
+    function capSelectNone() {
+        capSelectedSet.clear();
+        renderCapabilityList();
+    }
+
+    function capSelectAuto() {
+        capSelectedSet.clear();
+        // Select top 20 by device count (already sorted)
+        for (let i = 0; i < Math.min(20, capAllCapabilities.length); i++) {
+            capSelectedSet.add(capAllCapabilities[i].name);
+        }
+        renderCapabilityList();
+    }
+
+    async function capSaveAndApply() {
+        if (capSaving) return;
+        capSaving = true;
+        const saveBtn = document.querySelector('#cap-ready .btn-success');
+        if (saveBtn) saveBtn.disabled = true;
+
+        const resultDiv = document.getElementById('cap-result');
+        resultDiv.style.display = 'none';
+
+        try {
+            // Save selectedCapabilities to config
+            const pluginConfig = await homebridge.getPluginConfig();
+            pluginConfig[0].selectedCapabilities = [...capSelectedSet];
+            await homebridge.updatePluginConfig(pluginConfig);
+            await homebridge.savePluginConfig();
+
+            if (capSelectedSet.size === 0) {
+                resultDiv.className = 'mt-3 alert alert-info';
+                resultDiv.textContent = 'Saved: automatic mode (no manual selection). Restart Homebridge to apply.';
+                resultDiv.style.display = 'block';
+                return;
+            }
+
+            // Call resubscribe endpoint
+            resultDiv.className = 'mt-3 alert alert-info';
+            resultDiv.textContent = 'Applying subscriptions...';
+            resultDiv.style.display = 'block';
+
+            const res = await homebridge.request('/resubscribe', { capabilities: [...capSelectedSet] });
+
+            if (res.success) {
+                resultDiv.className = 'mt-3 alert alert-success';
+                resultDiv.textContent = res.message;
+            } else {
+                resultDiv.className = 'mt-3 alert alert-warning';
+                resultDiv.textContent = '';
+                var strong = document.createElement('strong');
+                strong.textContent = res.message;
+                resultDiv.appendChild(strong);
+                if (res.errors && res.errors.length > 0) {
+                    var errSmall = document.createElement('small');
+                    errSmall.style.display = 'block';
+                    errSmall.style.marginTop = '0.5rem';
+                    errSmall.textContent = res.errors.join(' | ');
+                    resultDiv.appendChild(errSmall);
+                }
+            }
+        } catch (err) {
+            console.error('capSaveAndApply error:', err);
+            resultDiv.className = 'mt-3 alert alert-danger';
+            resultDiv.textContent = 'Error: ' + (err.message || err);
+            resultDiv.style.display = 'block';
+        } finally {
+            capSaving = false;
+            if (saveBtn) saveBtn.disabled = false;
+        }
+    }
+
+    // ── Frame TV Settings ──
+
+    let frameTvDevices = [];
+
+    function toggleCapSelectorCard() {
+        const body = document.getElementById('cap-selector-body');
+        body.style.display = body.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function toggleFrameTvCard() {
+        const body = document.getElementById('frame-tv-body');
+        body.style.display = body.style.display === 'none' ? 'block' : 'none';
+    }
+
+    async function initFrameTvSettings() {
+        try {
+            const pluginConfig = await homebridge.getPluginConfig();
+            frameTvDevices = pluginConfig[0].frameTvDevices || [];
+            renderFrameTvList();
+            updateFrameTvCount();
+        } catch (err) {
+            console.error('initFrameTvSettings error:', err);
+        }
+    }
+
+    function updateFrameTvCount() {
+        document.getElementById('frame-tv-count').textContent = frameTvDevices.length + ' device' + (frameTvDevices.length !== 1 ? 's' : '');
+    }
+
+    function renderFrameTvList() {
+        const container = document.getElementById('frame-tv-list');
+        container.innerHTML = '';
+
+        frameTvDevices.forEach(function(device, index) {
+            const card = document.createElement('div');
+            card.className = 'border rounded p-3 mb-2';
+            card.innerHTML =
+                '<div class="form-group row mb-2">' +
+                    '<label class="col-sm-3 col-form-label font-weight-bold">Device Name</label>' +
+                    '<div class="col-sm-9">' +
+                        '<input type="text" class="form-control form-control-sm" value="' + escapeHtml(device.deviceName || '') + '" ' +
+                            'onchange="frameTvUpdate(' + index + ', \'deviceName\', this.value)" ' +
+                            'placeholder="Exact SmartThings device name">' +
+                    '</div>' +
+                '</div>' +
+                '<div class="form-group row mb-2">' +
+                    '<label class="col-sm-3 col-form-label font-weight-bold">IP Address</label>' +
+                    '<div class="col-sm-9">' +
+                        '<input type="text" class="form-control form-control-sm" value="' + escapeHtml(device.ip || '') + '" ' +
+                            'onchange="frameTvUpdate(' + index + ', \'ip\', this.value)" ' +
+                            'placeholder="192.168.1.x">' +
+                    '</div>' +
+                '</div>' +
+                '<div class="form-check form-check-inline">' +
+                    '<input class="form-check-input" type="checkbox" id="ftv-power-' + index + '" ' +
+                        (device.enableFullPowerOff !== false ? 'checked' : '') +
+                        ' onchange="frameTvUpdate(' + index + ', \'enableFullPowerOff\', this.checked)">' +
+                    '<label class="form-check-label" for="ftv-power-' + index + '">Full Power Off</label>' +
+                '</div>' +
+                '<div class="form-check form-check-inline">' +
+                    '<input class="form-check-input" type="checkbox" id="ftv-art-' + index + '" ' +
+                        (device.enableArtModeSwitch !== false ? 'checked' : '') +
+                        ' onchange="frameTvUpdate(' + index + ', \'enableArtModeSwitch\', this.checked)">' +
+                    '<label class="form-check-label" for="ftv-art-' + index + '">Art Mode Switch</label>' +
+                '</div>' +
+                '<button class="btn btn-sm btn-outline-danger float-right" onclick="frameTvRemove(' + index + ')">Remove</button>';
+            container.appendChild(card);
+        });
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(text));
+        return div.innerHTML;
+    }
+
+    function frameTvAdd() {
+        frameTvDevices.push({ deviceName: '', ip: '', enableFullPowerOff: true, enableArtModeSwitch: true });
+        renderFrameTvList();
+        updateFrameTvCount();
+    }
+
+    function frameTvRemove(index) {
+        frameTvDevices.splice(index, 1);
+        renderFrameTvList();
+        updateFrameTvCount();
+    }
+
+    function frameTvUpdate(index, field, value) {
+        if (typeof value === 'string') {
+            value = value.trim();
+        }
+        frameTvDevices[index][field] = value;
+    }
+
+    async function frameTvSave() {
+        const resultDiv = document.getElementById('frame-tv-result');
+        var ipPattern = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+        try {
+            // Trim all string values before validation
+            for (var i = 0; i < frameTvDevices.length; i++) {
+                if (frameTvDevices[i].deviceName) frameTvDevices[i].deviceName = frameTvDevices[i].deviceName.trim();
+                if (frameTvDevices[i].ip) frameTvDevices[i].ip = frameTvDevices[i].ip.trim();
+            }
+            // Validate required fields
+            for (var i = 0; i < frameTvDevices.length; i++) {
+                if (!frameTvDevices[i].deviceName || !frameTvDevices[i].ip) {
+                    resultDiv.className = 'mt-3 alert alert-danger';
+                    resultDiv.textContent = 'Error: Device name and IP address are required for all Frame TV entries.';
+                    resultDiv.style.display = 'block';
+                    return;
+                }
+                if (!ipPattern.test(frameTvDevices[i].ip)) {
+                    resultDiv.className = 'mt-3 alert alert-danger';
+                    resultDiv.textContent = 'Error: "' + frameTvDevices[i].ip + '" is not a valid IP address (expected format: 192.168.1.100).';
+                    resultDiv.style.display = 'block';
+                    return;
+                }
+            }
+            // Check for duplicate device names
+            var seen = {};
+            for (var i = 0; i < frameTvDevices.length; i++) {
+                var key = frameTvDevices[i].deviceName.toLowerCase();
+                if (seen[key]) {
+                    resultDiv.className = 'mt-3 alert alert-danger';
+                    resultDiv.textContent = 'Error: Duplicate device name "' + frameTvDevices[i].deviceName + '". Each Frame TV must have a unique name.';
+                    resultDiv.style.display = 'block';
+                    return;
+                }
+                seen[key] = true;
+            }
+
+            const pluginConfig = await homebridge.getPluginConfig();
+            pluginConfig[0].frameTvDevices = frameTvDevices;
+            await homebridge.updatePluginConfig(pluginConfig);
+            await homebridge.savePluginConfig();
+
+            resultDiv.className = 'mt-3 alert alert-success';
+            resultDiv.textContent = 'Frame TV settings saved! Restart Homebridge to apply changes.';
+            resultDiv.style.display = 'block';
+        } catch (err) {
+            console.error('frameTvSave error:', err);
+            resultDiv.className = 'mt-3 alert alert-danger';
+            resultDiv.textContent = 'Error saving: ' + (err.message || err);
+            resultDiv.style.display = 'block';
+        }
+    }
+
+    // ── TV Apps Settings ──
+
+    var TV_APPS_CATALOG = [
+        { id: '3201907018807', name: 'Netflix' },
+        { id: '3201910019365', name: 'Prime Video' },
+        { id: '111299001912', name: 'YouTube' },
+        { id: '3201611010983', name: 'YouTube Kids' },
+        { id: '3201606009684', name: 'Spotify' },
+        { id: '3201901017640', name: 'Disney+' },
+        { id: '3201601007625', name: 'Hulu' },
+        { id: '3201710014981', name: 'Paramount+' },
+        { id: '3201807016597', name: 'Apple TV' },
+        { id: '3202006020991', name: 'Peacock TV' },
+        { id: '3201710015037', name: 'Gallery' },
+        { id: '3202301029760', name: 'HBO Max' },
+        { id: '111477000821', name: 'Shahid' },
+        { id: '3201608010191', name: 'Deezer' },
+        { id: '3201806016390', name: 'DAZN' },
+        { id: '3201708014618', name: 'ESPN' },
+        { id: '3202410037239', name: 'BeIN Sports' },
+        { id: '3201908019041', name: 'Apple Music' },
+    ];
+
+    var tvAppsSelectedSet = new Set();
+
+    function toggleTvAppsCard() {
+        var body = document.getElementById('tv-apps-body');
+        body.style.display = body.style.display === 'none' ? 'block' : 'none';
+    }
+
+    async function initTvAppsSettings() {
+        try {
+            var pluginConfig = await homebridge.getPluginConfig();
+            var saved = pluginConfig[0].tvApps;
+            if (Array.isArray(saved)) {
+                tvAppsSelectedSet = new Set(saved);
+            } else {
+                // No apps selected by default — user must choose
+                tvAppsSelectedSet = new Set();
+            }
+            renderTvAppsList();
+            updateTvAppsCount();
+        } catch (err) {
+            console.error('initTvAppsSettings error:', err);
+        }
+    }
+
+    function updateTvAppsCount() {
+        document.getElementById('tv-apps-count').textContent = tvAppsSelectedSet.size + ' selected';
+    }
+
+    function renderTvAppsList() {
+        var container = document.getElementById('tv-apps-list');
+        container.innerHTML = '';
+
+        for (var i = 0; i < TV_APPS_CATALOG.length; i++) {
+            var app = TV_APPS_CATALOG[i];
+            var checked = tvAppsSelectedSet.has(app.id);
+
+            var div = document.createElement('div');
+            div.className = 'form-check py-1';
+
+            var label = document.createElement('label');
+            label.className = 'form-check-label d-flex align-items-center';
+            label.style.cursor = 'pointer';
+
+            var input = document.createElement('input');
+            input.className = 'form-check-input mr-2';
+            input.type = 'checkbox';
+            input.value = app.id;
+            input.checked = checked;
+            input.addEventListener('change', function() { tvAppsToggle(this); });
+
+            var nameSpan = document.createElement('span');
+            nameSpan.textContent = app.name;
+
+            label.appendChild(input);
+            label.appendChild(nameSpan);
+            div.appendChild(label);
+            container.appendChild(div);
+        }
+
+        updateTvAppsCount();
+    }
+
+    function tvAppsToggle(checkbox) {
+        if (checkbox.checked) {
+            tvAppsSelectedSet.add(checkbox.value);
+        } else {
+            tvAppsSelectedSet.delete(checkbox.value);
+        }
+        updateTvAppsCount();
+    }
+
+    async function tvAppsSave() {
+        var resultDiv = document.getElementById('tv-apps-result');
+        try {
+            var pluginConfig = await homebridge.getPluginConfig();
+            pluginConfig[0].tvApps = Array.from(tvAppsSelectedSet);
+            await homebridge.updatePluginConfig(pluginConfig);
+            await homebridge.savePluginConfig();
+
+            resultDiv.className = 'mt-3 alert alert-success';
+            resultDiv.textContent = 'TV App settings saved! Restart Homebridge to apply changes.';
+            resultDiv.style.display = 'block';
+        } catch (err) {
+            console.error('tvAppsSave error:', err);
+            resultDiv.className = 'mt-3 alert alert-danger';
+            resultDiv.textContent = 'Error saving: ' + (err.message || err);
+            resultDiv.style.display = 'block';
         }
     }
 

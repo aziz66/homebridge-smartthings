@@ -3,12 +3,40 @@ import { IKHomeBridgeHomebridgePlatform } from '../platform';
 import { BaseService } from './baseService';
 import { MultiServiceAccessory } from '../multiServiceAccessory';
 import { ShortEvent } from '../webhook/subscriptionHandler';
+import { SamsungWebSocket } from '../local/samsungWebSocket';
 
 export class TelevisionService extends BaseService {
+  // Predefined Samsung TV app catalog: appId -> display name
+  private static readonly AVAILABLE_APPS: Record<string, string> = {
+    '3201907018807': 'Netflix',
+    '3201910019365': 'Prime Video',
+    '111299001912': 'YouTube',
+    '3201611010983': 'YouTube Kids',
+    '3201606009684': 'Spotify',
+    '3201901017640': 'Disney+',
+    '3201601007625': 'Hulu',
+    '3201710014981': 'Paramount+',
+    '3201807016597': 'Apple TV',
+    '3202006020991': 'Peacock TV',
+    '3201710015037': 'Gallery',
+    '3202301029760': 'HBO Max',
+    '111477000821': 'Shahid',
+    '3201608010191': 'Deezer',
+    '3201806016390': 'DAZN',
+    '3201708014618': 'ESPN',
+    '3202410037239': 'BeIN Sports',
+    '3201908019041': 'Apple Music',
+  };
+
+  // Frame TV support: optional WebSocket for local control
+  private samsungWebSocket: SamsungWebSocket | null = null;
+  private enableFullPowerOff = false;
+  private artSupportChecked = false;
   private televisionService: Service;
   private televisionSpeakerService: Service;
   private inputServices: Service[] = [];
   private inputSourcesMap: Array<{id: string; name: string}> = [];
+  private appIds: Set<string> = new Set(); // Track which input sources are apps
   private currentInputSource = 1; // Default to first input
   private currentVolume = 0;
   private isMuted = false;
@@ -52,6 +80,16 @@ export class TelevisionService extends BaseService {
 
     // Setup characteristic polling (will be started when capabilities are registered)
     this.setupCharacteristicPolling();
+  }
+
+  /**
+   * Configure this TV for Frame TV local WebSocket control.
+   * When set, power-off commands will use a 3.5s hold of KEY_POWER via WebSocket.
+   */
+  public setFrameTvWebSocket(ws: SamsungWebSocket, enableFullPowerOff: boolean): void {
+    this.samsungWebSocket = ws;
+    this.enableFullPowerOff = enableFullPowerOff;
+    this.log.info(`Frame TV: Local WebSocket configured for ${this.name} (fullPowerOff=${enableFullPowerOff})`);
   }
 
   private setupTelevisionService(): Service {
@@ -167,9 +205,10 @@ export class TelevisionService extends BaseService {
   // Volume and mute polling removed - now uses global status polling and webhook events
 
   private async setupInputSources(): Promise<void> {
-    // Register only physical input sources (HDMI, DTV, etc.) with custom TV names
-    // Applications will be handled by a separate ApplicationSelectorService
+    // Register physical input sources (HDMI, DTV, etc.) with custom TV names
     await this.registerPhysicalInputSources();
+    // Register app input sources (Netflix, YouTube, etc.) from config
+    this.registerAppInputSources();
   }
 
   private async registerPhysicalInputSources(): Promise<void> {
@@ -192,7 +231,36 @@ export class TelevisionService extends BaseService {
     this.log.info(`📺 Successfully registered ${this.inputSourcesMap.length} input sources for ${this.name}`);
   }
 
+  private registerAppInputSources(): void {
+    const tvApps: string[] = this.platform.config.tvApps ?? [];
 
+    if (!Array.isArray(tvApps) || tvApps.length === 0) {
+      this.log.debug(`No TV apps configured for ${this.name}`);
+      return;
+    }
+
+    this.log.info(`📱 Registering ${tvApps.length} app input sources for ${this.name}`);
+
+    for (const appId of tvApps) {
+      const appName = TelevisionService.AVAILABLE_APPS[appId];
+      if (!appName) {
+        this.log.debug(`Skipping unknown app ID "${appId}" - not in AVAILABLE_APPS catalog`);
+        continue;
+      }
+
+      this.registerInputSource(
+        appId,
+        appName,
+        this.platform.Characteristic.InputSourceType.APPLICATION,
+      );
+      this.appIds.add(appId);
+      this.inputSourcesMap.push({ id: appId, name: appName });
+
+      this.log.info(`   📱 App Input: "${appName}" (${appId}) -> HomeKit ID ${this.inputServices.length}`);
+    }
+
+    this.log.info(`📱 Successfully registered ${this.appIds.size} app input sources for ${this.name}`);
+  }
 
   private registerInputSource(id: string, name: string, inputSourceType: number): void {
     // Determine service subtype based on input source type
@@ -240,12 +308,6 @@ export class TelevisionService extends BaseService {
     if (this.inputServices.length === 0) {
       this.log.info(`🔄 Input source capability available - registering input sources for ${this.name}`);
       await this.setupInputSources();
-
-      // CRITICAL: Update HomeKit about the new input source services
-      this.log.debug(
-        `📱 Updating HomeKit with ${this.inputServices.length} new input sources for ${this.name}`,
-      );
-      this.platform.api.updatePlatformAccessories([this.accessory]);
     } else {
       this.log.debug(`Input sources already registered for ${this.name}`);
     }
@@ -390,7 +452,23 @@ export class TelevisionService extends BaseService {
     }
 
     const command = value === this.platform.Characteristic.Active.ACTIVE ? 'on' : 'off';
-    const success = await this.multiServiceAccessory.sendCommand('switch', command);
+
+    // Frame TV: use local WebSocket for power off (3.5s long-press KEY_POWER)
+    if (command === 'off' && this.samsungWebSocket && this.enableFullPowerOff) {
+      this.log.info(`Frame TV: Sending 3.5s long-press KEY_POWER for full power off on ${this.name}`);
+      try {
+        await this.samsungWebSocket.holdKey('KEY_POWER', 3500);
+        this.log.info(`Frame TV: Full power off successful for ${this.name}`);
+        this.multiServiceAccessory.forceNextStatusRefresh();
+        return;
+      } catch (error) {
+        this.log.warn(`Frame TV: WebSocket power off failed for ${this.name}: ${error} — falling back to SmartThings API`);
+        // Fall through to standard SmartThings API path below
+      }
+    }
+
+    // Standard path: use SmartThings API
+    const success = await this.multiServiceAccessory.sendCommand(this.componentId, 'switch', command);
 
     if (success) {
       this.log.debug(`TV power ${command} successful for ${this.name}`);
@@ -451,19 +529,28 @@ export class TelevisionService extends BaseService {
 
       // According to reference implementation: determine if this is an app or input source
       const inputService = this.inputServices[inputIndex];
-      const inputId = inputService.name; // This contains the SmartThings ID
+      if (!inputService) {
+        this.log.error(`Input service not found at index ${inputIndex} for ${this.name} (services: ${this.inputServices.length}, map: ${this.inputSourcesMap.length})`);
+        throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.INVALID_VALUE_IN_REQUEST);
+      }
+      const inputId = inputService.name ?? targetInput.id; // This contains the SmartThings ID
 
       this.log.debug(`Setting input source: "${targetInput.name}" using ID "${inputId}" for ${this.name}`);
 
-            // For physical input sources, use Samsung-specific mediaInputSource
-      // Applications are now handled by separate ApplicationSelectorService
-      this.log.debug(`Using Samsung-specific input source command: samsungvd.mediaInputSource.setInputSource("${inputId}")`);
-      success = await this.multiServiceAccessory.sendCommand('samsungvd.mediaInputSource', 'setInputSource', [inputId]);
+      if (this.appIds.has(inputId)) {
+        // App launch via custom.launchapp
+        this.log.info(`Launching app "${targetInput.name}" (${inputId}) on ${this.name}`);
+        success = await this.multiServiceAccessory.sendCommand(this.componentId, 'custom.launchapp', 'launchApp', [inputId]);
+      } else {
+        // Physical input source — use Samsung-specific mediaInputSource
+        this.log.debug(`Using Samsung-specific input source command: samsungvd.mediaInputSource.setInputSource("${inputId}")`);
+        success = await this.multiServiceAccessory.sendCommand(this.componentId, 'samsungvd.mediaInputSource', 'setInputSource', [inputId]);
 
-      // Fallback to standard mediaInputSource capability if Samsung-specific fails
-      if (!success) {
-        this.log.debug(`Fallback: Using standard input source command: mediaInputSource.setInputSource("${inputId}")`);
-        success = await this.multiServiceAccessory.sendCommand('mediaInputSource', 'setInputSource', [inputId]);
+        // Fallback to standard mediaInputSource capability if Samsung-specific fails
+        if (!success) {
+          this.log.debug(`Fallback: Using standard input source command: mediaInputSource.setInputSource("${inputId}")`);
+          success = await this.multiServiceAccessory.sendCommand(this.componentId, 'mediaInputSource', 'setInputSource', [inputId]);
+        }
       }
 
       if (success) {
@@ -552,7 +639,7 @@ export class TelevisionService extends BaseService {
     if (command && capability) {
       try {
         this.log.debug(`Sending remote key command: ${capability}.${command} for ${this.name}`);
-        const success = await this.multiServiceAccessory.sendCommand(capability, command);
+        const success = await this.multiServiceAccessory.sendCommand(this.componentId, capability, command);
         if (success) {
           this.log.info(`✅ Remote key command ${capability}.${command} successful for ${this.name}`);
           setTimeout(() => {
@@ -621,7 +708,7 @@ export class TelevisionService extends BaseService {
 
     const samsungMode = reversePictureModeMap[Number(value)];
     if (samsungMode) {
-      const success = await this.multiServiceAccessory.sendCommand('custom.picturemode', 'setPictureMode', [samsungMode]);
+      const success = await this.multiServiceAccessory.sendCommand(this.componentId, 'custom.picturemode', 'setPictureMode', [samsungMode]);
       if (success) {
         this.log.debug(`Picture mode changed to ${samsungMode} for ${this.name}`);
         this.multiServiceAccessory.forceNextStatusRefresh();
@@ -671,13 +758,13 @@ export class TelevisionService extends BaseService {
     const muteState = value ? 'muted' : 'unmuted';
     this.log.debug(`Sending mute command: audioMute.setMute("${muteState}") for ${this.name}`);
 
-    let success = await this.multiServiceAccessory.sendCommand('audioMute', 'setMute', [muteState]);
+    let success = await this.multiServiceAccessory.sendCommand(this.componentId, 'audioMute', 'setMute', [muteState]);
 
     // Fallback to simple mute/unmute commands if setMute fails
     if (!success) {
       const fallbackCommand = value ? 'mute' : 'unmute';
       this.log.debug(`Fallback: Sending audioMute.${fallbackCommand} for ${this.name}`);
-      success = await this.multiServiceAccessory.sendCommand('audioMute', fallbackCommand);
+      success = await this.multiServiceAccessory.sendCommand(this.componentId, 'audioMute', fallbackCommand);
     }
 
     if (success) {
@@ -738,7 +825,7 @@ export class TelevisionService extends BaseService {
 
       if (muteState === 'muted' && volumeLevel > 0) {
         this.log.debug(`TV is muted, unmuting before setting volume for ${this.name}`);
-        await this.multiServiceAccessory.sendCommand('audioMute', 'unmute');
+        await this.multiServiceAccessory.sendCommand(this.componentId, 'audioMute', 'unmute');
         // Small delay to ensure unmute command processes
         await new Promise(resolve => setTimeout(resolve, 500));
       }
@@ -751,7 +838,7 @@ export class TelevisionService extends BaseService {
     const boundedVolume = Math.max(0, Math.min(100, Math.round(volumeLevel)));
 
     this.log.debug(`Sending volume command: audioVolume.setVolume with value [${boundedVolume}] for ${this.name}`);
-    const success = await this.multiServiceAccessory.sendCommand('audioVolume', 'setVolume', [boundedVolume]);
+    const success = await this.multiServiceAccessory.sendCommand(this.componentId, 'audioVolume', 'setVolume', [boundedVolume]);
 
     if (success) {
       this.currentVolume = boundedVolume;
@@ -781,7 +868,7 @@ export class TelevisionService extends BaseService {
 
     // For Samsung TVs, volumeUp/volumeDown might work better than setVolume
     // These commands don't require specific volume levels and work incrementally
-    const success = await this.multiServiceAccessory.sendCommand('audioVolume', command);
+    const success = await this.multiServiceAccessory.sendCommand(this.componentId, 'audioVolume', command);
 
     if (success) {
       this.log.debug(`Volume ${command} successful for ${this.name}`);
@@ -848,6 +935,20 @@ export class TelevisionService extends BaseService {
         }
         break;
 
+      case 'custom.launchapp':
+        if (event.attribute === 'launchApp' && typeof event.value === 'string') {
+          const appIndex = this.inputSourcesMap.findIndex(input => input.id === event.value);
+          if (appIndex >= 0) {
+            this.currentInputSource = appIndex + 1;
+            this.televisionService.updateCharacteristic(
+              this.platform.Characteristic.ActiveIdentifier,
+              this.currentInputSource,
+            );
+            this.log.debug(`App launch event: updated ActiveIdentifier to "${this.inputSourcesMap[appIndex].name}"`);
+          }
+        }
+        break;
+
       case 'custom.picturemode':
         if (event.attribute === 'pictureMode' && this.televisionService.testCharacteristic(this.platform.Characteristic.PictureMode)) {
           // Update picture mode if the service supports it
@@ -894,10 +995,42 @@ export class TelevisionService extends BaseService {
    */
   public updateFromGlobalStatus(): void {
     try {
+      // One-time check: detect if this TV supports Art Mode (Frame TV)
+      if (!this.artSupportChecked) {
+        this.artSupportChecked = true;
+        this.checkArtModeSupport();
+      }
       // Check if input sources have changed
-      this.checkAndUpdateInputSources();
+      this.checkAndUpdateInputSources().catch(err => {
+        this.log.debug(`Error in checkAndUpdateInputSources for ${this.name}: ${err}`);
+      });
     } catch (error) {
       this.log.debug(`Error monitoring input sources for ${this.name}:`, error);
+    }
+  }
+
+  /**
+   * Check if this TV reports artSupported: true in its device status.
+   * Logs a helpful message if it's a Frame TV that hasn't been configured in frameTvDevices.
+   */
+  private checkArtModeSupport(): void {
+    try {
+      const component = this.multiServiceAccessory.components.find(c => c.componentId === this.componentId);
+      const features = component?.status?.['samsungvd.supportsFeatures'] as any;
+      const artSupported = features?.artSupported?.value;
+
+      if (artSupported === true) {
+        if (this.samsungWebSocket) {
+          this.log.info(`Frame TV confirmed: "${this.name}" reports artSupported=true and is configured for local WebSocket control.`);
+        } else {
+          this.log.info(
+            `Frame TV detected: "${this.name}" reports artSupported=true. ` +
+            'To enable full power off and Art Mode control, add this device to the "frameTvDevices" config with its local IP address.',
+          );
+        }
+      }
+    } catch {
+      // Silent — this is a best-effort detection
     }
   }
 
@@ -938,27 +1071,27 @@ export class TelevisionService extends BaseService {
             return acc;
           }, []);
 
-          // Update the input sources map
-          const oldInputSources = [...this.inputSourcesMap];
+          // Update the input sources map (exclude app entries from old list to avoid false "obsolete" detection)
+          const oldPhysicalInputSources = this.inputSourcesMap.filter(s => !this.appIds.has(s.id));
           this.inputSourcesMap = uniqueInputSources.map((source: any) => ({
             id: source.id,
             name: source.name,
           }));
 
-          // Log the changes
-          this.logInputSourceChanges(oldInputSources, this.inputSourcesMap);
+          // Log the changes (physical inputs only)
+          this.logInputSourceChanges(oldPhysicalInputSources, this.inputSourcesMap);
 
           // Update existing input source services with new names
           await this.updateExistingInputSources();
 
           // Handle new input sources (add them)
-          await this.addNewInputSources(oldInputSources);
+          await this.addNewInputSources(oldPhysicalInputSources);
 
           // Handle removed input sources (remove them)
-          await this.removeObsoleteInputSources(oldInputSources);
+          await this.removeObsoleteInputSources(oldPhysicalInputSources);
 
-          // Update HomeKit about the changes
-          this.platform.api.updatePlatformAccessories([this.accessory]);
+          // Re-append app input sources (they're config-based, not from SmartThings)
+          this.reappendAppInputSources();
 
           this.log.info(`📺 Input source update completed for ${this.name}`);
         }
@@ -1078,12 +1211,47 @@ export class TelevisionService extends BaseService {
     });
   }
 
+  /**
+   * Remove stale app InputSource services and re-register them at the end of the list.
+   * Called after physical input sources are rebuilt to maintain apps at the end.
+   */
+  private reappendAppInputSources(): void {
+    // Remove existing app input services
+    for (const appId of this.appIds) {
+      const serviceToRemove = this.inputServices.find(service => service.name === appId);
+      if (serviceToRemove) {
+        try {
+          this.accessory.removeService(serviceToRemove);
+          const serviceIndex = this.inputServices.indexOf(serviceToRemove);
+          if (serviceIndex > -1) {
+            this.inputServices.splice(serviceIndex, 1);
+          }
+        } catch (error) {
+          this.log.error(`Error removing app input source "${appId}":`, error);
+        }
+      }
+      // Also remove from inputSourcesMap
+      const mapIndex = this.inputSourcesMap.findIndex(s => s.id === appId);
+      if (mapIndex > -1) {
+        this.inputSourcesMap.splice(mapIndex, 1);
+      }
+    }
+
+    // Clear and re-register
+    this.appIds.clear();
+    this.registerAppInputSources();
+
+    // Reindex all input sources after re-appending
+    this.reindexInputSources();
+  }
+
   // Static method to get TV-related capabilities for the capability map
   public static getTvCapabilities(): string[] {
     return [
       'switch', // Power control
       'samsungvd.deviceCategory',
       'samsungvd.mediaInputSource',
+      'custom.launchapp',
       'audioVolume',
       'audioMute',
       'tvChannel',

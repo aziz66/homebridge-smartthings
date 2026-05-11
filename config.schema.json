@@ -49,6 +49,12 @@
         "required": false,
         "description": "Auto-filled by the OAuth wizard. Do not edit manually."
       },
+      "oauth_expires_in": {
+        "title": "OAuth Token Expiry (seconds)",
+        "type": "integer",
+        "required": false,
+        "description": "Auto-filled by the OAuth wizard. Do not edit manually."
+      },
       "webhook_port": {
         "title": "Webhook Port",
         "type": "integer",
@@ -79,6 +85,13 @@
         "type": "integer",
         "required": false,
         "default": 5
+      },
+      "PollSecuritySystemsSeconds": {
+        "title": "Poll Security Systems (zero = don't poll)",
+        "type": "integer",
+        "required": false,
+        "default": 15,
+        "description": "How often to poll SmartThings security panels for state changes. Webhook subscriptions provide real-time updates when available; polling is the fallback. Default: 15 seconds."
       },
       "PollSwitchesAndLightsSeconds": {
         "title": "Poll Switches and Lights (zero = don't poll)",
@@ -119,11 +132,44 @@
         "required": false,
         "default": true
       },
+      "ExposeContactSensorForWashers": {
+        "title": "Expose Contact Sensor for Washers (enables Activity Notifications)",
+        "type": "boolean",
+        "required": false,
+        "default": false
+      },
+      "ExposeContactSensorForDryers": {
+        "title": "Expose Contact Sensor for Dryers (enables Activity Notifications)",
+        "type": "boolean",
+        "required": false,
+        "default": false
+      },
+      "ExposeContactSensorForDishwashers": {
+        "title": "Expose Contact Sensor for Dishwashers (enables Activity Notifications)",
+        "type": "boolean",
+        "required": false,
+        "default": false
+      },
+      "ExposeMultiZoneRefrigerator": {
+        "title": "Expose Multi-Zone Refrigerator (Samsung Family Hub)",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "For Samsung Family Hub refrigerators with multiple compartments (Fridge, Freezer, FlexZone, CVRoom). When enabled, the plugin parses Samsung's OCF driver-state data so each compartment reports its own temperature, and skips creating tiles for compartments you've disabled in the SmartThings app. Standard single-zone refrigerators are unaffected. Tested against US-region firmware (RF29DB9600QLA); metric-region devices may report OCF in Celsius — please open an issue if temperatures look wrong. Default: off."
+      },
+      "removeLegacySwitchForLaundry": {
+        "title": "Remove Legacy Switch Service for Laundry Devices",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "When enabled, suppresses the auto-generated Switch tile on washers, dryers, and dishwashers. The main Valve tile (with Active/InUse and remaining duration) and any optional Contact Sensor for activity notifications are unaffected. Default: off (preserves existing behavior)."
+      },
       "OptionalModeForAirConditioners": {
         "title": "Select what optional mode to use as additional switch in air conditioners.",
         "type": "string",
         "required": false,
         "enum": [
+          "None",
           "Sleep",
           "Speed",
           "WindFree",
@@ -146,6 +192,13 @@
         "default": false,
         "description": "When enabled, removes the basic switch service for TV devices, leaving only the Television service. When disabled (default), both services are available for backward compatibility."
       },
+      "publishTVsAsExternal": {
+        "title": "Publish TVs as External Accessories (proper TV icon + Control Center remote)",
+        "type": "boolean",
+        "required": false,
+        "default": true,
+        "description": "When enabled (default), Samsung TVs are published as standalone (external) HomeKit accessories so HomeKit renders the proper TV tile icon and the iOS Control Center remote works (issue #31). Each TV must be paired individually: Apple Home → + → Add Accessory → 'More options…' → Nearby Accessories → enter your bridge or child-bridge PIN. Set this to false to fall back to bridged TVs with the generic icon and the standard Add Accessory flow (issue #37) — TV functionality (inputs, power, volume) works either way. Switching this option on or off later will leave orphan tiles in HomeKit that you must remove manually."
+      },
       "IgnoreLocations": {
         "title": "Locations to Ignore",
         "type": "array",
@@ -155,9 +208,128 @@
         }
       },
       "IgnoreDevices": {
-        "title": "Devices to Ignore",
+        "title": "Devices to Ignore (Blacklist)",
         "type": "array",
-        "description": "List of device names to ignore. Device names are case-insensitive and whitespace is trimmed. Special characters like smart quotes (') are automatically normalized to regular quotes (').",
+        "description": "List of device names to ignore. Device names are case-insensitive and whitespace is trimmed. Special characters like smart quotes (') are automatically normalized to regular quotes ('). This is ignored if ShowOnlyDevices is configured.",
+        "items": {
+          "title": "Device Name",
+          "type": "string",
+          "description": "Exact device name as it appears in SmartThings (case-insensitive)"
+        },
+        "examples": [
+          ["Living Room Light", "Kitchen Switch", "Bedroom Fan"]
+        ]
+      },
+      "selectedCapabilities": {
+        "title": "Selected Capabilities for Real-Time Subscriptions",
+        "type": "array",
+        "description": "Manually select which capabilities get real-time subscriptions (max 20). Leave empty for automatic prioritization by device count.",
+        "maxItems": 20,
+        "items": {
+          "title": "Capability",
+          "type": "string"
+        }
+      },
+      "tvApps": {
+        "title": "TV App Shortcuts",
+        "type": "array",
+        "description": "Select apps to add to the TV input source list in Apple Home. These appear alongside HDMI inputs and launch the app when selected.",
+        "items": {
+          "type": "string",
+          "enum": [
+            "3201907018807", "3201910019365", "111299001912",
+            "3201611010983", "3201606009684", "3201901017640",
+            "3201601007625", "3201710014981", "3201807016597",
+            "3202006020991", "3201710015037", "3202301029760",
+            "111477000821", "3201608010191", "3201806016390",
+            "3201708014618", "3202410037239", "3201908019041"
+          ],
+          "enumNames": [
+            "Netflix", "Prime Video", "YouTube",
+            "YouTube Kids", "Spotify", "Disney+",
+            "Hulu", "Paramount+", "Apple TV",
+            "Peacock TV", "Gallery", "HBO Max",
+            "Shahid", "Deezer", "DAZN",
+            "ESPN", "BeIN Sports", "Apple Music"
+          ]
+        },
+        "default": [],
+        "uniqueItems": true
+      },
+      "frameTvDevices": {
+        "title": "Samsung Frame TV Devices (Local WebSocket Control)",
+        "type": "array",
+        "description": "Configure Samsung Frame TVs for full power off and art mode control via local WebSocket. Only needed for Frame TVs where the SmartThings power-off enters Art Mode instead of truly turning off.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "deviceName": {
+              "title": "Device Name",
+              "type": "string",
+              "minLength": 1,
+              "description": "Exact SmartThings device name to match (case-insensitive)"
+            },
+            "ip": {
+              "title": "TV IP Address",
+              "type": "string",
+              "minLength": 7,
+              "pattern": "^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$",
+              "description": "Static local IP address of the Samsung Frame TV"
+            },
+            "enableFullPowerOff": {
+              "title": "Enable Full Power Off",
+              "type": "boolean",
+              "default": true,
+              "description": "Use 3.5s long-press KEY_POWER via local WebSocket instead of SmartThings switch.off (which only enters Art Mode on Frame TVs)"
+            },
+            "enableArtModeSwitch": {
+              "title": "Enable Art Mode Switch",
+              "type": "boolean",
+              "default": true,
+              "description": "Expose a separate switch in HomeKit to toggle Art Mode on/off"
+            },
+            "token": {
+              "title": "TV Token (Auto-saved)",
+              "type": "string",
+              "description": "Authorization token from the TV. Usually auto-saved after first connection — leave empty unless troubleshooting."
+            }
+          },
+          "required": ["deviceName", "ip"]
+        }
+      },
+      "thermostatModeOverrides": {
+        "title": "Thermostat Mode Overrides",
+        "type": "array",
+        "description": "Override which SmartThings thermostatMode is sent when HomeKit requests HEAT or COOL. Only needed for HVAC systems with non-standard modes (e.g. Koolnova). Devices not listed here use the defaults (heat/cool).",
+        "items": {
+          "type": "object",
+          "properties": {
+            "deviceName": {
+              "title": "Device Name",
+              "type": "string",
+              "minLength": 1,
+              "description": "Exact SmartThings device name to match (case-insensitive)"
+            },
+            "heatMode": {
+              "title": "HomeKit HEAT sends",
+              "type": "string",
+              "default": "heat",
+              "description": "SmartThings thermostatMode to send when HomeKit requests HEAT (e.g. heat, radiatingfloor)"
+            },
+            "coolMode": {
+              "title": "HomeKit COOL sends",
+              "type": "string",
+              "default": "cool",
+              "description": "SmartThings thermostatMode to send when HomeKit requests COOL"
+            }
+          },
+          "required": ["deviceName"]
+        }
+      },
+      "ShowOnlyDevices": {
+        "title": "Show Only Devices (Whitelist)",
+        "type": "array",
+        "description": "List of device names to exclusively show. When configured with at least one device, ONLY these devices will be exposed to HomeKit. This takes precedence over IgnoreDevices. Useful when you have many devices but only want to expose a few.",
         "items": {
           "title": "Device Name",
           "type": "string",

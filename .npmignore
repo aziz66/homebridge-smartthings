@@ -137,3 +137,11 @@ web_modules/
 excluded/
 nul
 issues/
+.claude
+wiki-drafts/
+
+# Local debug artifacts (issue screenshots, PR diff drafts) — root-level dotfiles
+# that npm does NOT auto-exclude (despite the common assumption). Keep these out
+# of the published tarball.
+.issue*
+.pr*-diff.txt

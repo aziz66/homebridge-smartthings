@@ -58,24 +58,23 @@ export class BaseService {
   }
 
   protected async getStatus(): Promise<boolean> {
-    // if you need to return an error to show the device as "Not Responding" in the Home app:
-    // throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-    // this.log.debug('Received getMotion() event for ' + this.name);
+    if (!this.multiServiceAccessory.isOnline()) {
+      this.log.debug(`${this.name} is offline`);
+      return false;
+    }
 
-    return new Promise((resolve) => {
-      if (!this.multiServiceAccessory.isOnline()) {
-        this.log.info(`${this.name} is offline`);
-        resolve(false);
-      }
-      this.multiServiceAccessory.refreshStatus()
-        .then(success => {
-          if (!success) {
-            resolve(false);
-          } else {
-            resolve(true);
-          }
-        });
-    });
+    // If we have cached data, return immediately to avoid Homebridge
+    // "slow to respond" warnings. Polling and webhooks keep state fresh
+    // via updateCharacteristic(). Trigger a background refresh if stale.
+    if (this.multiServiceAccessory.hasCachedStatus()) {
+      this.multiServiceAccessory.refreshStatus().catch((error) => {
+        this.log.debug(`Background refresh failed for ${this.name}: ${error}`);
+      });
+      return true;
+    }
+
+    // No cached data yet (first call at startup) — must block to get initial state
+    return this.multiServiceAccessory.refreshStatus();
   }
 
   public processEvent(event: ShortEvent) {

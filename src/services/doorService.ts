@@ -93,7 +93,7 @@ export class DoorService extends BaseService {
     } else {
       command = 'open';
     }
-    this.multiServiceAccessory.sendCommand('doorControl', command).then((success) => {
+    this.multiServiceAccessory.sendCommand(this.componentId, 'doorControl', command).then((success) => {
       if (success) {
         this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
         this.multiServiceAccessory.forceNextStatusRefresh();

@@ -5,7 +5,7 @@ import { SensorService } from './sensorService';
 import { ShortEvent } from '../webhook/subscriptionHandler';
 
 export class TemperatureService extends SensorService {
-  private unit = 'F';
+  protected unit = 'F';
 
   constructor(platform: IKHomeBridgeHomebridgePlatform, accessory: PlatformAccessory, componentId: string, capabilities: string[],
     multiServiceAccessory: MultiServiceAccessory,
