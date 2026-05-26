@@ -25,6 +25,19 @@
 
 Connects your SmartThings devices to Apple HomeKit through Homebridge. Works with the modern SmartThings app and API, discovers devices automatically, and uses OAuth with token refresh — no legacy app, no manual token management.
 
+## Supporters
+
+A heartfelt thank-you to everyone who has supported this project on [Ko-fi](https://ko-fi.com/aziz66) — your generosity keeps the plugin maintained and improving.
+
+| Supporter | Contribution |
+|---|---|
+| [@Jayip](https://github.com/Jayip) | $15 |
+| phil | $10 |
+| Samuel | $7 |
+| [@joannadal](https://github.com/joannadal) | $5 |
+
+Special thanks to each of you for believing in this project.
+
 ## Features
 
 - **No legacy app required** — works with the new SmartThings app and API.
