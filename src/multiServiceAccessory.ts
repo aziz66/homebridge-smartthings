@@ -34,11 +34,11 @@ import { DishwasherService } from './services/dishwasherService';
 import { AirPurifierService } from './services/airPurifierService';
 import { SecuritySystemService } from './services/securitySystemService';
 import { RefrigeratorTemperatureService } from './services/refrigeratorTemperatureService';
+import { ZigbangSmartDoorlockService } from './services/zigbangSmartDoorlockService';
 import { extractDisabledComponents } from './util/samsungRefrigerator';
 import { Command } from './services/smartThingsCommand';
 import { CrashLoopManager, CrashErrorType } from './auth/CrashLoopManager';
 import { SamsungWebSocket } from './local/samsungWebSocket';
-import { ZigbangSmartDoorlockService } from './services/zigbangSmartDoorlockService';
 // type DeviceStatus = {
 //   timestamp: number;
 //   //status: Record<string, unknown>;
@@ -71,7 +71,6 @@ export class MultiServiceAccessory {
   private static capabilityMap = {
     'doorControl': DoorService,
     'lock': LockService,
-    'absoluteweather46907.lock': ZigbangSmartDoorlockService,
     'switch': SwitchService,
     'windowShadeLevel': WindowCoveringService,
     'windowShade': WindowCoveringService,
@@ -88,6 +87,7 @@ export class MultiServiceAccessory {
     'battery': Battery,
     'valve': ValveService,
     'samsungce.airConditionerLighting': ACLightingService,
+    'absoluteweather46907.lock': ZigbangSmartDoorlockService,
   };
 
   // Maps combinations of supported capabilities to a service

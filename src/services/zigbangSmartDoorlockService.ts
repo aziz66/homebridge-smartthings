@@ -96,7 +96,8 @@ export class ZigbangSmartDoorlockService extends BaseService {
     }
 
     this.service.updateCharacteristic(this.platform.Characteristic.LockTargetState, value);
-    this.multiServiceAccessory.sendCommand(`${ZigbangSmartDoorlockService.serviceNamespace}.lock`, 'unlock').then((success) => {
+    this.multiServiceAccessory.sendCommand(this.componentId, `${ZigbangSmartDoorlockService.serviceNamespace}.lock`, 'unlock')
+    .then((success) => {
       if (success) {
         this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
         this.multiServiceAccessory.forceNextStatusRefresh();
@@ -115,6 +116,16 @@ export class ZigbangSmartDoorlockService extends BaseService {
     this.log.debug('Received getLockState() event for ' + this.name);
 
     return new Promise((resolve, reject) => {
+      // because some lock/unlock events are missing in SmartThings, an explicit refresh call is required
+      this.multiServiceAccessory.sendCommand(this.componentId, 'refresh', 'refresh').then((success) => {
+        if (success) {
+          this.log.debug('refresh() SUCCESSFUL for ' + this.name);
+        } else {
+          reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
+          return;
+        }
+      });
+
       this.getStatus().then(success => {
         if (success) {
           this.selectedLanguage =
