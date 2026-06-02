@@ -38,7 +38,7 @@ export class ZigbangSmartDoorlockService extends BaseService {
 
     let pollLocksSeconds = 10; // default to 10 seconds
     if (this.platform.config.PollLocksSeconds !== undefined) {
-      pollLocksSeconds = this.platform.config.PollSensorsSeconds;
+      pollLocksSeconds = this.platform.config.PollLocksSeconds;
     }
 
     if (pollLocksSeconds > 0) {
