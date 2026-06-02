@@ -60,11 +60,16 @@ export class ZigbangSmartDoorlockService extends BaseService {
             reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
             return;
           }
-          this.selectedLanguage =
-            this.deviceStatus.status[`${ZigbangSmartDoorlockService .serviceNamespace}.languageSupport`].language.value;
+          const ns = ZigbangSmartDoorlockService.serviceNamespace;
+          const langStatus = this.deviceStatus.status[`${ns}.languageSupport`];
+          const lockStatus = this.deviceStatus.status[`${ns}.lockstaterelease`];
+          if (!langStatus || !lockStatus) {
+            reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
+            return;
+          }
+          this.selectedLanguage = langStatus.language.value;
           this.log.debug(`LanguageSupport value from ${this.name}: ${this.selectedLanguage}`);
-          this.targetState =
-            this.deviceStatus.status[`${ZigbangSmartDoorlockService.serviceNamespace}.lockstaterelease`].lock.value ===
+          this.targetState = lockStatus.lock.value ===
             `locked.${this.selectedLanguage}` ?
             this.platform.Characteristic.LockTargetState.SECURED :
             this.platform.Characteristic.LockTargetState.UNSECURED;
@@ -128,10 +133,16 @@ export class ZigbangSmartDoorlockService extends BaseService {
 
       this.getStatus().then(success => {
         if (success) {
-          this.selectedLanguage =
-            this.deviceStatus.status[`${ZigbangSmartDoorlockService.serviceNamespace}.languageSupport`].language.value;
+          const ns = ZigbangSmartDoorlockService.serviceNamespace;
+          const langStatus = this.deviceStatus.status[`${ns}.languageSupport`];
+          const lockStatus = this.deviceStatus.status[`${ns}.lockstaterelease`];
+          if (!langStatus || !lockStatus) {
+            reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
+            return;
+          }
+          this.selectedLanguage = langStatus.language.value;
           this.log.debug(`LanguageSupport value from ${this.name}: ${this.selectedLanguage}`);
-          const lockState = this.deviceStatus.status[`${ZigbangSmartDoorlockService.serviceNamespace}.lockstaterelease`].lock.value;
+          const lockState = lockStatus.lock.value;
           this.log.debug(`LockState value from ${this.name}: ${lockState}`);
           resolve(this.mapLockState(lockState));
         } else {
