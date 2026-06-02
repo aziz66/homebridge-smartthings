@@ -488,6 +488,12 @@ export class MultiServiceAccessory {
         return;
       }
 
+      // Skip Zigbang Smart Doorlock service if not enabled in config
+      if (capability === 'absoluteweather46907.lock' && !this.platform.config.ExposeZigbangSmartDoorlock) {
+        this.log.debug(`Skipping Zigbang Smart Doorlock service for ${this.name} - not enabled in config`);
+        return;
+      }
+
       capabilitiesToCover = this.registerServiceIfMatchesCapabilities(
         componentId,
         component,
