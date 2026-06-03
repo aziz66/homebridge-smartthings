@@ -87,7 +87,7 @@ export class MultiServiceAccessory {
     'battery': Battery,
     'valve': ValveService,
     'samsungce.airConditionerLighting': ACLightingService,
-    'absoluteweather46907.lock': ZigbangSmartDoorlockService,
+    [ZigbangSmartDoorlockService.CAPABILITY_ID]: ZigbangSmartDoorlockService,
   };
 
   // Maps combinations of supported capabilities to a service
@@ -489,7 +489,7 @@ export class MultiServiceAccessory {
       }
 
       // Skip Zigbang Smart Doorlock service if not enabled in config
-      if (capability === 'absoluteweather46907.lock' && !this.platform.config.ExposeZigbangSmartDoorlock) {
+      if (capability === ZigbangSmartDoorlockService.CAPABILITY_ID && !this.platform.config.ExposeZigbangSmartDoorlock) {
         this.log.debug(`Skipping Zigbang Smart Doorlock service for ${this.name} - not enabled in config`);
         return;
       }

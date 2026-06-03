@@ -9,6 +9,7 @@ export class ZigbangSmartDoorlockService extends BaseService {
   private lockInTransitionStart = 0;
   private selectedLanguage = 'en';
   static readonly serviceNamespace = 'absoluteweather46907';
+  public static readonly CAPABILITY_ID = `${ZigbangSmartDoorlockService.serviceNamespace}.lock`;
 
   constructor(platform: IKHomeBridgeHomebridgePlatform, accessory: PlatformAccessory, componentId: string, capabilities: string[],
     multiServiceAccessory: MultiServiceAccessory,
@@ -17,7 +18,7 @@ export class ZigbangSmartDoorlockService extends BaseService {
 
     this.setServiceType(platform.Service.LockMechanism);
     // Set the event handlers
-    this.log.debug(`Adding LockService to ${this.name}`);
+    this.log.debug(`Adding ZigbangSmartDoorlockService to ${this.name}`);
     this.service.getCharacteristic(platform.Characteristic.LockCurrentState)
       .onGet(this.getLockCurrentState.bind(this));
     this.service.getCharacteristic(platform.Characteristic.LockTargetState)
@@ -120,36 +121,36 @@ export class ZigbangSmartDoorlockService extends BaseService {
     // throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     this.log.debug('Received getLockState() event for ' + this.name);
 
-    return new Promise((resolve, reject) => {
+    try {
       // because some lock/unlock events are missing in SmartThings, an explicit refresh call is required
-      this.multiServiceAccessory.sendCommand(this.componentId, 'refresh', 'refresh').then((success) => {
-        if (success) {
-          this.log.debug('refresh() SUCCESSFUL for ' + this.name);
-        } else {
-          reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
-          return;
-        }
-      });
+      const refreshSuccess = await this.multiServiceAccessory.sendCommand(this.componentId, 'refresh', 'refresh');
+      if (!refreshSuccess) {
+        throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+      }
+      this.log.debug('refresh() SUCCESSFUL for ' + this.name);
 
-      this.getStatus().then(success => {
-        if (success) {
-          const ns = ZigbangSmartDoorlockService.serviceNamespace;
-          const langStatus = this.deviceStatus.status[`${ns}.languageSupport`];
-          const lockStatus = this.deviceStatus.status[`${ns}.lockstaterelease`];
-          if (!langStatus || !lockStatus) {
-            reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
-            return;
-          }
-          this.selectedLanguage = langStatus.language.value;
-          this.log.debug(`LanguageSupport value from ${this.name}: ${this.selectedLanguage}`);
-          const lockState = lockStatus.lock.value;
-          this.log.debug(`LockState value from ${this.name}: ${lockState}`);
-          resolve(this.mapLockState(lockState));
-        } else {
-          reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
-        }
-      });
-    });
+      const fetchedStatus = await this.getStatus();
+      if (!fetchedStatus) {
+        throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+      }
+      const ns = ZigbangSmartDoorlockService.serviceNamespace;
+      const langStatus = this.deviceStatus.status[`${ns}.languageSupport`];
+      const lockStatus = this.deviceStatus.status[`${ns}.lockstaterelease`];
+      if (!langStatus || !lockStatus) {
+        throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+      }
+      this.selectedLanguage = langStatus.language.value;
+      this.log.debug(`LanguageSupport value from ${this.name}: ${this.selectedLanguage}`);
+      const lockState = lockStatus.lock.value;
+      this.log.debug(`LockState value from ${this.name}: ${lockState}`);
+      return this.mapLockState(lockState);
+    } catch (error) {
+      this.log.error(`Failed to get current lock state for ${this.name}:`, error);
+      if (error instanceof this.platform.api.hap.HapStatusError) {
+        throw error;
+      }
+      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
   }
 
   public processEvent(event: ShortEvent): void {
