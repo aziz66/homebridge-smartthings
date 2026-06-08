@@ -1,6 +1,19 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.62-beta.0] - Webhook Lifecycle Robustness & installedAppId Diagnostics
+
+> Hardening release prompted by a deep investigation of #43 (real-time webhooks reported non-functional for an `API_ONLY` SmartApp). A full clean-room reproduction of the documented setup — fresh install, deleted tokens, wiki-spec `API_ONLY` app with the standard `r:devices:* x:devices:* r:locations:*` scopes, tunnel target URL — confirmed the webhook/subscription flow **works end-to-end**: SmartThings returns `installed_app_id` directly in the OAuth token-exchange response, so the plugin needs neither an `installedapps` scope nor the `GET /installedapps` discovery fallback to create subscriptions. The reporter's failure therefore comes from a token issued *without* an install context (upstream/account-specific), not from the plugin. These changes harden the webhook endpoint against that and similar edge cases, and add diagnostics so the source of the `installedAppId` is obvious from the logs. Thanks to @mikegraben for the exceptionally detailed report and source-level analysis.
+
+### Fixed
+- **Webhook server never returns HTTP 400 to SmartThings on a lifecycle POST** (#43) — `webhookServer.ts` previously called `JSON.parse` unconditionally and returned `400` on empty or malformed POST bodies, and returned `400` when a `PING` arrived without `challenge` or a `CONFIRMATION` without `confirmationUrl`. SmartThings can treat a `400` on a lifecycle delivery as a permanent failure. All four paths now acknowledge with `200` — empty bodies via an early guard, unparseable bodies via the parse `catch`, and the `PING`/`CONFIRMATION` missing-field branches via an empty `{}` ack — each logged at `warn`/`debug` for visibility. Successful lifecycle, device-event, and OAuth-callback paths are byte-for-byte unchanged.
+
+### Added
+- **`installedAppId` source logging** (#43) — `platform.ts` now logs whether the `installedAppId` used for subscriptions came from the stored token (`Using installedAppId from stored token …`) or from the Installed Apps API discovery fallback (`Discovered installedAppId: …`), turning "subscriptions silently didn't start" into a one-line diagnosis.
+
+### Credit
+- **@mikegraben** — #43 reported with a clean reproduction and `webhookServer.ts` / `auth.ts` source pointers that drove the full investigation.
+
 ## [1.0.61] - Multi-Component Refrigerator, Thermostat Robustness, OAuth Diagnostics, TV Stability
 
 > Stable release graduating the `1.0.61-beta.0` → `beta.3` series. The per-beta entries below preserve the technical detail behind each fix and the contributors credited along the way.

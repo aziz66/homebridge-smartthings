@@ -84,6 +84,15 @@ export class WebhookServer {
       });
 
       req.on('end', () => {
+        // Empty POSTs (tunnel/SmartThings health checks) must be acked, not 400'd —
+        // a 400 can be treated by SmartThings as a failed lifecycle delivery.
+        if (body.trim() === '') {
+          this.log.debug('Received empty POST body on /, acknowledging');
+          res.writeHead(200);
+          res.end();
+          return;
+        }
+
         try {
           const parsed = JSON.parse(body);
 
@@ -104,8 +113,10 @@ export class WebhookServer {
             res.end();
           }
         } catch (error) {
-          this.log.error('Error parsing incoming POST body:', error);
-          res.writeHead(400);
+          // Malformed body — ack with 200 so SmartThings doesn't mark a lifecycle
+          // delivery as failed; log for visibility.
+          this.log.warn('Received unparseable POST body on /, acknowledging:', error);
+          res.writeHead(200);
           res.end();
         }
       });
@@ -155,9 +166,10 @@ export class WebhookServer {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ pingData: { challenge } }));
     } else {
-      this.log.error('Received PING lifecycle without challenge data');
-      res.writeHead(400);
-      res.end();
+      // No challenge to echo back — ack with 200 so SmartThings doesn't treat it as a failed delivery.
+      this.log.warn('Received PING lifecycle without challenge data - acknowledging');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({}));
     }
   }
 
@@ -176,9 +188,10 @@ export class WebhookServer {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ targetUrl: serverUrl }));
     } else {
-      this.log.error('Received CONFIRMATION lifecycle without confirmationUrl');
-      res.writeHead(400);
-      res.end();
+      // No confirmationUrl to act on — ack with 200 so SmartThings doesn't treat it as a failed delivery.
+      this.log.warn('Received CONFIRMATION lifecycle without confirmationUrl - acknowledging');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({}));
     }
   }
 

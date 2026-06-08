@@ -724,6 +724,10 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
       // Step 2: Get installedAppId — try stored value first, then API
       let installedAppId = this.auth.tokenManager.getInstalledAppId();
 
+      if (installedAppId) {
+        this.log.info(`Using installedAppId from stored token (no discovery needed): ${installedAppId}`);
+      }
+
       if (!installedAppId) {
         this.log.info('No stored installedAppId — attempting to discover via Installed Apps API...');
         try {
