@@ -140,8 +140,12 @@ issues/
 .claude
 wiki-drafts/
 
-# Local debug artifacts (issue screenshots, PR diff drafts) — root-level dotfiles
-# that npm does NOT auto-exclude (despite the common assumption). Keep these out
+# Local debug artifacts (issue screenshots, PR diff drafts, repro scratch, captured
+# config/CLI output) — root-level dotfiles that npm does NOT auto-exclude (despite
+# the common assumption). Several of these contain real secrets. Keep them all out
 # of the published tarball.
 .issue*
 .pr*-diff.txt
+.repro*
+.st-*
+.remote-config.json

@@ -126,3 +126,11 @@ excluded/
 .DS_Store
 nul
 .claude
+
+# Local debug/scratch artifacts (issue notes, repro scratch, captured config/CLI
+# output) — some contain real secrets. Never commit these.
+.issue*
+.pr*-diff.txt
+.repro*
+.st-*
+.remote-config.json
