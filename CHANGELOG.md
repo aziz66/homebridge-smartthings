@@ -1,9 +1,9 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
-## [1.0.62-beta.0] - Webhook Lifecycle Robustness & installedAppId Diagnostics
+## [1.0.62] - Webhook Lifecycle Robustness, installedAppId Diagnostics & Target-URL Confirmation Docs
 
-> Hardening release prompted by a deep investigation of #43 (real-time webhooks reported non-functional for an `API_ONLY` SmartApp). A full clean-room reproduction of the documented setup — fresh install, deleted tokens, wiki-spec `API_ONLY` app with the standard `r:devices:* x:devices:* r:locations:*` scopes, tunnel target URL — confirmed the webhook/subscription flow **works end-to-end**: SmartThings returns `installed_app_id` directly in the OAuth token-exchange response, so the plugin needs neither an `installedapps` scope nor the `GET /installedapps` discovery fallback to create subscriptions. The reporter's failure therefore comes from a token issued *without* an install context (upstream/account-specific), not from the plugin. These changes harden the webhook endpoint against that and similar edge cases, and add diagnostics so the source of the `installedAppId` is obvious from the logs. Thanks to @mikegraben for the exceptionally detailed report and source-level analysis.
+> Stable release graduating `1.0.62-beta.0`. Prompted by a deep investigation of #43 (real-time webhooks reported non-functional for an `API_ONLY` SmartApp). A full clean-room reproduction confirmed the webhook/subscription flow **works end-to-end** with the standard `r:devices:* x:devices:* r:locations:*` scopes: SmartThings returns `installed_app_id` directly in the OAuth token-exchange response, so the plugin needs neither an `installedapps` scope nor `GET /installedapps` discovery to create subscriptions. The reproduction also surfaced the **actual reason real-time events silently never arrive**: a freshly-created `API_ONLY` app's Target URL stays in `targetStatus: PENDING`, and SmartThings delivers no events until it is `CONFIRMED` — which OAuth authorization does **not** do. The missing step is a one-time `smartthings apps:register <app-id>` (run while Homebridge is up, so the plugin auto-acks the CONFIRMATION). This release hardens the webhook endpoint, adds diagnostics, and documents the required confirmation step. Thanks to @mikegraben for the exceptionally detailed report and source-level analysis.
 
 ### Fixed
 - **Webhook server never returns HTTP 400 to SmartThings on a lifecycle POST** (#43) — `webhookServer.ts` previously called `JSON.parse` unconditionally and returned `400` on empty or malformed POST bodies, and returned `400` when a `PING` arrived without `challenge` or a `CONFIRMATION` without `confirmationUrl`. SmartThings can treat a `400` on a lifecycle delivery as a permanent failure. All four paths now acknowledge with `200` — empty bodies via an early guard, unparseable bodies via the parse `catch`, and the `PING`/`CONFIRMATION` missing-field branches via an empty `{}` ack — each logged at `warn`/`debug` for visibility. Successful lifecycle, device-event, and OAuth-callback paths are byte-for-byte unchanged.
@@ -11,8 +11,11 @@ All notable changes to this project will be documented in this file.
 ### Added
 - **`installedAppId` source logging** (#43) — `platform.ts` now logs whether the `installedAppId` used for subscriptions came from the stored token (`Using installedAppId from stored token …`) or from the Installed Apps API discovery fallback (`Discovered installedAppId: …`), turning "subscriptions silently didn't start" into a one-line diagnosis.
 
+### Documentation
+- **Target-URL confirmation step added to the Webhooks guide** (#43) — the [Webhooks and Real-Time Updates](https://github.com/aziz66/homebridge-smartthings/wiki/Webhooks-and-Real-Time-Updates) wiki now includes an explicit "Confirm the Target URL" step (`smartthings apps:register <app-id>` + verifying `targetStatus: CONFIRMED`), plus troubleshooting for the silent "subscriptions created but no events arrive" case. This was the genuine root cause behind #43 and was previously undocumented.
+
 ### Credit
-- **@mikegraben** — #43 reported with a clean reproduction and `webhookServer.ts` / `auth.ts` source pointers that drove the full investigation.
+- **@mikegraben** — #43 reported with a clean reproduction and `webhookServer.ts` / `auth.ts` source pointers that drove the full investigation, including the Target-URL `PENDING`/`CONFIRMED` finding.
 
 ## [1.0.61] - Multi-Component Refrigerator, Thermostat Robustness, OAuth Diagnostics, TV Stability
 

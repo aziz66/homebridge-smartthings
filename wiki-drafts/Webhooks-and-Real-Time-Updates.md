@@ -62,6 +62,33 @@ After saving, restart Homebridge. Look for these messages in the logs:
 - `Creating X broad CAPABILITY subscriptions...` — real-time subscriptions being set up.
 - `SmartThings real-time subscriptions set up successfully.` — done.
 
+### 5. Confirm the Target URL — **required, or no events will arrive**
+
+When you create the app, its Target URL starts in a **`PENDING`** state. SmartThings only delivers device events once the Target URL is **`CONFIRMED`** — and **OAuth authorization does not confirm it.** You must trigger the confirmation once, **while Homebridge is running** (so the plugin's webhook server is up to answer the request):
+
+```bash
+smartthings apps:register <your-app-id>
+```
+
+This tells SmartThings to POST a CONFIRMATION request to your Target URL; the plugin receives it and confirms automatically. Then verify:
+
+```bash
+smartthings apps <your-app-id> -j
+```
+
+Look for `targetStatus: "CONFIRMED"` under `apiOnly.subscription`:
+
+```json
+"apiOnly": {
+  "subscription": {
+    "targetUrl": "https://your-domain.ngrok-free.app",
+    "targetStatus": "CONFIRMED"
+  }
+}
+```
+
+> **This is the single most common reason real-time updates silently don't work.** If OAuth succeeded, devices were discovered, and subscriptions were created — but no events ever arrive — your Target URL is almost certainly still `PENDING`. Run `apps:register` (with Homebridge running) and it will flip to `CONFIRMED`. Note: you can only register a `PENDING` app; re-running `apps:register` on an already-`CONFIRMED` app returns a `422` error, which is harmless and just means it's already confirmed.
+
 ---
 
 ## URL reference
@@ -114,8 +141,10 @@ Once webhooks are working, you can control which capabilities get real-time subs
 
 **"Webhook server listening but no events arriving"**
 
+- **First, check your Target URL is `CONFIRMED`** — this is the most common cause. Run `smartthings apps <your-app-id> -j` and look at `apiOnly.subscription.targetStatus`. If it's `PENDING`, run `smartthings apps:register <your-app-id>` with Homebridge running (see [Step 5](#5-confirm-the-target-url--required-or-no-events-will-arrive)). Auth succeeding and subscriptions being created does **not** mean the target is confirmed.
 - Verify your tunnel is working by visiting your public URL in a browser.
-- Check that the Target URL in your SmartThings app settings matches your tunnel URL exactly.
+- Check that the Target URL is your tunnel **root** (no path) — the plugin only accepts events at `/`; a Target URL with a path (e.g. ending in `/oauth/callback`) will not receive events.
+- If your tunnel provider has bot/WAF protection (e.g. Cloudflare), make sure it isn't blocking SmartThings' server-to-server POSTs — check its security/firewall event log for blocked requests.
 - SmartThings will send a PING challenge first — check logs for `Received SmartThings PING challenge`.
 
 **Events are working but some devices don't update in real time**
