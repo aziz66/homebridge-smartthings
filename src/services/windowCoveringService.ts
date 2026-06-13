@@ -72,13 +72,22 @@ export class WindowCoveringService extends BaseService {
 
     let capability = 'switchLevel';
     let command = 'setLevel';
+    let args: unknown[] = [value];
 
-    if (this.useWindowShadeLevel) {
+    if (this.targetPosition === 0 || this.targetPosition === 100) {
+      // At the travel limits, use the windowShade capability's mandatory
+      // open/close commands instead of a level command — some Z-Wave shade
+      // drivers intermittently ignore setShadeLevel(0)/setLevel(0) while
+      // honoring close immediately.
+      capability = 'windowShade';
+      command = this.targetPosition === 0 ? 'close' : 'open';
+      args = [];
+    } else if (this.useWindowShadeLevel) {
       capability = 'windowShadeLevel';
       command = 'setShadeLevel';
     }
 
-    this.multiServiceAccessory.sendCommand(this.componentId, capability, command, [value])
+    this.multiServiceAccessory.sendCommand(this.componentId, capability, command, args)
       .then(() => {
         this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
         this.multiServiceAccessory.forceNextStatusRefresh();
