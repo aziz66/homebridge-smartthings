@@ -5,7 +5,11 @@ import { MultiServiceAccessory } from '../multiServiceAccessory';
 import { ShortEvent } from '../webhook/subscriptionHandler';
 
 export class WindowCoveringService extends BaseService {
-  private targetPosition = 0;
+  // null = not yet learned. HomeKit shows 'Opening…'/'Closing…' whenever
+  // TargetPosition differs from CurrentPosition, so a hardcoded startup target
+  // would make any shade not sitting at that exact position spin forever.
+  private targetPosition: number | null = null;
+  private currentPosition: number | null = null;
   private timer;
   private states = {
     decreasing: this.platform.Characteristic.PositionState.DECREASING,
@@ -35,7 +39,7 @@ export class WindowCoveringService extends BaseService {
 
     let pollWindowShadesSeconds = 10; // default to 10 seconds
     if (this.platform.config.PollWindowShadesSeconds !== undefined) {
-      pollWindowShadesSeconds = this.platform.config.PollSwitchesAndLightsSeconds;
+      pollWindowShadesSeconds = this.platform.config.PollWindowShadesSeconds;
     }
 
     if (pollWindowShadesSeconds > 0) {
@@ -87,7 +91,13 @@ export class WindowCoveringService extends BaseService {
 
   async getTargetPosition(): Promise<CharacteristicValue> {
     return new Promise(resolve => {
-      resolve(this.targetPosition);
+      if (this.targetPosition !== null) {
+        resolve(this.targetPosition);
+      } else {
+        // No target learned yet (no HomeKit command, no status sync) — report
+        // the last known position so HomeKit doesn't invent a phantom move.
+        resolve(this.currentPosition ?? 0);
+      }
     });
   }
 
@@ -96,13 +106,16 @@ export class WindowCoveringService extends BaseService {
     return new Promise((resolve, reject) => {
       this.getStatus().then(success => {
         if (success) {
-          const state = this.deviceStatus.status.windowShade.windowShade;
+          const state = this.deviceStatus.status.windowShade.windowShade.value;
+          // HomeKit position semantics: 100 = fully open, 0 = fully closed,
+          // so 'opening' means the position is INCREASING.
           if (state === 'opening') {
-            this.currentPositionState = this.states.decreasing;
-          } else if (state === 'closing') {
             this.currentPositionState = this.states.increasing;
+          } else if (state === 'closing') {
+            this.currentPositionState = this.states.decreasing;
           } else {
             this.currentPositionState = this.states.stopped;
+            this.syncTargetPosition(this.readPositionFromStatus());
           }
           this.log.debug(`getCurrentPositionState() SUCCESSFUL for ${this.name} return value ${state}, ` +
             `setting to ${this.currentPositionState}`);
@@ -143,11 +156,14 @@ export class WindowCoveringService extends BaseService {
       this.getStatus().then(success => {
 
         if (success) {
-          let position = 0;
-          if (this.useWindowShadeLevel) {
-            position = this.deviceStatus.status.windowShadeLevel.shadeLevel.value;
-          } else {
-            position = this.deviceStatus.status.switchLevel.level.value;
+          const position = this.readPositionFromStatus();
+          if (position === null) {
+            this.log.error('onGet() FAILED for ' + this.name + '. Undefined value');
+            return reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
+          }
+          this.currentPosition = position;
+          if (this.currentPositionState === this.states.stopped) {
+            this.syncTargetPosition(position);
           }
           this.log.debug('onGet() SUCCESSFUL for ' + this.name + '. value = ' + position);
           resolve(position);
@@ -162,19 +178,46 @@ export class WindowCoveringService extends BaseService {
   public processEvent(event: ShortEvent): void {
     if (event.capability === 'windowShadeLevel' || event.capability === 'switchLevel') {
       this.log.debug(`Event updating windowShadeLevel capability for ${this.name} to ${event.value}`);
+      this.currentPosition = event.value;
       this.service.updateCharacteristic(this.platform.Characteristic.CurrentPosition, event.value);
+      if (this.currentPositionState === this.states.stopped) {
+        this.syncTargetPosition(event.value);
+      }
     } else if (event.capability === 'windowShade') {
       this.log.debug(`Event updating windowShade capability for ${this.name} to ${event.value}`);
       if (event.value === 'opening') {
-        this.currentPositionState = this.states.decreasing;
-      } else if (event.value === 'closing') {
         this.currentPositionState = this.states.increasing;
+      } else if (event.value === 'closing') {
+        this.currentPositionState = this.states.decreasing;
       } else {
         this.currentPositionState = this.states.stopped;
+        this.syncTargetPosition(this.currentPosition);
       }
       this.log.debug(`From event, setting characteristic to ${this.currentPositionState}`);
       this.service.updateCharacteristic(this.platform.Characteristic.PositionState, this.currentPositionState);
     }
+  }
+
+  // Reads the shade position from the cached device status, from whichever
+  // level capability this device exposes. Returns null if not yet available.
+  private readPositionFromStatus(): number | null {
+    const status = this.deviceStatus.status;
+    const position = this.useWindowShadeLevel
+      ? status.windowShadeLevel?.shadeLevel?.value
+      : status.switchLevel?.level?.value;
+    return typeof position === 'number' ? position : null;
+  }
+
+  // When the shade is idle, TargetPosition must mirror the real position or
+  // HomeKit reports a phantom 'Opening…'/'Closing…' until they match. Shades
+  // moved outside HomeKit (remote, SmartThings app, automations) only get
+  // their target reconciled here.
+  private syncTargetPosition(position: number | null) {
+    if (position === null || this.targetPosition === position) {
+      return;
+    }
+    this.targetPosition = position;
+    this.service.updateCharacteristic(this.platform.Characteristic.TargetPosition, position);
   }
 
 
