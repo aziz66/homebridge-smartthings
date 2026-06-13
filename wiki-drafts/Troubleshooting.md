@@ -104,6 +104,27 @@ For full Frame TV setup, see [Samsung Frame TV](https://github.com/aziz66/homebr
 
 ---
 
+## Window shades and blinds
+
+**Shade stuck on "Opening…" or "Closing…" in the Home app**
+
+- Update the plugin — versions up to 1.0.62 had a bug where a shade's HomeKit target position was never synced from the device, so any shade moved by its remote, the SmartThings app, or an automation showed a perpetual "Opening…"/"Closing…" spinner unless it happened to sit at the stale target. Fixed along with three related window-covering bugs (see the CHANGELOG).
+- If you still see a stuck spinner on a current version, check the device in [my.smartthings.com](https://my.smartthings.com): if SmartThings itself reports the shade as `opening`/`closing` while it is idle, the device's driver is reporting stale state — the plugin can only relay what SmartThings reports. Waking the device (move it briefly with its remote) usually forces a fresh report.
+
+**Shade won't fully open or close from the Home app (but partial positions work)**
+
+- Update the plugin — versions up to 1.0.62 always sent a level command (`setShadeLevel`/`setLevel`), even for a full open or close. Some Z-Wave shade drivers intermittently ignore level commands at the travel limits while reliably honoring the native `open`/`close` commands; the plugin now uses those for targets of 0% and 100%.
+
+**Shade direction looks inverted while moving**
+
+- Fixed in the same pass: SmartThings `opening` was mapped to HomeKit's DECREASING position state and vice versa. HomeKit defines 100 = fully open, so opening is INCREASING.
+
+**`PollWindowShadesSeconds` seems to have no effect**
+
+- Versions up to 1.0.62 read the wrong config key (`PollSwitchesAndLightsSeconds`) for the shade polling interval. Update the plugin; the documented key now works.
+
+---
+
 ## Getting help
 
 If you've tried the above and still have a problem:
