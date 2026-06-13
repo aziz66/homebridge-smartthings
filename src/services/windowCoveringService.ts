@@ -74,11 +74,13 @@ export class WindowCoveringService extends BaseService {
     let command = 'setLevel';
     let args: unknown[] = [value];
 
-    if (this.targetPosition === 0 || this.targetPosition === 100) {
+    if (this.capabilities.includes('windowShade') && (this.targetPosition === 0 || this.targetPosition === 100)) {
       // At the travel limits, use the windowShade capability's mandatory
       // open/close commands instead of a level command — some Z-Wave shade
       // drivers intermittently ignore setShadeLevel(0)/setLevel(0) while
-      // honoring close immediately.
+      // honoring close immediately. Only valid if the device actually exposes
+      // windowShade; a windowShadeLevel/switchLevel-only device falls through
+      // to the level command below.
       capability = 'windowShade';
       command = this.targetPosition === 0 ? 'close' : 'open';
       args = [];
@@ -115,7 +117,10 @@ export class WindowCoveringService extends BaseService {
     return new Promise((resolve, reject) => {
       this.getStatus().then(success => {
         if (success) {
-          const state = this.deviceStatus.status.windowShade.windowShade.value;
+          // Guard the read: the service can also be matched on a
+          // windowShadeLevel/switchLevel-only device that never exposes
+          // windowShade, in which case there is no movement state to report.
+          const state = this.deviceStatus.status.windowShade?.windowShade?.value;
           // HomeKit position semantics: 100 = fully open, 0 = fully closed,
           // so 'opening' means the position is INCREASING.
           if (state === 'opening') {
