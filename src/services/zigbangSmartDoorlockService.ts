@@ -9,7 +9,11 @@ export class ZigbangSmartDoorlockService extends BaseService {
   private lockInTransitionStart = 0;
   private selectedLanguage = 'en';
   static readonly serviceNamespace = 'absoluteweather46907';
-  public static readonly CAPABILITY_ID = `${ZigbangSmartDoorlockService.serviceNamespace}.lock`;
+  // State events are emitted on the lockstaterelease capability; .lock is command-only (unlock).
+  // The service must be registered/subscribed/routed under the STATE capability so real-time
+  // lockstaterelease events reach processEvent(); unlock commands go to the COMMAND capability.
+  public static readonly STATE_CAPABILITY_ID = `${ZigbangSmartDoorlockService.serviceNamespace}.lockstaterelease`;
+  public static readonly COMMAND_CAPABILITY_ID = `${ZigbangSmartDoorlockService.serviceNamespace}.lock`;
 
   constructor(platform: IKHomeBridgeHomebridgePlatform, accessory: PlatformAccessory, componentId: string, capabilities: string[],
     multiServiceAccessory: MultiServiceAccessory,
@@ -89,7 +93,7 @@ export class ZigbangSmartDoorlockService extends BaseService {
 
     this.targetState = value as number;
 
-    if (!this.multiServiceAccessory.isOnline) {
+    if (!this.multiServiceAccessory.isOnline()) {
       this.log.error(this.name + ' is offline');
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
@@ -102,7 +106,7 @@ export class ZigbangSmartDoorlockService extends BaseService {
     }
 
     this.service.updateCharacteristic(this.platform.Characteristic.LockTargetState, value);
-    this.multiServiceAccessory.sendCommand(this.componentId, `${ZigbangSmartDoorlockService.serviceNamespace}.lock`, 'unlock')
+    this.multiServiceAccessory.sendCommand(this.componentId, ZigbangSmartDoorlockService.COMMAND_CAPABILITY_ID, 'unlock')
     .then((success) => {
       if (success) {
         this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
@@ -122,13 +126,8 @@ export class ZigbangSmartDoorlockService extends BaseService {
     this.log.debug('Received getLockState() event for ' + this.name);
 
     try {
-      // because some lock/unlock events are missing in SmartThings, an explicit refresh call is required
-      const refreshSuccess = await this.multiServiceAccessory.sendCommand(this.componentId, 'refresh', 'refresh');
-      if (!refreshSuccess) {
-        throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-      }
-      this.log.debug('refresh() SUCCESSFUL for ' + this.name);
-
+      // Real-time lockstaterelease events (routed via processEvent) are the primary source of
+      // fresh state; getStatus() already triggers a background refresh, and polling is the backstop.
       const fetchedStatus = await this.getStatus();
       if (!fetchedStatus) {
         throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
@@ -155,8 +154,8 @@ export class ZigbangSmartDoorlockService extends BaseService {
 
   public processEvent(event: ShortEvent): void {
     this.log.debug(`Event updating lock capability for ${this.name} to ${event.value}`);
-    this.service.updateCharacteristic(this.platform.Characteristic.LockCurrentState, this.mapLockState(event.value));
     const mappedState = this.mapLockState(event.value);
+    this.service.updateCharacteristic(this.platform.Characteristic.LockCurrentState, mappedState);
     if (mappedState === this.platform.Characteristic.LockCurrentState.SECURED) {
       this.targetState = this.platform.Characteristic.LockTargetState.SECURED;
     } else if (mappedState === this.platform.Characteristic.LockCurrentState.UNSECURED) {
@@ -168,13 +167,15 @@ export class ZigbangSmartDoorlockService extends BaseService {
   }
 
   public mapLockState(lockState:string): CharacteristicValue {
-    switch (lockState) {
-      case 'locked':
-      case `locked.${this.selectedLanguage}`: {
+    // Values may be language-suffixed (e.g. 'locked.en', 'locked.ko'). Match on the
+    // base token so mapping is language-agnostic and independent of whether the
+    // device's languageSupport has been read yet — a real-time lockstaterelease
+    // event can arrive before the first status read sets selectedLanguage.
+    switch (lockState?.split('.')[0]) {
+      case 'locked': {
         return(this.platform.Characteristic.LockCurrentState.SECURED);
       }
-      case 'unlocked':
-      case `unlocked.${this.selectedLanguage}`: {
+      case 'unlocked': {
         return(this.platform.Characteristic.LockCurrentState.UNSECURED);
       }
       default: {

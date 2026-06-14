@@ -157,7 +157,7 @@
         "default": false,
         "description": "For Samsung Family Hub refrigerators with multiple compartments (Fridge, Freezer, FlexZone, CVRoom). When enabled, the plugin parses Samsung's OCF driver-state data so each compartment reports its own temperature, and skips creating tiles for compartments you've disabled in the SmartThings app. Standard single-zone refrigerators are unaffected. Tested against US-region firmware (RF29DB9600QLA); metric-region devices may report OCF in Celsius — please open an issue if temperatures look wrong. Default: off."
       },
-       "ExposeZigbangSmartDoorlock": {
+      "ExposeZigbangSmartDoorlock": {
         "title": "Expose Zigbang Smart Doorlock as a lock if available.",
         "type": "boolean",
         "required": false,
