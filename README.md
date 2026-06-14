@@ -31,6 +31,7 @@ A heartfelt thank-you to everyone who has supported this project on [Ko-fi](http
 
 | Supporter | Contribution |
 |---|---|
+| [@mikegraben](https://github.com/mikegraben) | $25 |
 | [@Jayip](https://github.com/Jayip) | $15 |
 | phil | $10 |
 | Samuel | $7 |
