@@ -1,6 +1,18 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.64] - Zigbang Smart Doorlock Support
+
+> Adds support for Zigbang Wi-Fi smart doorlocks, contributed by @sam-cheuk (#41). The integration is vendor-specific (matches only the `absoluteweather46907` capabilities) and is gated behind the `ExposeZigbangSmartDoorlock` config option, so it has no effect on any other device.
+
+### Added
+- **Zigbang Smart Doorlock (Wi-Fi)** (#41) — exposes the lock as a HomeKit `LockMechanism`. The device auto-relocks a few seconds after unlocking if the door isn't opened, so HomeKit "lock" is a no-op by design and only "unlock" is sent. Opt-in via `ExposeZigbangSmartDoorlock` (default on; matches the `ExposeACDisplayLight` precedent). Thanks to @sam-cheuk for the contribution, the device captures, and responsiveness to review.
+
+### Fixed
+- **Real-time lock state now works** — lock state is emitted on the `absoluteweather46907.lockstaterelease` capability, but the service was registered under the command-only `absoluteweather46907.lock`, so it never subscribed to or routed state events. The service is now registered/subscribed/routed under `lockstaterelease` (unlock commands still go to `lock`), so physical lock/unlock and SmartThings-app changes update the Home app tile in real time. This also removes the need for the per-read `refresh` device-command workaround, which has been dropped in favor of routed events plus polling.
+- **Language-agnostic state mapping** — lock state values can be language-suffixed (e.g. `locked.ko`); state is now matched on the base token so a real-time event arriving before the device's language is read still maps correctly instead of showing as unknown.
+- **Robustness** — fixed an inert offline check in the unlock path so an offline lock now reports correctly to HomeKit.
+
 ## [1.0.63] - Window Covering State Fixes
 
 > Fixes a cluster of five bugs in `windowCoveringService.ts` that made window shades show a perpetual "Opening…"/"Closing…" spinner in the Home app and made full open/close commands unreliable. Root cause confirmed by live reproduction on Z-Wave shades: HomeKit displays the spinner whenever `TargetPosition` differs from `CurrentPosition`, and the service hardcoded its target to `0` at startup and never reconciled it with the device — so any shade not fully closed spun forever, and closing the shade (position 0 = the stale target) was the only way to make the tile settle. The same reconcile-target-from-device-state pattern already used by `lockService.ts` and `doorService.ts` is now applied to window coverings. Thanks to @bcourbage for the fix (#44), live reproduction, and SmartThings-API-level verification.
