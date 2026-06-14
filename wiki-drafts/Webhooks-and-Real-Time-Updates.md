@@ -144,7 +144,10 @@ Once webhooks are working, you can control which capabilities get real-time subs
 - **First, check your Target URL is `CONFIRMED`** — this is the most common cause. Run `smartthings apps <your-app-id> -j` and look at `apiOnly.subscription.targetStatus`. If it's `PENDING`, run `smartthings apps:register <your-app-id>` with Homebridge running (see [Step 5](#5-confirm-the-target-url--required-or-no-events-will-arrive)). Auth succeeding and subscriptions being created does **not** mean the target is confirmed.
 - Verify your tunnel is working by visiting your public URL in a browser.
 - Check that the Target URL is your tunnel **root** (no path) — the plugin only accepts events at `/`; a Target URL with a path (e.g. ending in `/oauth/callback`) will not receive events.
-- If your tunnel provider has bot/WAF protection (e.g. Cloudflare), make sure it isn't blocking SmartThings' server-to-server POSTs — check its security/firewall event log for blocked requests.
+- **Cloudflare Tunnel users — add a WAF skip rule (confirmed gotcha).** Cloudflare's WAF / Bot Fight Mode can **silently drop** SmartThings' server-to-server event POSTs. This is especially sneaky because Cloudflare's Security → Events log only shows *blocked/challenged* requests — a silently-dropped POST appears **nowhere**, so an empty firewall log does **not** mean the request arrived. If your target is `CONFIRMED` and subscriptions exist but no events arrive on a Cloudflare Tunnel:
+  - **Isolate it:** temporarily point your Target URL at an **ngrok** URL instead and `smartthings apps:register <app-id>` to re-confirm. If events flow over ngrok, Cloudflare is the culprit.
+  - **Fix:** in the Cloudflare dashboard, create a **WAF custom rule** that **skips all WAF checks** for SmartThings' event-delivery IP range — `18.221.0.0/16` (AWS `us-east-2`, where SmartThings runs event delivery). With that in place, events flow through the Cloudflare Tunnel just as reliably as ngrok.
+- For any tunnel provider with bot/WAF protection, make sure it isn't dropping SmartThings' POSTs (no browser headers — easily flagged as bot traffic).
 - SmartThings will send a PING challenge first — check logs for `Received SmartThings PING challenge`.
 
 **Events are working but some devices don't update in real time**
