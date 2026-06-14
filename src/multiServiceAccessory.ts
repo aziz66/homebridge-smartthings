@@ -34,6 +34,7 @@ import { DishwasherService } from './services/dishwasherService';
 import { AirPurifierService } from './services/airPurifierService';
 import { SecuritySystemService } from './services/securitySystemService';
 import { RefrigeratorTemperatureService } from './services/refrigeratorTemperatureService';
+import { ZigbangSmartDoorlockService } from './services/zigbangSmartDoorlockService';
 import { extractDisabledComponents } from './util/samsungRefrigerator';
 import { Command } from './services/smartThingsCommand';
 import { CrashLoopManager, CrashErrorType } from './auth/CrashLoopManager';
@@ -86,6 +87,7 @@ export class MultiServiceAccessory {
     'battery': Battery,
     'valve': ValveService,
     'samsungce.airConditionerLighting': ACLightingService,
+    [ZigbangSmartDoorlockService.CAPABILITY_ID]: ZigbangSmartDoorlockService,
   };
 
   // Maps combinations of supported capabilities to a service
@@ -483,6 +485,12 @@ export class MultiServiceAccessory {
       // Skip AC Display Light service if not enabled in config
       if (capability === 'samsungce.airConditionerLighting' && !this.platform.config.ExposeACDisplayLight) {
         this.log.debug(`Skipping AC Display Light service for ${this.name} - not enabled in config`);
+        return;
+      }
+
+      // Skip Zigbang Smart Doorlock service if not enabled in config
+      if (capability === ZigbangSmartDoorlockService.CAPABILITY_ID && !this.platform.config.ExposeZigbangSmartDoorlock) {
+        this.log.debug(`Skipping Zigbang Smart Doorlock service for ${this.name} - not enabled in config`);
         return;
       }
 
