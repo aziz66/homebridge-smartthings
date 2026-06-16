@@ -455,6 +455,14 @@ export class TelevisionService extends BaseService {
 
     // Frame TV: use local WebSocket for power off (3.5s long-press KEY_POWER)
     if (command === 'off' && this.samsungWebSocket && this.enableFullPowerOff) {
+      if (!this.samsungWebSocket.hasToken()) {
+        this.log.warn(
+          `Frame TV: ${this.name} has no saved authorization token yet. This power-off will open the ` +
+          'TV\'s "Allow" popup and wait up to ~30s — please press Allow on the TV. HomeKit may briefly ' +
+          'show "No Response" on this first attempt; once the token is saved, subsequent power-offs are ' +
+          'instant. Tip: restart Homebridge while the TV is ON to pair without any time pressure.',
+        );
+      }
       this.log.info(`Frame TV: Sending 3.5s long-press KEY_POWER for full power off on ${this.name}`);
       try {
         await this.samsungWebSocket.holdKey('KEY_POWER', 3500);

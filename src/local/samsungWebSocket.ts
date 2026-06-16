@@ -71,9 +71,23 @@ export class SamsungWebSocket {
     try {
       fs.writeFileSync(this.tokenFilePath, JSON.stringify({ token, ip: this.ip, savedAt: new Date().toISOString() }));
       this.log.info(`Samsung WebSocket: Token saved for ${this.ip} — future connections will skip TV authorization popup`);
+      this.log.info(
+        `Samsung WebSocket: Token for ${this.ip} stored at ${this.tokenFilePath}. ` +
+        `If you ever reset Homebridge storage, you can skip pairing by pasting this token into the ` +
+        `"token" field of this device's frameTvDevices config: ${token}`,
+      );
     } catch (err) {
       this.log.warn(`Samsung WebSocket: Could not save token for ${this.ip}: ${err}`);
     }
+  }
+
+  /**
+   * Whether a usable authorization token is currently known (from config or a
+   * previous successful pairing). When false, the next remote-control connection
+   * will trigger the TV's Allow/Deny popup.
+   */
+  hasToken(): boolean {
+    return !!this.token;
   }
 
   private handleConnectMessage(msg: any): void {
@@ -344,10 +358,20 @@ export class SamsungWebSocket {
   /**
    * Hold a key for the specified duration (press, wait, release)
    * Used for Frame TV full power off (3.5s hold of KEY_POWER)
-   * Uses a shorter connect timeout (2s) since this is called from HomeKit handlers with ~10s budget
+   *
+   * Connect-timeout is token-aware:
+   * - Already paired: a short 4s timeout keeps us within HomeKit's ~10s onSet
+   *   budget. (4s rather than 2s because a Frame waking from standby can take a
+   *   couple of seconds for the self-signed TLS handshake on :8002; too short a
+   *   timeout falls back to the cloud switch.off, which only enters Art Mode.)
+   * - Not yet paired: use connectRemote's full no-token window (~30s) so the TV's
+   *   Allow popup stays up long enough for the user to actually press Allow and a
+   *   token gets saved. This first power-off may exceed HomeKit's budget (the tile
+   *   can briefly show "No Response"), but once the token is saved every later
+   *   press uses the fast path above.
    */
   async holdKey(key: string, durationMs: number): Promise<void> {
-    const ws = await this.connectRemote(2000);
+    const ws = this.token ? await this.connectRemote(4000) : await this.connectRemote();
     this.sendKey(ws, 'Press', key);
     await new Promise<void>(resolve => setTimeout(resolve, durationMs));
     this.sendKey(ws, 'Release', key);

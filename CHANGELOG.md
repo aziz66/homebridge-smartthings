@@ -1,6 +1,23 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.65] - Frame TV Pairing Fix
+
+> Stable release graduating `1.0.65-beta.0`, confirmed resolved by the original reporter. Fixes #45: a Samsung Frame TV could never complete local-WebSocket pairing, so true power-off and the Art Mode switch never worked. Root cause: the only code path that opens the token-gated remote channel (`wss://<tv-ip>:8002`) is the HomeKit power-off, which forced a hard **2-second** connect timeout. The TV's "Allow/Deny" authorization popup needs ~30 seconds to be accepted, so it was dismissed before anyone could press **Allow**, no token was ever saved, and power-off silently fell back to the SmartThings cloud `switch.off` (which only puts a Frame into Art Mode). Thanks to @ProfHill-UCD for the clear, log-complete report and for confirming the fix (#45).
+
+### Fixed
+- **Frame TV first-time pairing now works** (#45) — `holdKey()` in `samsungWebSocket.ts` is now token-aware: when no authorization token is saved yet it uses the full ~30s connect window so the TV's Allow popup stays up long enough to press, captures and saves the token, and every later power-off then uses a fast path. Note: this *first* power-off may take long enough that the HomeKit tile briefly shows "No Response" — that's expected; the token is saved and the next press is instant. Restarting Homebridge while the TV is ON remains the smoothest way to pair without any time pressure.
+- **Fewer false fallbacks to Art Mode on the paired path** (#45) — once paired, the power-off connect timeout was raised from 2s to 4s. A Frame waking from standby can take a couple of seconds for the self-signed TLS handshake on port 8002; the old 2s timeout could spuriously fall back to the cloud `switch.off` (Art Mode) instead of doing a true power-off.
+
+### Added
+- **Token is surfaced in the log on save** (#45) — when a Frame TV token is saved, the log now includes the token value and its file path, so it can be pasted into the `frameTvDevices[].token` config field to skip pairing after a storage reset.
+
+### Documentation
+- **Frame TV pairing docs corrected** (#45) — the wiki's first-time-pairing guidance no longer implies the Allow popup is comfortably clickable on the power-off path, and a new advanced "manual token" workaround is documented (obtain a token with an external tool using the exact app name `Homebridge SmartThings` and paste it into config).
+
+### Credit
+- **@ProfHill-UCD** — #45 reported with a precise description and full logs that pinned the 2-second timeout as the cause.
+
 ## [1.0.64] - Zigbang Smart Doorlock Support
 
 > Adds support for Zigbang Wi-Fi smart doorlocks, contributed by @sam-cheuk (#41). The integration is vendor-specific (matches only the `absoluteweather46907` capabilities) and is gated behind the `ExposeZigbangSmartDoorlock` config option, so it has no effect on any other device.

@@ -297,7 +297,7 @@
             "token": {
               "title": "TV Token (Auto-saved)",
               "type": "string",
-              "description": "Authorization token from the TV. Usually auto-saved after first connection — leave empty unless troubleshooting."
+              "description": "Authorization token from the TV. Normally auto-saved after you press Allow on the TV the first time — leave empty for that flow. You can also paste a token obtained externally (using the exact app name 'Homebridge SmartThings') to skip the on-TV popup entirely. See the Samsung Frame TV wiki page for details."
             }
           },
           "required": ["deviceName", "ip"]

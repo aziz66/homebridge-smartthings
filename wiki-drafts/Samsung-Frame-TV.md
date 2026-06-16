@@ -45,14 +45,39 @@ You can mix and match — for example, disable Full Power Off but keep the Art M
 
 ## First-time TV pairing
 
-When Homebridge starts with a Frame TV configured, the plugin attempts to establish a local WebSocket connection. On the first connection the TV needs to authorize the plugin:
+On the first local connection, the TV needs to authorize the plugin. The plugin opens that connection the first time it needs to send a local command — i.e. the **first time you power the TV off from HomeKit** (or you can trigger it at startup, see below). On that first attempt the TV shows an **Allow/Deny** popup and the plugin waits up to ~30 seconds for you to respond:
 
-1. Make sure the TV is **powered on** before starting Homebridge.
-2. After Homebridge starts, a popup will appear on the TV screen asking to allow the connection.
-3. Using your TV remote, select **Allow**.
-4. The plugin saves an authorization token for future connections — the popup will not appear again.
+1. Make sure the TV is **powered on**.
+2. Power the TV **off** from the Home app (or restart Homebridge with the TV on — see the tip below). An **Allow/Deny** popup appears on the TV screen.
+3. Using your TV remote, select **Allow** within ~30 seconds.
+4. The plugin saves an authorization token for future connections — the popup will not appear again, and subsequent power-offs are instant.
 
-If the pairing fails (TV was off, popup timed out, etc.), the plugin logs an error. Restart Homebridge with the TV on to retry.
+> **Note:** this *first* power-off can take long enough that the Home app briefly shows the TV tile as "No Response." That's expected — the token is saved in the background, and the next press works normally.
+
+> **Tip:** the smoothest way to pair without any time pressure is to **restart Homebridge while the TV is on**, then power the TV off from HomeKit and press Allow.
+
+If the pairing fails (TV was off, popup timed out, etc.), the plugin logs an error and falls back to the standard SmartThings command for that press. Just try again with the TV on.
+
+### Advanced: provide the token manually
+
+If you can't catch the popup in time, or you're scripting setup, you can obtain a token yourself and paste it into the **TV Token** config field. The token is **bound to the app name**, so the external tool must connect using the exact name `Homebridge SmartThings` (case-sensitive) — otherwise the plugin's own connection will be rejected and the pasted token discarded.
+
+Using the [`samsungtvws`](https://pypi.org/project/samsungtvws/) Python tool, on any machine on the same network, with the TV **on**:
+
+```python
+pip install samsungtvws
+```
+```python
+from samsungtvws import SamsungTVWS
+tv = SamsungTVWS(host='192.168.x.x', port=8002,
+                 name='Homebridge SmartThings', token_file='token.txt')
+tv.shortcuts().power()   # press ALLOW on the TV — this tool waits for you
+print(open('token.txt').read().strip())   # the token string
+```
+
+Paste that token string into the Frame TV device's **TV Token** field, save, and restart Homebridge.
+
+Alternatively, the plugin saves the token to a file named `samsung_tv_token_<ip>.json` (dots in the IP preserved) in the Homebridge storage folder — the same directory as `config.json`. When a token is first saved, its value and path are also printed to the Homebridge log.
 
 ## If you clicked "Deny" by mistake
 
@@ -88,6 +113,10 @@ No apps are enabled by default.
 - Verify the TV is powered on and connected to the same network as Homebridge.
 - Confirm the IP address is correct (check your router's DHCP client list).
 - Make sure no firewall is blocking port 8001 (Art Mode) or port 8002 (remote control).
+
+**Allow popup appears but disappears too fast to press it**
+
+- This was a bug in versions up to 1.0.64 where the pairing connection timed out after only 2 seconds (see [#45](https://github.com/aziz66/homebridge-smartthings/issues/45)). Update to 1.0.65-beta.0 or later, which gives you ~30 seconds. If you can't update yet, use the **Advanced: provide the token manually** method above.
 
 **"Authorization denied by TV" errors**
 
