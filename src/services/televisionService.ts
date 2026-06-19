@@ -139,11 +139,19 @@ export class TelevisionService extends BaseService {
     speakerService.setCharacteristic(this.platform.Characteristic.Name, `${this.name} Speaker`);
 
     if (hasVolumeSlider) {
-      // Volume Slider is enabled - TelevisionSpeaker provides NO volume controls to avoid conflicts
-      this.log.info(`🎚️ Volume Slider enabled - TelevisionSpeaker disabled to prevent conflicts for ${this.name}`);
+      // Volume Slider lightbulb provides the in-tile absolute volume slider + mute.
+      // Still expose a RELATIVE TelevisionSpeaker with VolumeSelector so the iOS
+      // hardware volume buttons (in the Apple TV Remote) control TV volume. Using
+      // RELATIVE (no absolute Volume characteristic) avoids conflicting with the slider.
+      this.log.info(`🎚️ Volume Slider enabled - exposing RELATIVE TelevisionSpeaker so hardware volume buttons work for ${this.name}`);
 
-      // Don't register any volume/mute characteristics when volume slider is enabled
-      // This completely avoids conflicts with the separate volume slider accessory
+      speakerService.setCharacteristic(
+        this.platform.Characteristic.VolumeControlType,
+        this.platform.Characteristic.VolumeControlType.RELATIVE,
+      );
+
+      speakerService.getCharacteristic(this.platform.Characteristic.VolumeSelector)
+        .onSet(this.setVolumeSelector.bind(this));
 
     } else {
       // Standard TelevisionSpeaker with full volume/mute controls
@@ -589,6 +597,9 @@ export class TelevisionService extends BaseService {
     // Map HomeKit remote keys to Samsung TV commands
     let command = '';
     let capability = '';
+    // Navigation/control keys have no SmartThings cloud capability; for Frame TVs
+    // they are routed through the local WebSocket (samsung.remote.control) instead.
+    let wsKey = '';
 
     switch (value) {
       case this.platform.Characteristic.RemoteKey.REWIND:
@@ -626,22 +637,48 @@ export class TelevisionService extends BaseService {
         }
         break;
       case this.platform.Characteristic.RemoteKey.ARROW_UP:
+        wsKey = 'KEY_UP';
+        break;
       case this.platform.Characteristic.RemoteKey.ARROW_DOWN:
+        wsKey = 'KEY_DOWN';
+        break;
       case this.platform.Characteristic.RemoteKey.ARROW_LEFT:
+        wsKey = 'KEY_LEFT';
+        break;
       case this.platform.Characteristic.RemoteKey.ARROW_RIGHT:
+        wsKey = 'KEY_RIGHT';
+        break;
       case this.platform.Characteristic.RemoteKey.SELECT:
+        wsKey = 'KEY_ENTER';
+        break;
       case this.platform.Characteristic.RemoteKey.BACK:
+        wsKey = 'KEY_RETURN';
+        break;
       case this.platform.Characteristic.RemoteKey.EXIT:
-        // These would require Samsung's custom remote control capabilities (not in standard SmartThings spec)
-        this.log.debug(`Navigation/control key ${value} - requires Samsung remote control capability (not implemented)`);
-        return;
+        wsKey = 'KEY_EXIT';
+        break;
       case this.platform.Characteristic.RemoteKey.INFORMATION:
-        // Could potentially map to info button (not in standard SmartThings spec)
-        this.log.debug(`Information key pressed for ${this.name} - not in standard capabilities`);
-        return;
+        wsKey = 'KEY_MENU';
+        break;
       default:
         this.log.warn(`Unsupported remote key: ${value} for ${this.name}`);
         return;
+    }
+
+    if (wsKey) {
+      if (!this.samsungWebSocket) {
+        this.log.debug(`Navigation key ${value} ignored for ${this.name} - not a Frame TV with local WebSocket configured`);
+        return;
+      }
+      try {
+        this.log.debug(`Sending navigation key ${wsKey} via local WebSocket for ${this.name}`);
+        await this.samsungWebSocket.clickKey(wsKey);
+        this.log.info(`✅ Remote key ${wsKey} sent via local WebSocket for ${this.name}`);
+      } catch (error) {
+        this.log.error(`Error sending navigation key ${wsKey} via WebSocket for ${this.name}:`, error);
+        throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+      }
+      return;
     }
 
     if (command && capability) {
@@ -873,6 +910,19 @@ export class TelevisionService extends BaseService {
 
     const command = value === this.platform.Characteristic.VolumeSelector.INCREMENT ? 'volumeUp' : 'volumeDown';
     this.log.debug(`Sending volume selector command: audioVolume.${command} for ${this.name}`);
+
+    // Prefer the Frame TV's local WebSocket for snappy hardware-button response.
+    if (this.samsungWebSocket) {
+      const key = value === this.platform.Characteristic.VolumeSelector.INCREMENT ? 'KEY_VOLUP' : 'KEY_VOLDOWN';
+      try {
+        await this.samsungWebSocket.clickKey(key);
+        this.log.debug(`Volume ${key} sent via local WebSocket for ${this.name}`);
+        setTimeout(() => this.multiServiceAccessory.forceNextStatusRefresh(), 1000);
+        return;
+      } catch (error) {
+        this.log.debug(`Local WebSocket volume key failed for ${this.name}, falling back to cloud: ${error}`);
+      }
+    }
 
     // For Samsung TVs, volumeUp/volumeDown might work better than setVolume
     // These commands don't require specific volume levels and work incrementally
