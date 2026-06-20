@@ -89,6 +89,20 @@ The TV remembers a denied connection and will reject future attempts until you r
 
 ---
 
+## Remote navigation & hardware volume buttons
+
+Once a Frame TV is paired for local WebSocket control (see **First-time TV pairing** above), two extra controls light up via the TV's local remote channel:
+
+- **Apple TV Remote D-pad** (Control Center → Remote): the arrows, **Select**, **Back**, **Exit**, and **Info** drive the TV directly. SmartThings' cloud API has no directional-key capability, so these only work on a paired Frame TV — on other TVs they remain inactive.
+- **Hardware volume buttons**: the iPhone's physical volume buttons adjust TV volume. On a paired Frame the keypress goes over the local WebSocket for a snappy response; otherwise it falls back to the SmartThings cloud volume command.
+
+Notes:
+- These require the TV to be **paired first**. Pairing only ever happens on power-off (so the Allow popup never surprises you mid-navigation) — if the D-pad does nothing, power the TV off once from HomeKit and press **Allow**, then try again.
+- If a keypress fails (TV off/unreachable) it's silently ignored rather than showing an error.
+- After upgrading, you may need to **remove and re-add the TV** in the Apple Home app once for the hardware-volume control to appear (HomeKit caches the published accessory).
+
+---
+
 ## TV App Launcher
 
 Launch Samsung TV apps directly from the HomeKit TV input picker. Apps appear as additional input sources alongside your HDMI inputs.

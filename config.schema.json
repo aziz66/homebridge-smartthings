@@ -111,7 +111,7 @@
         "type": "boolean",
         "required": false,
         "default": true,
-        "description": "Creates a separate volume slider accessory for TVs (exposed as a lightbulb) because HomeKit's native TV interface doesn't show volume controls directly. Enable this if you can't see volume controls in the Home app."
+        "description": "Creates a separate volume slider accessory for TVs (exposed as a lightbulb) because HomeKit's native TV interface doesn't show volume controls directly. Enable this if you can't see volume controls in the Home app. The TV speaker also still exposes relative volume, so the iPhone's hardware volume buttons (in the Apple TV Remote) keep working alongside the slider."
       },
 
       "PollWindowShadesSeconds": {

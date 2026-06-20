@@ -70,7 +70,7 @@ All intervals are in seconds. Set to `0` to disable polling for that device clas
 |---|---|---|---|
 | `enableTelevisionService` | boolean | `true` | Expose Samsung TVs as proper Television accessories with input source, volume, and picture mode controls. When disabled, TVs appear as simple switches. |
 | `removeLegacySwitchForTV` | boolean | `false` | Remove the basic switch service for TVs, leaving only the Television service. When disabled (default), both services are available for backward compatibility. |
-| `registerVolumeSlider` | boolean | `true` | Adds a separate volume slider accessory (exposed as a lightbulb) for TVs, because HomeKit's native TV interface doesn't show volume controls directly. |
+| `registerVolumeSlider` | boolean | `true` | Adds a separate volume slider accessory (exposed as a lightbulb) for TVs, because HomeKit's native TV interface doesn't show volume controls directly. The TV speaker still exposes relative volume when this is on, so the iPhone's hardware volume buttons (Apple TV Remote) keep working alongside the slider. |
 | `tvApps` | array of app IDs | `[]` | TV app shortcuts that appear as input sources. See [Samsung Frame TV → TV App Launcher](https://github.com/aziz66/homebridge-smartthings/wiki/Samsung-Frame-TV#tv-app-launcher). |
 | `frameTvDevices` | array of objects | `[]` | Per-device Samsung Frame TV configuration (local WebSocket control). See [Samsung Frame TV](https://github.com/aziz66/homebridge-smartthings/wiki/Samsung-Frame-TV). |
 
