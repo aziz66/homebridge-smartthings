@@ -1,8 +1,10 @@
-# Samsung Frame TV
+# Samsung Frame & Tizen TV Control
 
-Samsung Frame TVs behave differently from standard TVs: when the SmartThings API sends a power-off command, the TV enters **Art Mode** instead of truly shutting down. This plugin provides optional local WebSocket control to fix this — enabling true power off and an Art Mode toggle switch in HomeKit.
+> Despite the page name, this is **not Frame-only**. It works on any Samsung **Tizen** TV that exposes the local remote/art WebSocket — confirmed on The Frame and on non-Frame models such as the S90C OLED. If you own a Samsung TV (OLED, QLED, Neo QLED, Crystal UHD…), this applies to you.
 
-This page also covers the **TV App Launcher** (apps as input sources), since that feature applies to Frame TVs and other Samsung TVs alike.
+Samsung TVs behave differently from standard TVs in one way: when the SmartThings API sends a power-off command, many models enter **Art/Ambient Mode** instead of truly shutting down. This plugin provides optional **local WebSocket control** to fix that and add more — **true power off**, an **Art Mode toggle** switch, the Apple TV Remote **D-pad**, and **hardware volume buttons**.
+
+This page also covers the **TV App Launcher** (apps as input sources), which applies to all Samsung TVs.
 
 ---
 
@@ -36,7 +38,7 @@ You can mix and match — for example, disable Full Power Off but keep the Art M
 ## Setup
 
 1. Open plugin settings in the Homebridge UI.
-2. Scroll down to the **Samsung Frame TV Settings** section.
+2. Scroll down to the **Samsung Frame & Tizen TV Control** section.
 3. Click **Add Frame TV Device**.
 4. Enter the **device name** (must match exactly how it appears in SmartThings, case-insensitive).
 5. Enter the **TV's local IP address** (assign a static IP on your router for reliability).

@@ -10,7 +10,7 @@ A modern Homebridge plugin that connects your SmartThings devices to Apple HomeK
 ## Optional features
 
 - **[Webhooks and Real-Time Updates](https://github.com/aziz66/homebridge-smartthings/wiki/Webhooks-and-Real-Time-Updates)** — push events from SmartThings instead of polling, for instant device updates.
-- **[Samsung Frame TV](https://github.com/aziz66/homebridge-smartthings/wiki/Samsung-Frame-TV)** — true power off, Art Mode switch, and TV app launcher for Samsung TVs.
+- **[Samsung Frame & Tizen TV Control](https://github.com/aziz66/homebridge-smartthings/wiki/Samsung-Frame-TV)** — true power off, Art Mode switch, D-pad, hardware volume, and TV app launcher for Samsung TVs (Frame and other Tizen models).
 
 ## Reference
 

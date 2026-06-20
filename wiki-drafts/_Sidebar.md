@@ -5,7 +5,7 @@
 
 ### Optional features
 - [Webhooks and Real-Time Updates](Webhooks-and-Real-Time-Updates)
-- [Samsung Frame TV](Samsung-Frame-TV)
+- [Samsung Frame & Tizen TV Control](Samsung-Frame-TV)
 
 ### Reference
 - [Configuration Reference](Configuration-Reference)

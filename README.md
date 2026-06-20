@@ -80,7 +80,7 @@ For the full SmartThings-capability → HomeKit-service mapping, see [Supported 
 
 **Real-time updates via webhooks.** Polling works out of the box; if you'd rather have SmartThings push events instantly, set up a public tunnel (ngrok, Cloudflare Tunnels) and configure the webhook URL. Polling continues to run as a fallback. → [Webhooks and Real-Time Updates](https://github.com/aziz66/homebridge-smartthings/wiki/Webhooks-and-Real-Time-Updates)
 
-**Samsung Frame TV.** Frame TVs enter Art Mode when SmartThings sends "off" instead of truly powering down. The plugin can use a local WebSocket to send a true power-off command, plus expose an Art Mode toggle switch in HomeKit. → [Samsung Frame TV](https://github.com/aziz66/homebridge-smartthings/wiki/Samsung-Frame-TV)
+**Samsung Frame & Tizen TV control.** Not just The Frame — works on Samsung Tizen TVs generally (OLED, QLED, Neo QLED, Crystal UHD; confirmed on the S90C OLED). Over a local WebSocket the plugin adds a true power-off (instead of SmartThings dropping the TV into Art/Ambient mode), an Art Mode toggle switch, the Apple TV Remote D-pad, and hardware volume buttons. → [Samsung Frame & Tizen TV Control](https://github.com/aziz66/homebridge-smartthings/wiki/Samsung-Frame-TV)
 
 **TV App Launcher.** Add Netflix, YouTube, Disney+, and other Samsung TV apps to the HomeKit input picker so you can launch them from a Home tile. → [Samsung Frame TV → TV App Launcher](https://github.com/aziz66/homebridge-smartthings/wiki/Samsung-Frame-TV#tv-app-launcher)
 

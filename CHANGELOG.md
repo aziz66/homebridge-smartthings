@@ -1,6 +1,16 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.66-beta.5] - Renamed "Frame & Tizen TV Control" + Info Button in the UI
+
+> Naming + UI polish (#46). The local-WebSocket feature isn't Frame-only — it's confirmed working on non-Frame Samsung Tizen TVs (e.g. the S90C OLED) — but the "Samsung Frame TV" labels made non-Frame owners think it didn't apply to them.
+
+### Changed
+- **Renamed to "Samsung Frame & Tizen TV Control"** across the plugin settings UI, config-schema section, README, and wiki — making clear it works on The Frame *and* other Samsung Tizen TVs (OLED/QLED/Neo QLED/Crystal UHD). The `frameTvDevices` config key and the wiki URL are unchanged, so existing configs and links keep working.
+
+### Added
+- **Info Button selector in the settings UI** (#46) — the custom Frame/Tizen settings panel now has an "Info Button" dropdown per TV (KEY_INFO / KEY_AMBIENT / KEY_HOME / KEY_SOURCE / KEY_MENU / KEY_GUIDE), so you can remap the Apple TV Remote Info button without editing JSON. A custom `KEY_*` set in JSON is preserved in the dropdown.
+
 ## [1.0.66-beta.4] - Configurable Info Button
 
 > The "Info" button in the Control Center Apple TV Remote is the one spare button (arrows/Select/Back are standard navigation), so it's now remappable per Frame TV (#46).
