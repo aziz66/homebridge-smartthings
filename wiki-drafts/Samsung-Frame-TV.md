@@ -101,6 +101,21 @@ Notes:
 - If a keypress fails (TV off/unreachable) it's silently ignored rather than showing an error.
 - After upgrading, you may need to **remove and re-add the TV** in the Apple Home app once for the hardware-volume control to appear (HomeKit caches the published accessory).
 
+#### Remap the "Info" button
+
+The **Info** button in the Apple TV Remote is the one spare button (the arrows/Select/Back are standard navigation), so it's configurable per TV via `frameTvDevices[].infoButtonKey` (default `KEY_INFO`, which shows the on-screen info banner). Set it to whatever's most useful for you:
+
+| Value | Effect |
+|---|---|
+| `KEY_INFO` *(default)* | Info / status banner |
+| `KEY_AMBIENT` | Toggle Art / Ambient mode |
+| `KEY_HOME` | Smart Hub home |
+| `KEY_SOURCE` | Input / source list |
+| `KEY_MENU` | Quick settings menu |
+| `KEY_GUIDE` | TV guide |
+
+Any Samsung `KEY_*` code is accepted.
+
 ### Power on/off: use the Home app tile, not the Control Center remote
 
 Turn the TV on/off from the **TV tile in the Apple Home app** (or a HomeKit automation/Siri). The **power button in the Control Center "Apple TV Remote" does not control this TV** — iOS does not send that button as a HomeKit power command, so it never reaches the plugin (the D-pad, Select/Back/Exit/Info, and hardware volume buttons in that same remote *do* work). This is an iOS/HomeKit limitation, not something the plugin can intercept. Pairing (the first power-off → **Allow**) must therefore be done from the Home app tile as well.

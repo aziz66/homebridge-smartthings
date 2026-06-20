@@ -1,6 +1,13 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.66-beta.4] - Configurable Info Button
+
+> The "Info" button in the Control Center Apple TV Remote is the one spare button (arrows/Select/Back are standard navigation), so it's now remappable per Frame TV (#46).
+
+### Added
+- **`frameTvDevices[].infoButtonKey`** (#46) — choose what the HomeKit "Info" remote key sends to a paired Frame TV via local WebSocket. Default `KEY_INFO` (info banner, unchanged). Handy alternatives: `KEY_AMBIENT` (Art/Ambient toggle), `KEY_HOME`, `KEY_SOURCE` (input list), `KEY_MENU` (quick settings), `KEY_GUIDE`; any Samsung `KEY_*` is accepted. No effect on non-Frame TVs.
+
 ## [1.0.66-beta.3] - Art Mode Status Read Fix (modern TVs)
 
 > Fixes the Art Mode switch always showing **off** on newer Samsung TVs (#46). Captured live from a 2024 S90C OLED (art API v5.0.0.0): a status request gets a reply whose `event` is **`get_artmode_status`** with the state in `value` — but the plugin only accepted the older `art_mode_changed` / `artmode_status` event names, so it ignored the reply, timed out after 3s, and defaulted to `off`. The switch therefore never reflected the TV's real Art Mode state.

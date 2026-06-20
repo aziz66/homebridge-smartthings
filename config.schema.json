@@ -294,6 +294,12 @@
               "default": true,
               "description": "Expose a separate switch in HomeKit to toggle Art Mode on/off"
             },
+            "infoButtonKey": {
+              "title": "Info Button Key (Apple TV Remote)",
+              "type": "string",
+              "default": "KEY_INFO",
+              "description": "Samsung key the 'Info' button in the Control Center Apple TV Remote sends to this TV via local WebSocket. Useful values: KEY_INFO (info banner, default), KEY_AMBIENT (Art/Ambient toggle), KEY_HOME (Smart Hub), KEY_SOURCE (input list), KEY_MENU (quick settings), KEY_GUIDE (TV guide). Any Samsung KEY_* is accepted."
+            },
             "token": {
               "title": "TV Token (Auto-saved)",
               "type": "string",

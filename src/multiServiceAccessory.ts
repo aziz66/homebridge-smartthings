@@ -226,7 +226,7 @@ export class MultiServiceAccessory {
 
   // Frame TV: optional local WebSocket for full power off and art mode
   public samsungWebSocket: SamsungWebSocket | null = null;
-  public frameTvConfig: { enableFullPowerOff: boolean; enableArtModeSwitch: boolean } | null = null;
+  public frameTvConfig: { enableFullPowerOff: boolean; enableArtModeSwitch: boolean; infoButtonKey: string } | null = null;
 
   get id() {
     return this.accessory.UUID;
@@ -262,7 +262,8 @@ export class MultiServiceAccessory {
     this.axInstance = platform.axInstance;
 
     // Check if this device is a configured Frame TV
-    const frameTvDevices: Array<{ deviceName: string; ip: string; enableFullPowerOff?: boolean; enableArtModeSwitch?: boolean; token?: string }>
+    const frameTvDevices: Array<{ deviceName: string; ip: string; enableFullPowerOff?: boolean; enableArtModeSwitch?: boolean;
+      infoButtonKey?: string; token?: string; }>
       = platform.config.frameTvDevices || [];
     const matchedFrameTv = frameTvDevices.find(
       ftv => ftv.deviceName && ftv.deviceName.toLowerCase().trim() === this.name.toLowerCase().trim(),
@@ -281,6 +282,7 @@ export class MultiServiceAccessory {
         this.frameTvConfig = {
           enableFullPowerOff: matchedFrameTv.enableFullPowerOff !== false, // default true
           enableArtModeSwitch: matchedFrameTv.enableArtModeSwitch !== false, // default true
+          infoButtonKey: (matchedFrameTv.infoButtonKey || 'KEY_INFO').trim() || 'KEY_INFO',
         };
       }
     }
@@ -391,7 +393,8 @@ export class MultiServiceAccessory {
         );
         // If this is a Frame TV, configure the WebSocket for power off
         if (this.samsungWebSocket && this.frameTvConfig) {
-          serviceInstance.setFrameTvWebSocket(this.samsungWebSocket, this.frameTvConfig.enableFullPowerOff);
+          serviceInstance.setFrameTvWebSocket(
+            this.samsungWebSocket, this.frameTvConfig.enableFullPowerOff, this.frameTvConfig.infoButtonKey);
         }
 
         this.services.push(serviceInstance);

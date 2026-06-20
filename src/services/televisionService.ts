@@ -31,6 +31,7 @@ export class TelevisionService extends BaseService {
   // Frame TV support: optional WebSocket for local control
   private samsungWebSocket: SamsungWebSocket | null = null;
   private enableFullPowerOff = false;
+  private infoButtonKey = 'KEY_INFO'; // Samsung key the HomeKit "Info" remote button maps to
   private navUnpairedNotified = false; // surface the "not paired" nav hint only once
   private artSupportChecked = false;
   private televisionService: Service;
@@ -87,10 +88,13 @@ export class TelevisionService extends BaseService {
    * Configure this TV for Frame TV local WebSocket control.
    * When set, power-off commands will use a 3.5s hold of KEY_POWER via WebSocket.
    */
-  public setFrameTvWebSocket(ws: SamsungWebSocket, enableFullPowerOff: boolean): void {
+  public setFrameTvWebSocket(ws: SamsungWebSocket, enableFullPowerOff: boolean, infoButtonKey = 'KEY_INFO'): void {
     this.samsungWebSocket = ws;
     this.enableFullPowerOff = enableFullPowerOff;
-    this.log.info(`Frame TV: Local WebSocket configured for ${this.name} (fullPowerOff=${enableFullPowerOff})`);
+    this.infoButtonKey = infoButtonKey || 'KEY_INFO';
+    this.log.info(
+      `Frame TV: Local WebSocket configured for ${this.name} (fullPowerOff=${enableFullPowerOff}, infoButton=${this.infoButtonKey})`,
+    );
   }
 
   private setupTelevisionService(): Service {
@@ -659,7 +663,7 @@ export class TelevisionService extends BaseService {
         wsKey = 'KEY_EXIT';
         break;
       case this.platform.Characteristic.RemoteKey.INFORMATION:
-        wsKey = 'KEY_INFO';
+        wsKey = this.infoButtonKey; // configurable via frameTvDevices[].infoButtonKey (default KEY_INFO)
         break;
       default:
         this.log.warn(`Unsupported remote key: ${value} for ${this.name}`);
