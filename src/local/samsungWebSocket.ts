@@ -395,7 +395,13 @@ export class SamsungWebSocket {
           const msg = JSON.parse(data.toString());
           if (msg.event === 'd2d_service_message' && msg.data) {
             const eventData = typeof msg.data === 'string' ? JSON.parse(msg.data) : msg.data;
-            if (eventData.event === 'art_mode_changed' || eventData.event === 'artmode_status') {
+            // Accepted responses:
+            // - 'get_artmode_status' — the reply to our request on modern art API
+            //   (v5.x), which echoes the request name and carries state in `value`.
+            // - 'art_mode_changed' / 'artmode_status' — push events / older firmware.
+            if (eventData.event === 'get_artmode_status'
+              || eventData.event === 'art_mode_changed'
+              || eventData.event === 'artmode_status') {
               clearTimeout(timeout);
               ws.removeListener('message', messageHandler);
               const status = eventData.value === 'on' || eventData.status === 'on' ? 'on' : 'off';

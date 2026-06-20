@@ -1,6 +1,13 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.66-beta.3] - Art Mode Status Read Fix (modern TVs)
+
+> Fixes the Art Mode switch always showing **off** on newer Samsung TVs (#46). Captured live from a 2024 S90C OLED (art API v5.0.0.0): a status request gets a reply whose `event` is **`get_artmode_status`** with the state in `value` — but the plugin only accepted the older `art_mode_changed` / `artmode_status` event names, so it ignored the reply, timed out after 3s, and defaulted to `off`. The switch therefore never reflected the TV's real Art Mode state.
+
+### Fixed
+- **Art Mode status now read correctly on modern art API (v5.x)** (#46) — `getArtModeStatus()` also accepts the `get_artmode_status` reply event (state in `value`), in addition to the existing `art_mode_changed` / `artmode_status` push events. The Art Mode switch now reflects the TV's actual state instead of always showing off.
+
 ## [1.0.66-beta.2] - Quieter Art Mode Polling
 
 > Log-noise polish (#46). The Art Mode switch polls the TV every 30s, which previously printed five `debug` lines per cycle (connect → TCP connected → channel connected → disconnect → closed). With Homebridge debug logging on, that's ~14k lines/day for an idle TV.
