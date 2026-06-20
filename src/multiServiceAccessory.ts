@@ -111,11 +111,14 @@ export class MultiServiceAccessory {
       capabilities: ['switch', 'airConditionerFanMode'],
       optionalCapabilities: [
         'custom.filterState',
+        'custom.hepaFilter',
         'airQualitySensor',
         'dustSensor',
         'veryFineDustSensor',
         'odorSensor',
-        'relativeHumidityMeasurement',
+        // relativeHumidityMeasurement is deliberately NOT consumed here: it falls through to the
+        // base-map HumidityService (a SensorService) which shows a value when reported and removes
+        // itself when the device only ever returns null — per-device, no config flag, like temperature.
       ],
       service: AirPurifierService,
     },
