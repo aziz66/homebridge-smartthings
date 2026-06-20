@@ -224,6 +224,9 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
           // Register Art Mode accessories for configured Frame TVs
           this.registerArtModeAccessories();
 
+          // Warn about any frameTvDevices entry that matched no device (name mismatch)
+          this.warnUnmatchedFrameTvDevices();
+
           // Set up real-time event handling if server_url is configured
           if (config.server_url && config.server_url.trim() !== '') {
             // Always create the event router so webhook-delivered events are handled
@@ -587,6 +590,34 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
     }
 
     return acc;
+  }
+
+  /**
+   * Warn about any `frameTvDevices` config entry whose `deviceName` matched no
+   * discovered device. This is the most common cause of Frame TV local control
+   * silently doing nothing — usually a name mismatch (a stray quote, different
+   * casing, etc.). Best-effort: logging only, never throws.
+   */
+  private warnUnmatchedFrameTvDevices(): void {
+    const frameTvDevices: Array<{ deviceName?: string }> = this.config.frameTvDevices || [];
+    if (!Array.isArray(frameTvDevices) || frameTvDevices.length === 0) {
+      return;
+    }
+    const discoveredNames = this.accessoryObjects.map(a => a.name);
+    for (const ftv of frameTvDevices) {
+      const wanted = ftv?.deviceName?.toLowerCase().trim();
+      if (!wanted) {
+        continue;
+      }
+      const matched = discoveredNames.some(n => n.toLowerCase().trim() === wanted);
+      if (!matched) {
+        this.log.warn(
+          `Frame TV config "${ftv.deviceName}" did not match any device — its local control ` +
+          '(full power-off, Art Mode, D-pad, volume) will be inactive. The deviceName must match the ' +
+          `device's name exactly (case-insensitive). Discovered devices: ${discoveredNames.join(', ') || '(none)'}`,
+        );
+      }
+    }
   }
 
   /**

@@ -1,6 +1,17 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.66-beta.1] - Frame TV Diagnostics Polish
+
+> Follow-up to `1.0.66-beta.0` from live testing (#46). No behavior changes to the feature itself — just clearer diagnostics so the "why isn't my D-pad working?" case is self-explanatory, plus a docs note about iOS power control.
+
+### Changed
+- **Clearer "not paired" hint for nav/volume** (#46) — when D-pad/volume keys arrive for a Frame TV that's configured but not yet paired, the log now says, once and at `warn`: *"… isn't paired yet … Power the TV OFF once from the Home app tile (then press Allow on the TV) to pair."* (Previously a terse `not configured/paired` at debug.) The "not a Frame TV / not configured" case is logged separately at debug.
+- **Startup warning for unmatched Frame TV config** (#46) — if a `frameTvDevices` entry's `deviceName` matches no discovered device (the most common setup mistake, e.g. a stray `"` or different casing), the plugin now logs a `warn` at startup listing the discovered device names, instead of silently doing nothing.
+
+### Documentation
+- **Power on/off must use the Home app tile, not the Control Center remote** (#46) — verified during testing: iOS does not deliver the Control Center "Apple TV Remote" power button as a HomeKit power command, so it never reaches the plugin (the D-pad and volume buttons in that remote do work). Documented on the Frame TV wiki page.
+
 ## [1.0.66-beta.0] - Frame TV Remote Navigation & Hardware Volume
 
 > Beta adding two Frame TV conveniences over the local WebSocket, contributed by @asafdav (#46): the Apple TV Remote **D-pad** (arrows / Select / Back / Exit / Info) and the iPhone's **hardware volume buttons** now drive the TV. Both were previously inert on Frame TVs even though a paired local socket was available. This release also hardens the contribution so it can't regress the 1.0.65 pairing fix or surprise users. Please test and report on #46.

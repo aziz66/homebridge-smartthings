@@ -31,6 +31,7 @@ export class TelevisionService extends BaseService {
   // Frame TV support: optional WebSocket for local control
   private samsungWebSocket: SamsungWebSocket | null = null;
   private enableFullPowerOff = false;
+  private navUnpairedNotified = false; // surface the "not paired" nav hint only once
   private artSupportChecked = false;
   private televisionService: Service;
   private televisionSpeakerService: Service;
@@ -670,8 +671,22 @@ export class TelevisionService extends BaseService {
       // We intentionally do NOT pair from here — pressing a nav key must never
       // trigger the TV's Allow popup. Power-off remains the sole pairing trigger,
       // so until that has happened these keys no-op.
-      if (!this.samsungWebSocket || !this.samsungWebSocket.hasToken()) {
-        this.log.debug(`Navigation key ${value} ignored for ${this.name} - Frame TV local control not configured/paired`);
+      if (!this.samsungWebSocket) {
+        this.log.debug(`Navigation key ${value} ignored for ${this.name} - not a Frame TV with local WebSocket configured`);
+        return;
+      }
+      if (!this.samsungWebSocket.hasToken()) {
+        // Actionable hint, surfaced once at warn so it's visible without debug
+        // logging; subsequent presses stay at debug to avoid spamming on D-pad mash.
+        if (!this.navUnpairedNotified) {
+          this.navUnpairedNotified = true;
+          this.log.warn(
+            `Frame TV "${this.name}" isn't paired yet, so the D-pad and volume buttons can't reach it. ` +
+            'Power the TV OFF once from the Home app tile (then press Allow on the TV) to pair — after that they work.',
+          );
+        } else {
+          this.log.debug(`Navigation key ${value} ignored for ${this.name} - not paired yet`);
+        }
         return;
       }
       // Best-effort: there is no cloud equivalent for directional keys, so on
