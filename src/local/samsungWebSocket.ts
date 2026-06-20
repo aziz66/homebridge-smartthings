@@ -235,8 +235,10 @@ export class SamsungWebSocket {
       }
 
       this.artConnecting = true;
-      this.log.debug(`Samsung WebSocket: Connecting to art mode channel at ${this.ip}:8001`);
 
+      // The Art Mode switch polls art status every 30s, so the routine
+      // connect/disconnect lifecycle here is intentionally NOT logged — only
+      // errors (below) and actual state changes (ArtModeSwitchService) are.
       const ws = new WebSocket(this.artModeUrl);
 
       const connectTimeout = setTimeout(() => {
@@ -245,17 +247,12 @@ export class SamsungWebSocket {
         reject(new Error(`Samsung WebSocket: Art mode connection timeout to ${this.ip}`));
       }, 5000);
 
-      ws.on('open', () => {
-        this.log.debug(`Samsung WebSocket: TCP connected to art mode channel at ${this.ip}:8001`);
-      });
-
       ws.on('message', (data: WebSocket.Data) => {
         try {
           const msg = JSON.parse(data.toString());
           if (msg.event === 'ms.channel.connect') {
             // Art channel on port 8001 may also return a token
             this.handleConnectMessage(msg);
-            this.log.debug('Samsung WebSocket: Art mode channel connected');
           } else if (msg.event === 'ms.channel.ready') {
             // Reference: samsung-tizen plugin resolves on ms.channel.ready
             clearTimeout(connectTimeout);
@@ -304,7 +301,6 @@ export class SamsungWebSocket {
         if (this.artWs === ws) {
           this.artWs = null;
         }
-        this.log.debug('Samsung WebSocket: Art mode connection closed');
       });
     });
   }
@@ -328,7 +324,6 @@ export class SamsungWebSocket {
 
   private disconnectArt(): void {
     if (this.artWs) {
-      this.log.debug('Samsung WebSocket: Disconnecting art mode');
       this.artWs.close();
       this.artWs = null;
     }

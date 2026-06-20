@@ -1,6 +1,13 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.66-beta.2] - Quieter Art Mode Polling
+
+> Log-noise polish (#46). The Art Mode switch polls the TV every 30s, which previously printed five `debug` lines per cycle (connect → TCP connected → channel connected → disconnect → closed). With Homebridge debug logging on, that's ~14k lines/day for an idle TV.
+
+### Changed
+- **Art Mode status polling is now silent on the happy path** (#46) — the routine art-channel connect/disconnect lifecycle is no longer logged; only genuine **errors** (connection failures) and actual **state changes** (already logged by the Art Mode switch) are. No functional change — same 30s poll, same behavior, just no per-cycle log spam.
+
 ## [1.0.66-beta.1] - Frame TV Diagnostics Polish
 
 > Follow-up to `1.0.66-beta.0` from live testing (#46). No behavior changes to the feature itself — just clearer diagnostics so the "why isn't my D-pad working?" case is self-explanatory, plus a docs note about iOS power control.
