@@ -110,6 +110,11 @@ export class SamsungWebSocket {
       }
 
       if (this.connecting) {
+        // Honor the caller's own timeout budget while waiting for an in-flight
+        // connection. Without this, a short-timeout caller (e.g. power-off's
+        // holdKey(4000)) would block on the hard 30s ceiling behind an unrelated
+        // connect (e.g. a nav-key press) and show "No Response" in HomeKit.
+        const waitCeiling = connectTimeoutOverride ?? 30000;
         let waitElapsed = 0;
         const waitInterval = setInterval(() => {
           waitElapsed += 100;
@@ -120,7 +125,7 @@ export class SamsungWebSocket {
             } else {
               reject(new Error('Remote WebSocket connection failed while waiting'));
             }
-          } else if (waitElapsed >= 30000) {
+          } else if (waitElapsed >= waitCeiling) {
             clearInterval(waitInterval);
             reject(new Error('Remote WebSocket: timed out waiting for existing connection attempt'));
           }
@@ -348,10 +353,14 @@ export class SamsungWebSocket {
   }
 
   /**
-   * Send a click (short press) of a key
+   * Send a click (short press) of a key.
+   *
+   * `connectTimeoutMs` lets callers cap the connect wait. Navigation/volume keys
+   * pass a short timeout (and only call this once paired) so they never trigger
+   * the long no-token pairing window — power-off remains the sole pairing trigger.
    */
-  async clickKey(key: string): Promise<void> {
-    const ws = await this.connectRemote();
+  async clickKey(key: string, connectTimeoutMs?: number): Promise<void> {
+    const ws = await this.connectRemote(connectTimeoutMs);
     this.sendKey(ws, 'Click', key);
   }
 

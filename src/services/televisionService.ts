@@ -658,7 +658,7 @@ export class TelevisionService extends BaseService {
         wsKey = 'KEY_EXIT';
         break;
       case this.platform.Characteristic.RemoteKey.INFORMATION:
-        wsKey = 'KEY_MENU';
+        wsKey = 'KEY_INFO';
         break;
       default:
         this.log.warn(`Unsupported remote key: ${value} for ${this.name}`);
@@ -666,17 +666,23 @@ export class TelevisionService extends BaseService {
     }
 
     if (wsKey) {
-      if (!this.samsungWebSocket) {
-        this.log.debug(`Navigation key ${value} ignored for ${this.name} - not a Frame TV with local WebSocket configured`);
+      // Local-only feature: requires a Frame TV with a paired WebSocket token.
+      // We intentionally do NOT pair from here — pressing a nav key must never
+      // trigger the TV's Allow popup. Power-off remains the sole pairing trigger,
+      // so until that has happened these keys no-op.
+      if (!this.samsungWebSocket || !this.samsungWebSocket.hasToken()) {
+        this.log.debug(`Navigation key ${value} ignored for ${this.name} - Frame TV local control not configured/paired`);
         return;
       }
+      // Best-effort: there is no cloud equivalent for directional keys, so on
+      // failure we log and return rather than throwing (which would surface a
+      // "No Response" error in the Apple TV Remote for a fire-and-forget press).
       try {
         this.log.debug(`Sending navigation key ${wsKey} via local WebSocket for ${this.name}`);
-        await this.samsungWebSocket.clickKey(wsKey);
+        await this.samsungWebSocket.clickKey(wsKey, 4000);
         this.log.info(`✅ Remote key ${wsKey} sent via local WebSocket for ${this.name}`);
       } catch (error) {
-        this.log.error(`Error sending navigation key ${wsKey} via WebSocket for ${this.name}:`, error);
-        throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+        this.log.warn(`Frame TV: navigation key ${wsKey} failed for ${this.name} (TV off or unreachable): ${error}`);
       }
       return;
     }
@@ -912,10 +918,12 @@ export class TelevisionService extends BaseService {
     this.log.debug(`Sending volume selector command: audioVolume.${command} for ${this.name}`);
 
     // Prefer the Frame TV's local WebSocket for snappy hardware-button response.
-    if (this.samsungWebSocket) {
+    // Only when already paired — we never pair from here (that would pop the TV's
+    // Allow dialog on a volume press); unpaired Frames fall back to the cloud path.
+    if (this.samsungWebSocket && this.samsungWebSocket.hasToken()) {
       const key = value === this.platform.Characteristic.VolumeSelector.INCREMENT ? 'KEY_VOLUP' : 'KEY_VOLDOWN';
       try {
-        await this.samsungWebSocket.clickKey(key);
+        await this.samsungWebSocket.clickKey(key, 4000);
         this.log.debug(`Volume ${key} sent via local WebSocket for ${this.name}`);
         setTimeout(() => this.multiServiceAccessory.forceNextStatusRefresh(), 1000);
         return;

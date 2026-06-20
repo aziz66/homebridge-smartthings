@@ -1,6 +1,21 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.66-beta.0] - Frame TV Remote Navigation & Hardware Volume
+
+> Beta adding two Frame TV conveniences over the local WebSocket, contributed by @asafdav (#46): the Apple TV Remote **D-pad** (arrows / Select / Back / Exit / Info) and the iPhone's **hardware volume buttons** now drive the TV. Both were previously inert on Frame TVs even though a paired local socket was available. This release also hardens the contribution so it can't regress the 1.0.65 pairing fix or surprise users. Please test and report on #46.
+>
+> **Note:** because this changes the services on an already-published external TV accessory, you may need to **remove and re-add the TV in the Apple Home app once** for the new hardware-volume control to appear.
+
+### Added
+- **Frame TV navigation keys** (#46) — HomeKit `RemoteKey` arrows / Select / Back / Exit / Info are routed through the TV's local `samsung.remote.control` WebSocket (`KEY_UP/DOWN/LEFT/RIGHT`, `KEY_ENTER`, `KEY_RETURN`, `KEY_EXIT`, `KEY_INFO`), so the Apple TV Remote D-pad in Control Center drives a paired Frame TV. Non-Frame TVs are unaffected (these keys remain a no-op, as SmartThings has no directional capability). Thanks to @asafdav.
+- **Hardware volume buttons** (#46) — when `registerVolumeSlider` is enabled, the `TelevisionSpeaker` now exposes a RELATIVE `VolumeSelector` (no absolute `Volume`, so it doesn't conflict with the volume-slider lightbulb), making the iPhone's physical volume buttons control TV volume. On Frame TVs the keypress goes over the local WebSocket for snappy response, with the existing cloud `audioVolume` command as fallback; on all other TVs it uses the cloud command. This reverses the previous behavior where enabling the volume slider disabled the speaker entirely.
+
+### Changed (hardening of #46 before release)
+- Navigation and hardware-volume keys are sent **only when the Frame TV is already paired**, and never open the TV's authorization popup — power-off remains the single pairing trigger (consistent with 1.0.65). A nav-key press on an unpaired Frame now no-ops instead of popping a 30s Allow dialog.
+- Navigation keys are **best-effort**: a failed press (TV off/unreachable) is logged and ignored rather than throwing, so the Apple TV Remote no longer flashes a "No Response" error for a directional press.
+- The local-WebSocket nav/volume connect uses a short timeout, and the in-flight connection wait now honors each caller's own timeout budget — so a nav-key press can no longer block a subsequent power-off (which would otherwise have shown "No Response").
+
 ## [1.0.65] - Frame TV Pairing Fix
 
 > Stable release graduating `1.0.65-beta.0`, confirmed resolved by the original reporter. Fixes #45: a Samsung Frame TV could never complete local-WebSocket pairing, so true power-off and the Art Mode switch never worked. Root cause: the only code path that opens the token-gated remote channel (`wss://<tv-ip>:8002`) is the HomeKit power-off, which forced a hard **2-second** connect timeout. The TV's "Allow/Deny" authorization popup needs ~30 seconds to be accepted, so it was dismissed before anyone could press **Allow**, no token was ever saved, and power-off silently fell back to the SmartThings cloud `switch.off` (which only puts a Frame into Art Mode). Thanks to @ProfHill-UCD for the clear, log-complete report and for confirming the fix (#45).
