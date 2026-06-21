@@ -1,6 +1,13 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.66-beta.6] - Washer/Dishwasher countdown for polling-mode users
+
+> Fixes the washer/dishwasher Valve tile showing **"Waiting"** instead of the remaining-time countdown for users without webhooks configured (#13). The Valve's `RemainingDuration` was only ever pushed to HomeKit from the webhook `processEvent` path — so polling-only setups (no `server_url`) never proactively pushed it, and Apple Home's tile stayed on "Waiting" (the value was still correct on demand, e.g. via the Swagger `/api/accessories` endpoint, but Home was never notified).
+
+### Fixed
+- **Washer/Dishwasher remaining-time countdown now shows in polling mode** (#13) — `RemainingDuration` is now refreshed and pushed on the regular poll cycle (alongside Active/InUse), so the Apple Home Valve tile shows the live countdown for polling-only users instead of "Waiting". Webhook setups are unaffected (they already pushed it via real-time events).
+
 ## [1.0.66-beta.5] - Renamed "Frame & Tizen TV Control" + Info Button in the UI
 
 > Naming + UI polish (#46). The local-WebSocket feature isn't Frame-only — it's confirmed working on non-Frame Samsung Tizen TVs (e.g. the S90C OLED) — but the "Samsung Frame TV" labels made non-Frame owners think it didn't apply to them.

@@ -47,6 +47,10 @@ export class DishwasherService extends BaseService {
         platform.Characteristic.Active);
       multiServiceAccessory.startPollingState(pollSeconds, this.getInUse.bind(this), this.service,
         platform.Characteristic.InUse);
+      // RemainingDuration must be pushed proactively too: in polling mode (no webhooks) processEvent
+      // never fires, so without this the Apple Home tile keeps showing "Waiting" instead of the countdown.
+      multiServiceAccessory.startPollingState(pollSeconds, this.getRemainingDuration.bind(this), this.service,
+        platform.Characteristic.RemainingDuration);
     }
 
     // Optional Contact Sensor for Activity Notifications
@@ -143,7 +147,9 @@ export class DishwasherService extends BaseService {
             // Fallback: use samsungce.dishwasherOperatingState.remainingTime (integer minutes)
             this.tryRemainingTimeFallback();
           }
-          resolve(this.calculateRemainingSeconds());
+          const remainingSeconds = this.calculateRemainingSeconds();
+          this.log.debug(`Dishwasher RemainingDuration for ${this.name}: ${remainingSeconds}s`);
+          resolve(remainingSeconds);
         } catch (error) {
           this.log.debug(`No completionTime status available for ${this.name}`);
           resolve(0);
