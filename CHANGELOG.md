@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **Air conditioner fan speed display for numeric/max fan modes** — ACs that report fan modes like `1`, `2`, `3`, `4`, or `max` via `airConditionerFanMode.supportedAcFanModes` / `availableAcFanModes` now map those advertised modes to HomeKit `RotationSpeed` instead of falling back to `0%`. The mapping falls back to the legacy mode list when a driver omits or empties the supported-mode attributes; existing `low`/`medium`/`high`/`turbo` display percentages are preserved, and `auto` continues to display as `0%`.
+
 ## [1.0.66] - Samsung Frame & Tizen TV Control + Laundry/Dishwasher Countdown
 
 > Consolidates the `1.0.66-beta.0`–`beta.7` work (see the beta entries below for full detail). Two themes: Samsung **Frame & Tizen TV** control over the local WebSocket (#46), and a working **remaining-time countdown** for Samsung washers, dryers, and dishwashers in Apple Home (#13). Does not include the in-progress air-purifier work (PR #48).
