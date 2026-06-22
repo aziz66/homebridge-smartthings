@@ -65,6 +65,48 @@ export class AirConditionerService extends BaseService {
   // Flag to handle HomeKit setting speed to 0 -> Auto
   private justSetFanToAuto = false;
 
+  private static readonly DEFAULT_FAN_MODES = [FanMode.Auto, FanMode.Low, FanMode.Medium, FanMode.High, FanMode.Turbo];
+
+  // Fan modes the device accepts (from airConditionerFanMode.supportedAcFanModes/availableAcFanModes), or
+  // the legacy default list when a driver omits/empties those attributes.
+  private supportedFanModes: string[] = AirConditionerService.DEFAULT_FAN_MODES;
+  private hasDeviceFanModes = false;
+
+  // Lower rank = slower. Numeric Samsung OCF modes are common: ['auto','1','2','3','4','max'].
+  // Keep distinct speed labels on distinct ranks so ordering does not depend on the
+  // device-reported array order. Unknown modes sort last in device-reported order.
+  private static readonly FAN_MODE_RANK: Record<string, number> = {
+    sleep: 1,
+    quiet: 2,
+    low: 3,
+    '1': 4,
+    medium: 5,
+    mid: 6,
+    '2': 7,
+    high: 8,
+    '3': 9,
+    turbo: 10,
+    '4': 11,
+    max: 12,
+  };
+
+  private static readonly LEGACY_FAN_MODE_LEVEL: Record<string, number> = {
+    [FanMode.Auto]: 0,
+    [FanMode.Low]: 25,
+    [FanMode.Medium]: 50,
+    [FanMode.High]: 75,
+    [FanMode.Turbo]: 100,
+  };
+
+  private static readonly FALLBACK_FAN_MODE_LEVEL: Record<string, number> = {
+    ...AirConditionerService.LEGACY_FAN_MODE_LEVEL,
+    '1': 25,
+    '2': 50,
+    '3': 75,
+    '4': 100,
+    max: 100,
+  };
+
   constructor(platform: IKHomeBridgeHomebridgePlatform, accessory: PlatformAccessory, componentId: string, capabilities: string[],
     multiServiceAccessory: MultiServiceAccessory,
     name: string, deviceStatus) {
@@ -76,6 +118,7 @@ export class AirConditionerService extends BaseService {
     // a thermostat and a fan to cover temperature settings, fan speed, and swing.
     this.thermostatService = this.setupThermostat(platform, multiServiceAccessory);
     this.fanService = this.setupFan(platform, multiServiceAccessory);
+    this.updateFanModeCache(this.deviceStatus?.status);
 
     // Exposing this sensor is optional since some Samsung air conditioner always report 0 as relative humidity level
     // or the device might not support it
@@ -265,39 +308,79 @@ export class AirConditionerService extends BaseService {
     return deviceStatus.relativeHumidityMeasurement.humidity.value;
   }
 
-  private levelToFanMode(level: number): string {
-    if (level > 0 && level < 25) {
-      return FanMode.Low;
-    }
-
-    if (level > 25 && level <= 50) {
-      return FanMode.Medium;
-    }
-
-    if (level > 50 && level <= 75) {
-      return FanMode.High;
-    }
-
-    if (level > 75) {
-      return FanMode.Turbo;
-    }
-
-    return FanMode.Auto;
+  private updateFanModeCache(deviceStatus): void {
+    const supportedModes = deviceStatus?.airConditionerFanMode?.supportedAcFanModes?.value;
+    const availableModes = deviceStatus?.airConditionerFanMode?.availableAcFanModes?.value;
+    const resolved = this.resolveFanModes(supportedModes, availableModes);
+    this.supportedFanModes = resolved.modes;
+    this.hasDeviceFanModes = resolved.fromDevice;
   }
 
-  private fanModeToLevel(fanMode: FanMode): number {
-    switch (fanMode) {
-      case FanMode.Low:
-        return 25;
-      case FanMode.Medium:
-        return 50;
-      case FanMode.High:
-        return 75;
-      case FanMode.Turbo:
-        return 100;
-      default:
-        return 0; // auto level
+  private resolveFanModes(...modeLists): { modes: string[]; fromDevice: boolean } {
+    for (const modes of modeLists) {
+      if (Array.isArray(modes)) {
+        const resolved = modes.filter(mode => typeof mode === 'string' && mode.length > 0) as string[];
+        if (resolved.length > 0) {
+          return { modes: resolved, fromDevice: true };
+        }
+      }
     }
+    return { modes: [...AirConditionerService.DEFAULT_FAN_MODES], fromDevice: false };
+  }
+
+  private getAutoFanMode(): string | undefined {
+    return this.supportedFanModes.includes(FanMode.Auto) ? FanMode.Auto : undefined;
+  }
+
+  private isAutoFanMode(fanMode: string | undefined): boolean {
+    return fanMode !== undefined && fanMode === this.getAutoFanMode();
+  }
+
+  private manualFanModes(): string[] {
+    const auto = this.getAutoFanMode();
+    return this.supportedFanModes
+      .filter(mode => mode !== auto)
+      .map((mode, index) => ({ mode, index }))
+      .sort((a, b) => {
+        const aRank = AirConditionerService.FAN_MODE_RANK[a.mode.toLowerCase()] ?? 99;
+        const bRank = AirConditionerService.FAN_MODE_RANK[b.mode.toLowerCase()] ?? 99;
+        return aRank !== bRank ? aRank - bRank : a.index - b.index;
+      })
+      .map(item => item.mode);
+  }
+
+  private levelToFanMode(level: number): string | undefined {
+    if (level <= 0) {
+      return this.getAutoFanMode() ?? this.manualFanModes()[0];
+    }
+
+    const modes = this.manualFanModes();
+    if (modes.length === 0) {
+      return undefined;
+    }
+    const index = Math.min(modes.length - 1, Math.max(0, Math.ceil((level / 100) * modes.length) - 1));
+    return modes[index];
+  }
+
+  private fanModeToLevel(fanMode: string): number {
+    if (this.isAutoFanMode(fanMode)) {
+      return 0;
+    }
+
+    // Preserve the legacy display percentages for the modes this service already understood.
+    // Device-specific/dynamic handling is only for extra labels like '1'/'2'/'3'/'4'/'max'.
+    const legacyLevel = AirConditionerService.LEGACY_FAN_MODE_LEVEL[fanMode];
+    if (legacyLevel !== undefined) {
+      return legacyLevel;
+    }
+
+    const modes = this.manualFanModes();
+    const index = modes.indexOf(fanMode);
+    if (index >= 0) {
+      return Math.round(((index + 1) / modes.length) * 100);
+    }
+
+    return AirConditionerService.FALLBACK_FAN_MODE_LEVEL[fanMode] ?? 0;
   }
 
   private fanOscillationModeToSwingMode(fanOscillationMode: FanOscillationMode): CharacteristicValue {
@@ -368,9 +451,10 @@ export class AirConditionerService extends BaseService {
       // Before turning off, check if the fan mode is 'Auto'.
       // If it is, HomeKit likely sent this 'off' because speed was set to 0.
       // In this case, we *don't* want to actually turn the device off.
-      let fanMode: FanMode | undefined;
+      let fanMode: string | undefined;
       try {
         const deviceStatus = await this.getDeviceStatus(); // Get current status
+        this.updateFanModeCache(deviceStatus);
         fanMode = deviceStatus?.airConditionerFanMode?.fanMode?.value;
       } catch (error) {
         this.log.error(`[${this.name}] Failed to get device status before potentially turning off: ${error}`);
@@ -386,7 +470,7 @@ export class AirConditionerService extends BaseService {
         return; // Do not send the 'off' command
       }
 
-      if (fanMode === FanMode.Auto) {
+      if (this.isAutoFanMode(fanMode)) {
         this.log.info(`[${this.name}] Received request to turn off (Active=false), but fanMode is ${fanMode}. Assuming this came from setting speed to 0. Ignoring turn-off command.`);
         // Do nothing - don't send the Off command
       } else {
@@ -402,13 +486,20 @@ export class AirConditionerService extends BaseService {
     return deviceStatus.switch.switch.value === SwitchState.On;
   }
 
-  private setFanLevel(value: CharacteristicValue): Promise<void> {
+  private async setFanLevel(value: CharacteristicValue): Promise<void> {
+    if (!this.hasDeviceFanModes) {
+      this.updateFanModeCache(await this.getDeviceStatus());
+    }
     const fanMode = this.levelToFanMode(value as number);
+    if (fanMode === undefined) {
+      this.log.warn(`[${this.name}] no supported fan mode for level ${value}; ignoring`);
+      return;
+    }
     const command = new Command(this.componentId, 'airConditionerFanMode', 'setFanMode', [fanMode]);
     this.log.info(`[${this.name}] set fan level to ${fanMode}`);
 
     // If setting to Auto (level 0), set the flag and a timeout to reset it.
-    if (fanMode === FanMode.Auto) {
+    if (this.isAutoFanMode(fanMode)) {
       this.log.debug(`[${this.name}] Setting justSetFanToAuto flag.`);
       this.justSetFanToAuto = true;
       setTimeout(() => {
@@ -417,17 +508,18 @@ export class AirConditionerService extends BaseService {
       }, 1500); // Reset after 1.5 seconds
     }
 
-    return this.sendCommandsOrFail([command]);
+    await this.sendCommandsOrFail([command]);
   }
 
   private async getFanLevel(): Promise<CharacteristicValue> {
     this.log.debug(`[${this.name}] get fan level`);
     const deviceStatus = await this.getDeviceStatus();
+    this.updateFanModeCache(deviceStatus);
     if (!deviceStatus.airConditionerFanMode.fanMode.value) {
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.RESOURCE_DOES_NOT_EXIST);
     }
 
-    const fanMode = this.deviceStatus.status.airConditionerFanMode.fanMode.value;
+    const fanMode = deviceStatus.airConditionerFanMode.fanMode.value;
     return this.fanModeToLevel(fanMode);
   }
 
@@ -639,6 +731,12 @@ export class AirConditionerService extends BaseService {
         this.thermostatService.updateCharacteristic(TargetHeatingCoolingState, targetHeatingCoolingState);
         break;
       case 'airConditionerFanMode':
+        if (event.attribute === 'supportedAcFanModes' || event.attribute === 'availableAcFanModes') {
+          const resolved = this.resolveFanModes(event.value);
+          this.supportedFanModes = resolved.modes;
+          this.hasDeviceFanModes = resolved.fromDevice;
+          break;
+        }
         this.fanService.updateCharacteristic(this.platform.Characteristic.RotationSpeed, this.fanModeToLevel(event.value));
         break;
       case 'fanOscillationMode':
