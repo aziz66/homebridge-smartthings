@@ -1,6 +1,22 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.66] - Samsung Frame & Tizen TV Control + Laundry/Dishwasher Countdown
+
+> Consolidates the `1.0.66-beta.0`–`beta.7` work (see the beta entries below for full detail). Two themes: Samsung **Frame & Tizen TV** control over the local WebSocket (#46), and a working **remaining-time countdown** for Samsung washers, dryers, and dishwashers in Apple Home (#13). Does not include the in-progress air-purifier work (PR #48).
+
+### Added
+- **Samsung Frame & Tizen TV Control** (#46) — the Apple TV Remote **D-pad** (arrows / Select / Back / Exit / Info) and the iPhone's **hardware volume buttons** drive paired Frame/Tizen TVs over the local `samsung.remote.control` WebSocket, and the **Info button is configurable** per TV (`KEY_INFO` / `KEY_AMBIENT` / `KEY_HOME` / `KEY_SOURCE` / `KEY_MENU` / `KEY_GUIDE`) from the settings UI. Works on The Frame and other Samsung Tizen TVs (OLED / QLED / Neo QLED / Crystal UHD). Thanks to @asafdav.
+- **`SetDuration` and `IsConfigured` characteristics** on the washer/dryer/dishwasher Valve, matching the reference HomeKit valve plugins so Apple Home reliably renders the cycle countdown.
+
+### Fixed
+- **Washer/Dryer/Dishwasher remaining-time countdown** (#13) — the appliance Valve now shows a live countdown in Apple Home's expanded tile while a cycle runs, for both webhook and polling setups. The countdown is seeded **once** at cycle start and decremented by Home itself; the previous per-poll push reset Home's client-side timer and left the tile stuck on "Waiting".
+- **Art Mode status read on modern Samsung TVs** (#46) — the Art Mode switch reflects the TV's actual state on the modern art API (v5.x) instead of always showing off.
+
+### Changed
+- **Renamed to "Samsung Frame & Tizen TV Control"** across the settings UI, config schema, README, and wiki — the local-WebSocket feature works on non-Frame Samsung Tizen TVs too. The `frameTvDevices` config key and wiki URL are unchanged, so existing configs keep working.
+- **Quieter Art Mode polling** (#46) — the routine 30s art-status poll no longer logs per-cycle; only genuine errors and real state changes are logged.
+
 ## [1.0.66-beta.7] - Washer/Dryer/Dishwasher countdown: seed-once Valve pattern
 
 > Follow-up to beta.6 (#13). beta.6 pushed `RemainingDuration` on every poll, which kept **resetting Apple Home's client-side countdown** — so the tile stayed on "Waiting". This release adopts the pattern used by working HomeKit valve/irrigation plugins (RainBird, Orbit B-hyve, hap-nodejs `Sprinkler`): seed the countdown **once** at cycle start and let Home decrement it itself.
