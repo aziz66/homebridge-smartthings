@@ -7,7 +7,10 @@ import { ShortEvent } from '../webhook/subscriptionHandler';
 export class DryerService extends BaseService {
 
   private cachedCompletionTime: string | null = null;
-  private countdownTimer: ReturnType<typeof setInterval> | null = null;
+  // Tracks the last InUse value so we only seed the countdown on the OFF->ON (cycle-start) transition.
+  private lastInUse: number | null = null;
+  // Whether a non-zero RemainingDuration has been seeded for the current cycle (seed-once guard).
+  private remainingSeeded = false;
   private contactSensorService: Service | undefined;
 
   constructor(platform: IKHomeBridgeHomebridgePlatform, accessory: PlatformAccessory, componentId: string, capabilities: string[],
@@ -22,6 +25,10 @@ export class DryerService extends BaseService {
     this.service.getCharacteristic(platform.Characteristic.ValveType)
       .updateValue(platform.Characteristic.ValveType.GENERIC_VALVE);
 
+    // IsConfigured: working valve/irrigation plugins set this; unconfigured valves don't render reliably
+    this.service.setCharacteristic(platform.Characteristic.IsConfigured,
+      platform.Characteristic.IsConfigured.CONFIGURED);
+
     // Active: machine is running or paused
     this.service.getCharacteristic(platform.Characteristic.Active)
       .onGet(this.getActive.bind(this))
@@ -31,10 +38,21 @@ export class DryerService extends BaseService {
     this.service.getCharacteristic(platform.Characteristic.InUse)
       .onGet(this.getInUse.bind(this));
 
-    // RemainingDuration: Apple Home auto-decrements the countdown display for Valve services
+    // SetDuration: read-only for an appliance, but Apple Home's countdown UI expects the
+    // SetDuration/RemainingDuration pair. onSet is a no-op (we can't change the dry cycle).
+    this.service.getCharacteristic(platform.Characteristic.SetDuration)
+      .setProps({ maxValue: 14400 })
+      .onGet(this.getRemainingDuration.bind(this))
+      .onSet(this.setDuration.bind(this));
+
+    // RemainingDuration: seeded ONCE at cycle start; Apple Home then decrements it client-side.
     this.service.getCharacteristic(platform.Characteristic.RemainingDuration)
       .setProps({ maxValue: 14400 })
       .onGet(this.getRemainingDuration.bind(this));
+
+    // Seed initial values so a stale cached value isn't shown after a restart (matches reference plugins).
+    this.service.updateCharacteristic(platform.Characteristic.RemainingDuration, 0);
+    this.service.updateCharacteristic(platform.Characteristic.SetDuration, 0);
 
     // Poll using switch/light interval (appliances change state infrequently)
     let pollSeconds = 10;
@@ -43,10 +61,12 @@ export class DryerService extends BaseService {
     }
 
     if (pollSeconds > 0) {
-      multiServiceAccessory.startPollingState(pollSeconds, this.getActive.bind(this), this.service,
+      // Single consolidated poll: pollValveState pushes InUse and (only on the cycle-start transition)
+      // seeds SetDuration/RemainingDuration, then returns Active for startPollingState to push.
+      // RemainingDuration is deliberately NOT re-pushed every poll - doing so resets Apple Home's
+      // client-side countdown and leaves the tile stuck on "Waiting".
+      multiServiceAccessory.startPollingState(pollSeconds, this.pollValveState.bind(this), this.service,
         platform.Characteristic.Active);
-      multiServiceAccessory.startPollingState(pollSeconds, this.getInUse.bind(this), this.service,
-        platform.Characteristic.InUse);
     }
 
     // Optional Contact Sensor for Activity Notifications
@@ -68,6 +88,88 @@ export class DryerService extends BaseService {
   // No-op setter for Active (Valve requires it; dryer is read-only)
   async setActive(value: CharacteristicValue) {
     this.log.debug(`DryerService setActive(${value}) ignored for ${this.name} (read-only)`);
+  }
+
+  // No-op setter for SetDuration (read-only appliance; we can't change the dry cycle length)
+  async setDuration(value: CharacteristicValue) {
+    this.log.debug(`DryerService setDuration(${value}) ignored for ${this.name} (read-only)`);
+  }
+
+  // Consolidated poll: reads status once, pushes InUse, seeds the countdown on the cycle-start
+  // transition only, and returns Active (pushed by startPollingState).
+  async pollValveState(): Promise<CharacteristicValue> {
+    const success = await this.getStatus();
+    if (!success) {
+      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
+
+    const operatingState = this.deviceStatus.status.dryerOperatingState;
+    if (!operatingState || !operatingState.machineState || !operatingState.dryerJobState) {
+      this.log.error(`Missing dryerOperatingState from ${this.name}`);
+      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
+
+    const machineState = operatingState.machineState.value;
+    const jobState = operatingState.dryerJobState.value;
+    this.log.debug(`Dryer machineState=${machineState} jobState=${jobState} for ${this.name}`);
+
+    // Refresh the cached completion time from the current status (or the samsungce fallback).
+    const completionTime = operatingState.completionTime?.value;
+    if (completionTime) {
+      this.cachedCompletionTime = completionTime;
+    } else {
+      this.tryRemainingTimeFallback();
+    }
+
+    const active = this.machineStateToActive(machineState);
+    let inUse = this.jobStateToInUse(jobState);
+    // A stopped/off machine can't be "in use", even if the device leaves jobState stale at end of cycle.
+    if (active === this.platform.Characteristic.Active.INACTIVE) {
+      inUse = this.platform.Characteristic.InUse.NOT_IN_USE;
+    }
+    this.service.updateCharacteristic(this.platform.Characteristic.InUse, inUse);
+    this.contactSensorService?.updateCharacteristic(
+      this.platform.Characteristic.ContactSensorState,
+      inUse === this.platform.Characteristic.InUse.IN_USE
+        ? this.platform.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED
+        : this.platform.Characteristic.ContactSensorState.CONTACT_DETECTED,
+    );
+
+    this.applyInUseTransition(inUse);
+
+    return active;
+  }
+
+  // Seed the countdown ONCE per cycle, clear it on ON->OFF. While running, only (re)seeds if it
+  // hasn't been seeded yet - e.g. when completionTime becomes available a poll after the cycle started.
+  private applyInUseTransition(inUse: number): void {
+    const IN_USE = this.platform.Characteristic.InUse.IN_USE;
+    const wasInUse = this.lastInUse === IN_USE;
+    const nowInUse = inUse === IN_USE;
+
+    if (nowInUse && (!wasInUse || !this.remainingSeeded)) {
+      this.seedRemainingDuration();
+    } else if (!nowInUse && wasInUse) {
+      this.service.updateCharacteristic(this.platform.Characteristic.RemainingDuration, 0);
+      this.remainingSeeded = false;
+      this.log.debug(`Dryer cycle ended for ${this.name}: RemainingDuration 0`);
+    }
+
+    this.lastInUse = inUse;
+  }
+
+  // Pushes SetDuration/RemainingDuration once. If completionTime isn't available yet (seconds == 0)
+  // it leaves remainingSeeded false so a later poll/event retries the seed.
+  private seedRemainingDuration(): void {
+    const secs = this.calculateRemainingSeconds();
+    if (secs > 0) {
+      this.service.updateCharacteristic(this.platform.Characteristic.SetDuration, secs);
+      this.service.updateCharacteristic(this.platform.Characteristic.RemainingDuration, secs);
+      this.remainingSeeded = true;
+      this.log.debug(`Dryer countdown seeded for ${this.name}: ${secs}s`);
+    } else {
+      this.log.debug(`Dryer in use but no completionTime yet for ${this.name}; will retry`);
+    }
   }
 
   async getActive(): Promise<CharacteristicValue> {
@@ -126,28 +228,28 @@ export class DryerService extends BaseService {
     });
   }
 
+  // onGet for RemainingDuration / SetDuration. Serves Home app re-reads (e.g. when the app is
+  // reopened) by computing the live remaining seconds from completionTime; it does not push.
   async getRemainingDuration(): Promise<CharacteristicValue> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       this.getStatus().then(success => {
         if (!success) {
-          reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
+          resolve(this.calculateRemainingSeconds());
           return;
         }
         try {
-          // completionTime is an attribute of dryerOperatingState, not a separate capability
           const completionTime = this.deviceStatus.status.dryerOperatingState.completionTime?.value;
           if (completionTime) {
             this.cachedCompletionTime = completionTime;
-            this.startCountdownTimer();
           } else {
-            // Fallback: use samsungce.dryerOperatingState.remainingTime (integer minutes)
             this.tryRemainingTimeFallback();
           }
-          resolve(this.calculateRemainingSeconds());
         } catch (error) {
           this.log.debug(`No completionTime status available for ${this.name}`);
-          resolve(0);
         }
+        const remainingSeconds = this.calculateRemainingSeconds();
+        this.log.debug(`Dryer RemainingDuration for ${this.name}: ${remainingSeconds}s`);
+        resolve(remainingSeconds);
       });
     });
   }
@@ -190,10 +292,9 @@ export class DryerService extends BaseService {
     try {
       const remainingMin = this.deviceStatus.status['samsungce.dryerOperatingState']?.remainingTime?.value;
       if (typeof remainingMin === 'number' && remainingMin > 0) {
-        // Convert relative minutes to an absolute completion timestamp for the countdown timer
+        // Convert relative minutes to an absolute completion timestamp for the countdown.
         this.cachedCompletionTime = new Date(Date.now() + remainingMin * 60 * 1000).toISOString();
         this.log.debug(`Dryer remainingTime fallback for ${this.name}: ${remainingMin} min`);
-        this.startCountdownTimer();
       }
     } catch {
       // samsungce.dryerOperatingState not available — ignore
@@ -213,28 +314,6 @@ export class DryerService extends BaseService {
     return Math.min(remaining, 14400);
   }
 
-  private startCountdownTimer(): void {
-    this.stopCountdownTimer();
-    const remaining = this.calculateRemainingSeconds();
-    if (remaining <= 0) {
-      return;
-    }
-    this.countdownTimer = setInterval(() => {
-      const secs = this.calculateRemainingSeconds();
-      this.service.updateCharacteristic(this.platform.Characteristic.RemainingDuration, secs);
-      if (secs <= 0) {
-        this.stopCountdownTimer();
-      }
-    }, 60 * 1000);
-  }
-
-  private stopCountdownTimer(): void {
-    if (this.countdownTimer) {
-      clearInterval(this.countdownTimer);
-      this.countdownTimer = null;
-    }
-  }
-
   public processEvent(event: ShortEvent): void {
     if (event.capability === 'dryerOperatingState') {
       if (event.attribute === 'machineState') {
@@ -242,10 +321,11 @@ export class DryerService extends BaseService {
         const active = this.machineStateToActive(event.value);
         this.service.updateCharacteristic(this.platform.Characteristic.Active, active);
 
-        // If machine stopped, clear timer and set remaining to 0
+        // If machine stopped, clear the cached completion time and set remaining to 0.
         if (event.value === 'stop') {
           this.cachedCompletionTime = null;
-          this.stopCountdownTimer();
+          this.lastInUse = this.platform.Characteristic.InUse.NOT_IN_USE;
+          this.remainingSeeded = false;
           this.service.updateCharacteristic(this.platform.Characteristic.RemainingDuration, 0);
           this.contactSensorService?.updateCharacteristic(
             this.platform.Characteristic.ContactSensorState,
@@ -254,18 +334,24 @@ export class DryerService extends BaseService {
         }
       } else if (event.attribute === 'dryerJobState') {
         this.log.debug(`Event updating dryer jobState for ${this.name} to ${event.value}`);
-        this.service.updateCharacteristic(this.platform.Characteristic.InUse, this.jobStateToInUse(event.value));
+        const inUse = this.jobStateToInUse(event.value);
+        this.service.updateCharacteristic(this.platform.Characteristic.InUse, inUse);
         this.contactSensorService?.updateCharacteristic(
           this.platform.Characteristic.ContactSensorState,
           this.jobStateToContactSensor(event.value),
         );
+        // Seed the countdown once on the cycle-start transition.
+        this.applyInUseTransition(inUse);
       } else if (event.attribute === 'completionTime') {
         // completionTime is an attribute of dryerOperatingState
         this.log.debug(`Event updating dryer completionTime for ${this.name} to ${event.value}`);
         this.cachedCompletionTime = event.value;
-        const remaining = this.calculateRemainingSeconds();
-        this.service.updateCharacteristic(this.platform.Characteristic.RemainingDuration, remaining);
-        this.startCountdownTimer();
+        // Refresh RemainingDuration when a cycle is running (real change / late-arriving completionTime).
+        if (this.lastInUse === this.platform.Characteristic.InUse.IN_USE) {
+          const secs = this.calculateRemainingSeconds();
+          this.service.updateCharacteristic(this.platform.Characteristic.RemainingDuration, secs);
+          this.remainingSeeded = secs > 0;
+        }
       }
     }
   }

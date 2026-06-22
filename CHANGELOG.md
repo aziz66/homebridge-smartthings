@@ -1,6 +1,16 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.66-beta.7] - Washer/Dryer/Dishwasher countdown: seed-once Valve pattern
+
+> Follow-up to beta.6 (#13). beta.6 pushed `RemainingDuration` on every poll, which kept **resetting Apple Home's client-side countdown** — so the tile stayed on "Waiting". This release adopts the pattern used by working HomeKit valve/irrigation plugins (RainBird, Orbit B-hyve, hap-nodejs `Sprinkler`): seed the countdown **once** at cycle start and let Home decrement it itself.
+
+### Fixed
+- **Washer/Dryer/Dishwasher countdown now renders in polling mode** (#13) — the drifting per-characteristic polls and the 60s self-push timer are replaced by a single consolidated poll that pushes `Active`/`InUse` each cycle but seeds `RemainingDuration` (and `SetDuration`) **only once**, on the cycle-start transition. Re-reads (e.g. when the Home app reopens) are served by the `onGet` handler, which computes the live remaining time from `completionTime`. The same fix is applied to the dryer, which shares the identical Valve code.
+
+### Added
+- **`SetDuration` and `IsConfigured` characteristics** on the washer/dryer/dishwasher Valve, matching the reference valve plugins so Apple Home reliably renders the countdown. `SetDuration` is read-only (the cycle can't be changed from HomeKit).
+
 ## [1.0.66-beta.6] - Washer/Dishwasher countdown for polling-mode users
 
 > Fixes the washer/dishwasher Valve tile showing **"Waiting"** instead of the remaining-time countdown for users without webhooks configured (#13). The Valve's `RemainingDuration` was only ever pushed to HomeKit from the webhook `processEvent` path — so polling-only setups (no `server_url`) never proactively pushed it, and Apple Home's tile stayed on "Waiting" (the value was still correct on demand, e.g. via the Swagger `/api/accessories` endpoint, but Home was never notified).
