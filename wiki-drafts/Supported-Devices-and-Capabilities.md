@@ -52,7 +52,7 @@ These rules match a **set** of capabilities to a single compound service. The pl
 | Required capabilities | Optional capabilities | HomeKit service |
 |---|---|---|
 | `switch`, `airConditionerMode`, `airConditionerFanMode`, `thermostatCoolingSetpoint`, `temperatureMeasurement` | `fanOscillationMode`, `relativeHumidityMeasurement`, `custom.airConditionerOptionalMode` | Air Conditioner *(Heater Cooler)* |
-| `switch`, `airConditionerFanMode` | `custom.filterState`, `airQualitySensor`, `dustSensor`, `veryFineDustSensor`, `odorSensor`, `relativeHumidityMeasurement` | Air Purifier |
+| `switch`, `airConditionerFanMode` | `custom.filterState`, `custom.hepaFilter`, `airQualitySensor`, `dustSensor`, `veryFineDustSensor`, `odorSensor` | Air Purifier |
 | `switch`, `fanSpeed`, `switchLevel` | — | Fan + Light combo |
 | `switch`, `fanSpeed` | — | Fan |
 | `switch`, `switchLevel` | — | Light (dimmable) |

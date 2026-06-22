@@ -5,14 +5,6 @@ import { Command } from './smartThingsCommand';
 import { ShortEvent } from '../webhook/subscriptionHandler';
 import { BaseService } from './baseService';
 
-enum AirPurifierFanMode {
-  Auto = 'auto',
-  Low = 'low',
-  Medium = 'medium',
-  High = 'high',
-  Sleep = 'sleep',
-}
-
 enum SwitchState {
   On = 'on',
   Off = 'off',
@@ -22,13 +14,36 @@ export class AirPurifierService extends BaseService {
 
   private airPurifierService: Service;
   private airQualitySensorService?: Service;
-  private humiditySensorService?: Service;
+
+  private static readonly DEFAULT_FAN_MODES = ['auto', 'low', 'medium', 'high'];
+
+  // Fan modes the device accepts (from airConditionerFanMode.supportedAcFanModes), or
+  // the legacy default list when a driver omits/empties that attribute.
+  // Cached because fanMode webhook events arrive without the supported-modes list.
+  // Samsung purifiers vary: e.g. ['auto','low','medium','high'] or ['smart','max','medium','windfree','sleep','pet'].
+  private supportedFanModes: string[] = AirPurifierService.DEFAULT_FAN_MODES;
+  private hasDeviceFanModes = false;
+
+  // Lower rank = slower. Unknown modes sort last (rank 99) in device-reported order.
+  // Aliases may share a rank, but distinct labels with different speeds do not.
+  private static readonly FAN_MODE_RANK: Record<string, number> = {
+    sleep: 1,
+    silent: 2,
+    quiet: 3,
+    windfree: 4,
+    low: 5,
+    medium: 6, mid: 6,
+    pet: 7,
+    high: 8,
+    max: 9,
+    turbo: 10,
+  };
 
   // Debounce: HomeKit sends setTargetAirPurifierState and setRotationSpeed near-simultaneously.
   // We track them separately and resolve priority when the timer fires:
-  //   Auto > RotationSpeed > Manual default (low)
+  //   Auto > RotationSpeed > Manual default (slowest supported mode)
   private pendingTargetState?: number; // 0 = manual, 1 = auto
-  private pendingRotationFanMode?: AirPurifierFanMode; // from setRotationSpeed
+  private pendingRotationMode?: string; // a supported fan mode, from setRotationSpeed
   private fanModeTimer?: ReturnType<typeof setTimeout>;
   private static readonly FAN_MODE_DEBOUNCE_MS = 500;
 
@@ -45,9 +60,14 @@ export class AirPurifierService extends BaseService {
       this.airQualitySensorService = this.setupAirQualitySensor(platform, multiServiceAccessory);
     }
 
-    if (this.isCapabilitySupported('relativeHumidityMeasurement')) {
-      this.humiditySensorService = this.setupHumiditySensor(platform, multiServiceAccessory);
-    }
+    // relativeHumidityMeasurement and temperatureMeasurement are intentionally left to the
+    // base-map HumidityService / TemperatureService. Many purifiers declare them but never
+    // report a value; the generic SensorService removes such a dead tile on its own
+    // (per-device, value-based) and keeps it for models that do report — no config flag needed.
+
+    // Warm the supported-fan-mode cache from the initial status if we already have it, so the
+    // first fan read/command after startup can prefer device-reported modes over fallback.
+    this.updateFanModeCache(this.deviceStatus?.status);
   }
 
   private isCapabilitySupported(capability: string): boolean {
@@ -74,7 +94,7 @@ export class AirPurifierService extends BaseService {
       .onGet(this.getRotationSpeed.bind(this))
       .onSet(this.setRotationSpeed.bind(this));
 
-    if (this.isCapabilitySupported('custom.filterState')) {
+    if (this.isCapabilitySupported('custom.filterState') || this.isCapabilitySupported('custom.hepaFilter')) {
       this.service.getCharacteristic(platform.Characteristic.FilterLifeLevel)
         .onGet(this.getFilterLifeLevel.bind(this));
 
@@ -123,23 +143,6 @@ export class AirPurifierService extends BaseService {
     return this.service;
   }
 
-  private setupHumiditySensor(platform: IKHomeBridgeHomebridgePlatform, multiServiceAccessory: MultiServiceAccessory): Service {
-    this.log.debug(`Expose Humidity Sensor for ${this.name}`);
-
-    this.setServiceType(platform.Service.HumiditySensor);
-
-    this.service.getCharacteristic(platform.Characteristic.CurrentRelativeHumidity)
-      .onGet(this.getHumidityLevel.bind(this));
-
-    multiServiceAccessory.startPollingState(this.platform.config.PollSensorsSeconds,
-      this.getHumidityLevel.bind(this), this.service, platform.Characteristic.CurrentRelativeHumidity);
-
-    // Link the humidity sensor to the main air purifier service
-    this.airPurifierService.addLinkedService(this.service);
-
-    return this.service;
-  }
-
   // --- Active (switch) ---
 
   private async getActive(): Promise<CharacteristicValue> {
@@ -176,9 +179,10 @@ export class AirPurifierService extends BaseService {
 
   private async getTargetAirPurifierState(): Promise<CharacteristicValue> {
     const deviceStatus = await this.getDeviceStatus();
-    const fanMode = deviceStatus.airConditionerFanMode.fanMode.value;
+    this.updateFanModeCache(deviceStatus);
+    const fanMode = deviceStatus.airConditionerFanMode.fanMode.value as string;
     // MANUAL = 0, AUTO = 1
-    return fanMode === AirPurifierFanMode.Auto ? 1 : 0;
+    return this.isAutoMode(fanMode) ? 1 : 0;
   }
 
   private async setTargetAirPurifierState(value: CharacteristicValue): Promise<void> {
@@ -191,22 +195,33 @@ export class AirPurifierService extends BaseService {
 
   private async getRotationSpeed(): Promise<CharacteristicValue> {
     const deviceStatus = await this.getDeviceStatus();
-    const fanMode = deviceStatus.airConditionerFanMode.fanMode.value as AirPurifierFanMode;
+    this.updateFanModeCache(deviceStatus);
+    const fanMode = deviceStatus.airConditionerFanMode.fanMode.value as string;
     return this.fanModeToLevel(fanMode);
   }
 
   private async setRotationSpeed(value: CharacteristicValue): Promise<void> {
+    // Ensure we know the device's real fan modes before translating the slider,
+    // otherwise the first set after startup falls back to the legacy default list.
+    if (!this.hasDeviceFanModes) {
+      this.updateFanModeCache(await this.getDeviceStatus());
+    }
     const fanMode = this.levelToFanMode(value as number);
+    if (fanMode === undefined) {
+      this.log.warn(`[${this.name}] no supported fan mode for level ${value}; ignoring`);
+      return;
+    }
     this.log.info(`[${this.name}] set rotation speed to ${fanMode} (from level ${value})`);
-    this.pendingRotationFanMode = fanMode;
+    this.pendingRotationMode = fanMode;
     this.resetFanModeTimer();
   }
 
   /**
    * Reset the debounce timer. When it fires, resolve priority:
-   *   Auto (target=1) > RotationSpeed > Manual default (low)
+   *   Auto (target=1) > RotationSpeed > Manual default (slowest supported mode)
    * This ensures only one setFanMode command is sent regardless of
    * how many characteristics HomeKit updates or in what order.
+   * Falls back to the legacy default list if the driver does not report supported modes.
    */
   private resetFanModeTimer(): void {
     if (this.fanModeTimer) {
@@ -214,19 +229,31 @@ export class AirPurifierService extends BaseService {
     }
     this.fanModeTimer = setTimeout(async () => {
       this.fanModeTimer = undefined;
-      let mode: AirPurifierFanMode;
+      // Bare Auto/Manual sets don't warm the cache, so make sure we know the real modes first.
+      if (!this.hasDeviceFanModes) {
+        try {
+          this.updateFanModeCache(await this.getDeviceStatus());
+        } catch (error) {
+          this.log.debug(`[${this.name}] could not load supported fan modes: ${error}`);
+        }
+      }
+      let mode: string | undefined;
       if (this.pendingTargetState === 1) {
         // Auto always wins — ignore any slider value sent alongside
-        mode = AirPurifierFanMode.Auto;
-      } else if (this.pendingRotationFanMode !== undefined) {
+        mode = this.getAutoMode();
+      } else if (this.pendingRotationMode !== undefined) {
         // Rotation speed was set — use it (whether or not Manual was also requested)
-        mode = this.pendingRotationFanMode;
+        mode = this.pendingRotationMode;
       } else {
-        // Manual was requested but no rotation speed followed — default to low
-        mode = AirPurifierFanMode.Low;
+        // Manual was requested but no rotation speed followed — default to slowest manual mode
+        mode = this.manualModes()[0];
       }
       this.pendingTargetState = undefined;
-      this.pendingRotationFanMode = undefined;
+      this.pendingRotationMode = undefined;
+      if (mode === undefined) {
+        this.log.warn(`[${this.name}] no supported fan mode to send; ignoring`);
+        return;
+      }
       this.log.info(`[${this.name}] sending debounced fan mode: ${mode}`);
       await this.sendCommandsOrFail([new Command(this.componentId, 'airConditionerFanMode', 'setFanMode', [mode])]);
     }, AirPurifierService.FAN_MODE_DEBOUNCE_MS);
@@ -236,14 +263,12 @@ export class AirPurifierService extends BaseService {
 
   private async getFilterLifeLevel(): Promise<CharacteristicValue> {
     const deviceStatus = await this.getDeviceStatus();
-    return deviceStatus['custom.filterState'].filterLifeRemaining.value ?? 100;
+    return this.filterLifeLevelFromStatus(deviceStatus);
   }
 
   private async getFilterChangeIndication(): Promise<CharacteristicValue> {
     const deviceStatus = await this.getDeviceStatus();
-    const remaining = deviceStatus['custom.filterState'].filterLifeRemaining.value ?? 100;
-    // FILTER_OK = 0, CHANGE_FILTER = 1
-    return remaining < 10 ? 1 : 0;
+    return this.filterChangeIndicationFromStatus(deviceStatus);
   }
 
   // --- Air Quality Sensor ---
@@ -280,45 +305,140 @@ export class AirPurifierService extends BaseService {
     return deviceStatus.odorSensor.odorLevel.value ?? 0;
   }
 
-  // --- Humidity Sensor ---
+  // --- Fan mode helpers (driven by the device's own supportedAcFanModes) ---
 
-  private async getHumidityLevel(): Promise<CharacteristicValue> {
-    const deviceStatus = await this.getDeviceStatus();
-    return deviceStatus.relativeHumidityMeasurement.humidity.value;
+  // Refresh the cached list of supported fan modes from a status payload.
+  // If a driver omits or empties supportedAcFanModes, preserve fan control by falling back
+  // to the legacy mode set rather than turning the HomeKit controls into no-ops.
+  private updateFanModeCache(deviceStatus): void {
+    const modes = deviceStatus?.airConditionerFanMode?.supportedAcFanModes?.value;
+    const resolved = this.resolveFanModes(modes);
+    this.supportedFanModes = resolved.modes;
+    this.hasDeviceFanModes = resolved.fromDevice;
   }
 
-  // --- Helpers ---
-
-  private fanModeToLevel(fanMode: AirPurifierFanMode): number {
-    switch (fanMode) {
-      case AirPurifierFanMode.Sleep:
-        return 15;
-      case AirPurifierFanMode.Low:
-        return 33;
-      case AirPurifierFanMode.Medium:
-        return 66;
-      case AirPurifierFanMode.High:
-        return 100;
-      case AirPurifierFanMode.Auto:
-      default:
-        return 50;
+  private resolveFanModes(modes): { modes: string[]; fromDevice: boolean } {
+    if (Array.isArray(modes)) {
+      const resolved = modes.filter(mode => typeof mode === 'string' && mode.length > 0) as string[];
+      if (resolved.length > 0) {
+        return { modes: resolved, fromDevice: true };
+      }
     }
+    return { modes: [...AirPurifierService.DEFAULT_FAN_MODES], fromDevice: false };
   }
 
-  private levelToFanMode(level: number): AirPurifierFanMode {
+  // The mode that maps to HomeKit's TargetAirPurifierState AUTO. Prefer 'auto', then 'smart'.
+  private getAutoMode(): string | undefined {
+    if (this.supportedFanModes.includes('auto')) {
+      return 'auto';
+    }
+    if (this.supportedFanModes.includes('smart')) {
+      return 'smart';
+    }
+    return undefined;
+  }
+
+  // A mode is "auto" only if it is the resolved auto mode, so a device exposing BOTH
+  // 'auto' and 'smart' treats 'smart' as a normal (manual) speed rather than as auto.
+  private isAutoMode(mode: string): boolean {
+    return mode !== undefined && mode === this.getAutoMode();
+  }
+
+  // Manual (speed) modes only, slowest -> fastest, excluding the resolved auto mode.
+  private manualModes(): string[] {
+    const auto = this.getAutoMode();
+    return this.supportedFanModes
+      .filter(m => m !== auto)
+      .map((m, i) => ({ m, i }))
+      .sort((a, b) => {
+        const ra = AirPurifierService.FAN_MODE_RANK[a.m.toLowerCase()] ?? 99;
+        const rb = AirPurifierService.FAN_MODE_RANK[b.m.toLowerCase()] ?? 99;
+        return ra !== rb ? ra - rb : a.i - b.i; // ties keep device-reported order
+      })
+      .map(x => x.m);
+  }
+
+  // Current fan mode -> HomeKit RotationSpeed (0-100). Auto reports 0 (slider neutral).
+  private fanModeToLevel(fanMode: string): number {
+    if (this.isAutoMode(fanMode)) {
+      return 0;
+    }
+    const modes = this.manualModes();
+    const idx = modes.indexOf(fanMode);
+    if (idx < 0 || modes.length === 0) {
+      return 0;
+    }
+    return Math.round(((idx + 1) / modes.length) * 100);
+  }
+
+  // HomeKit RotationSpeed (0-100) -> a manual mode the device supports. undefined if none.
+  private levelToFanMode(level: number): string | undefined {
+    const modes = this.manualModes();
+    if (modes.length === 0) {
+      return undefined;
+    }
     if (level <= 0) {
-      return AirPurifierFanMode.Auto;
+      return modes[0];
     }
-    if (level <= 20) {
-      return AirPurifierFanMode.Sleep;
+    const idx = Math.min(modes.length - 1, Math.max(0, Math.ceil((level / 100) * modes.length) - 1));
+    return modes[idx];
+  }
+
+  private filterLifeLevelFromStatus(deviceStatus): number {
+    if (this.isCapabilitySupported('custom.filterState')) {
+      return this.clampPercent(deviceStatus['custom.filterState']?.filterLifeRemaining?.value, 100);
     }
-    if (level <= 45) {
-      return AirPurifierFanMode.Low;
+    // custom.hepaFilter reports usage as a percentage consumed; life remaining = 100 - usage.
+    const usage = this.finiteNumber(deviceStatus['custom.hepaFilter']?.hepaFilterUsage?.value);
+    return usage === undefined ? 100 : this.clampPercent(100 - usage, 100);
+  }
+
+  private filterChangeIndicationFromStatus(deviceStatus): number {
+    // FILTER_OK = 0, CHANGE_FILTER = 1
+    if (this.isCapabilitySupported('custom.filterState')) {
+      const remaining = this.clampPercent(deviceStatus['custom.filterState']?.filterLifeRemaining?.value, 100);
+      return remaining < 10 ? 1 : 0;
     }
-    if (level <= 80) {
-      return AirPurifierFanMode.Medium;
+    const status = deviceStatus['custom.hepaFilter']?.hepaFilterStatus?.value;
+    const usage = this.finiteNumber(deviceStatus['custom.hepaFilter']?.hepaFilterUsage?.value);
+    const needsChange = (status !== null && status !== undefined && status !== 'normal')
+      || (usage !== undefined && usage >= 90);
+    return needsChange ? 1 : 0;
+  }
+
+  private updateFilterCharacteristics(deviceStatus): void {
+    this.airPurifierService.updateCharacteristic(this.platform.Characteristic.FilterLifeLevel,
+      this.filterLifeLevelFromStatus(deviceStatus));
+    this.airPurifierService.updateCharacteristic(this.platform.Characteristic.FilterChangeIndication,
+      this.filterChangeIndicationFromStatus(deviceStatus));
+  }
+
+  private statusWithEventApplied(event: ShortEvent) {
+    const status = this.deviceStatus?.status;
+    if (status === undefined) {
+      return undefined;
     }
-    return AirPurifierFanMode.High;
+    if (status[event.capability] === undefined || typeof status[event.capability] !== 'object') {
+      status[event.capability] = {};
+    }
+    const capabilityStatus = status[event.capability];
+    capabilityStatus[event.attribute] = {
+      ...(capabilityStatus[event.attribute] ?? {}),
+      value: event.value,
+    };
+    return status;
+  }
+
+  private finiteNumber(value): number | undefined {
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  }
+
+  private clampPercent(value, fallback: number): number {
+    const numberValue = this.finiteNumber(value);
+    if (numberValue === undefined) {
+      return fallback;
+    }
+    return Math.max(0, Math.min(100, numberValue));
   }
 
   // PM2.5 (µg/m³) to HomeKit AirQuality using WHO/EPA-based thresholds
@@ -391,18 +511,38 @@ export class AirPurifierService extends BaseService {
         break;
 
       case 'airConditionerFanMode':
+        // The same capability emits both 'fanMode' and 'supportedAcFanModes' events.
+        if (event.attribute === 'supportedAcFanModes') {
+          const resolved = this.resolveFanModes(event.value);
+          this.supportedFanModes = resolved.modes;
+          this.hasDeviceFanModes = resolved.fromDevice;
+          break;
+        }
+        // attribute 'fanMode' (or unspecified, for back-compat).
         this.airPurifierService.updateCharacteristic(this.platform.Characteristic.TargetAirPurifierState,
-          event.value === AirPurifierFanMode.Auto ? 1 : 0);
+          this.isAutoMode(event.value as string) ? 1 : 0);
         this.airPurifierService.updateCharacteristic(this.platform.Characteristic.RotationSpeed,
-          this.fanModeToLevel(event.value as AirPurifierFanMode));
+          this.fanModeToLevel(event.value as string));
         break;
 
       case 'custom.filterState':
         if (this.isCapabilitySupported('custom.filterState')) {
-          const remaining = event.value ?? 100;
+          const remaining = this.clampPercent(event.value, 100);
           this.airPurifierService.updateCharacteristic(this.platform.Characteristic.FilterLifeLevel, remaining);
           this.airPurifierService.updateCharacteristic(this.platform.Characteristic.FilterChangeIndication,
             remaining < 10 ? 1 : 0);
+        }
+        break;
+
+      case 'custom.hepaFilter':
+        if (this.isCapabilitySupported('custom.hepaFilter')) {
+          // Merge the event into cached status, then compute both characteristics from that one
+          // status object so a usage event can't clobber a non-normal status (and vice versa) and
+          // a malformed event value can't push NaN.
+          const status = this.statusWithEventApplied(event);
+          if (status !== undefined) {
+            this.updateFilterCharacteristics(status);
+          }
         }
         break;
 
@@ -428,10 +568,6 @@ export class AirPurifierService extends BaseService {
 
       case 'odorSensor':
         this.airQualitySensorService?.updateCharacteristic(this.platform.Characteristic.VOCDensity, event.value);
-        break;
-
-      case 'relativeHumidityMeasurement':
-        this.humiditySensorService?.updateCharacteristic(this.platform.Characteristic.CurrentRelativeHumidity, event.value);
         break;
 
       default:

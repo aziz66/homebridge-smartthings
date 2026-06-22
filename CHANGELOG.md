@@ -1,6 +1,16 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **Air purifier fan modes** (#48) — Samsung air purifiers now derive their HomeKit speed slider from `airConditionerFanMode.supportedAcFanModes`, so models that expose modes like `smart`, `max`, `windfree`, `sleep`, or `pet` no longer receive unsupported hardcoded `low`/`high` commands. Devices that omit or empty `supportedAcFanModes` fall back to the legacy `auto`/`low`/`medium`/`high` set so fan control continues to work.
+- **Air purifier HEPA filter life** (#48) — purifiers that report `custom.hepaFilter` now expose HomeKit filter life and change indication. Non-numeric HEPA usage values are ignored safely instead of pushing `NaN` to HomeKit.
+
+### Changed
+- **Air purifier RotationSpeed mapping** (#48) — Auto mode now reports `0%`, and manual modes are distributed across 0-100% based on the device's supported fan-mode list. Existing scenes or automations that depend on an exact purifier speed percentage may need to be re-saved.
+- **Air purifier humidity presentation** (#48) — `relativeHumidityMeasurement` now falls through to the generic humidity sensor mapping instead of being consumed by the air purifier combo service. Purifiers that report humidity keep a humidity sensor; purifiers that only declare humidity but always return `null` self-remove the dead tile after polling.
+
 ## [1.0.66] - Samsung Frame & Tizen TV Control + Laundry/Dishwasher Countdown
 
 > Consolidates the `1.0.66-beta.0`–`beta.7` work (see the beta entries below for full detail). Two themes: Samsung **Frame & Tizen TV** control over the local WebSocket (#46), and a working **remaining-time countdown** for Samsung washers, dryers, and dishwashers in Apple Home (#13). Does not include the in-progress air-purifier work (PR #48).
