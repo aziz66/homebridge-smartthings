@@ -41,7 +41,11 @@ export class AirPurifierService extends BaseService {
 
     this.airPurifierService = this.setupAirPurifier(platform, multiServiceAccessory);
 
-    if (this.isCapabilitySupported('airQualitySensor') || this.isCapabilitySupported('dustSensor') || this.isCapabilitySupported('odorSensor')) {
+    if (
+      this.isCapabilitySupported('airQualitySensor') ||
+      this.isCapabilitySupported('dustSensor') ||
+      this.isCapabilitySupported('odorSensor')
+    ) {
       this.airQualitySensorService = this.setupAirQualitySensor(platform, multiServiceAccessory);
     }
 
