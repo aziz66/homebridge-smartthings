@@ -255,7 +255,13 @@ export class AirPurifierService extends BaseService {
         return;
       }
       this.log.info(`[${this.name}] sending debounced fan mode: ${mode}`);
-      await this.sendCommandsOrFail([new Command(this.componentId, 'airConditionerFanMode', 'setFanMode', [mode])]);
+      try {
+        await this.sendCommandsOrFail([new Command(this.componentId, 'airConditionerFanMode', 'setFanMode', [mode])]);
+      } catch (error) {
+        // This runs detached from HomeKit's set handler (fire-and-forget timer), so a rejected
+        // command would surface as an unhandledRejection. Log and swallow, like other command paths.
+        this.log.warn(`[${this.name}] failed to send fan mode ${mode}: ${error}`);
+      }
     }, AirPurifierService.FAN_MODE_DEBOUNCE_MS);
   }
 
@@ -413,20 +419,25 @@ export class AirPurifierService extends BaseService {
       this.filterChangeIndicationFromStatus(deviceStatus));
   }
 
+  // Build an ephemeral status object with this single event's attribute overlaid on the last
+  // known status, WITHOUT mutating the shared cache (this.deviceStatus.status is the live object
+  // shared with the accessory and replaced wholesale on each poll). Returns a shallow copy so the
+  // filter characteristics can be computed from one consistent view.
   private statusWithEventApplied(event: ShortEvent) {
     const status = this.deviceStatus?.status;
     if (status === undefined) {
       return undefined;
     }
-    if (status[event.capability] === undefined || typeof status[event.capability] !== 'object') {
-      status[event.capability] = {};
-    }
-    const capabilityStatus = status[event.capability];
-    capabilityStatus[event.attribute] = {
-      ...(capabilityStatus[event.attribute] ?? {}),
-      value: event.value,
+    const capabilityStatus = (typeof status[event.capability] === 'object' && status[event.capability] !== null)
+      ? status[event.capability]
+      : {};
+    return {
+      ...status,
+      [event.capability]: {
+        ...capabilityStatus,
+        [event.attribute]: { ...(capabilityStatus[event.attribute] ?? {}), value: event.value },
+      },
     };
-    return status;
   }
 
   private finiteNumber(value): number | undefined {
@@ -536,9 +547,9 @@ export class AirPurifierService extends BaseService {
 
       case 'custom.hepaFilter':
         if (this.isCapabilitySupported('custom.hepaFilter')) {
-          // Merge the event into cached status, then compute both characteristics from that one
-          // status object so a usage event can't clobber a non-normal status (and vice versa) and
-          // a malformed event value can't push NaN.
+          // Compute both characteristics from one status view with this event overlaid, so a usage
+          // event can't clobber a non-normal status (and vice versa) and a malformed event value
+          // can't push NaN. statusWithEventApplied does not mutate the shared cache.
           const status = this.statusWithEventApplied(event);
           if (status !== undefined) {
             this.updateFilterCharacteristics(status);
