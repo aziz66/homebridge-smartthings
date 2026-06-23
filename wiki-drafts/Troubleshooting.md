@@ -59,6 +59,10 @@ If you need to re-authenticate (tokens expired, changed SmartThings account, etc
 
 - SmartThings limits subscriptions to 20 per app. If you have more than 20 unique capabilities, lower-priority ones will remain polling-only. Check the logs for which capabilities are subscribed.
 
+**Real-time updates stopped after enabling signature verification**
+
+- If you turned on `verifyWebhookSignatures`, check the logs for `HTTP signature verification failed (401)`. Make sure your Server URL is `https`, that the Target URL was `CONFIRMED` *before* you enabled it, and that the host clock is correct. Setting it back to `false` restores webhook delivery (polling keeps devices updated either way). See [Verifying webhook signatures](https://github.com/aziz66/homebridge-smartthings/wiki/Webhooks-and-Real-Time-Updates#verifying-webhook-signatures).
+
 For full webhook setup, see [Webhooks and Real-Time Updates](https://github.com/aziz66/homebridge-smartthings/wiki/Webhooks-and-Real-Time-Updates).
 
 ---
