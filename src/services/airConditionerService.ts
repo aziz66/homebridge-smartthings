@@ -71,6 +71,9 @@ export class AirConditionerService extends BaseService {
   // the legacy default list when a driver omits/empties those attributes.
   private supportedFanModes: string[] = AirConditionerService.DEFAULT_FAN_MODES;
   private hasDeviceFanModes = false;
+  // Guards the one-time on-demand fetch in setFanLevel so legacy devices (which never advertise
+  // fan modes) don't trigger an extra status refresh on every speed change.
+  private triedDeviceFanModes = false;
 
   // Lower rank = slower. Numeric Samsung OCF modes are common: ['auto','1','2','3','4','max'].
   // Keep distinct speed labels on distinct ranks so ordering does not depend on the
@@ -311,7 +314,10 @@ export class AirConditionerService extends BaseService {
   private updateFanModeCache(deviceStatus): void {
     const supportedModes = deviceStatus?.airConditionerFanMode?.supportedAcFanModes?.value;
     const availableModes = deviceStatus?.airConditionerFanMode?.availableAcFanModes?.value;
-    const resolved = this.resolveFanModes(supportedModes, availableModes);
+    // Prefer availableAcFanModes (the currently selectable set) over supportedAcFanModes (the full
+    // hardware superset) so we only ever command a mode the device will actually accept; fall back
+    // to the superset, then to the legacy defaults.
+    const resolved = this.resolveFanModes(availableModes, supportedModes);
     this.supportedFanModes = resolved.modes;
     this.hasDeviceFanModes = resolved.fromDevice;
   }
@@ -487,8 +493,15 @@ export class AirConditionerService extends BaseService {
   }
 
   private async setFanLevel(value: CharacteristicValue): Promise<void> {
-    if (!this.hasDeviceFanModes) {
-      this.updateFanModeCache(await this.getDeviceStatus());
+    // Resolve the device's real fan modes once, on demand. If the fetch fails we keep the legacy
+    // fallback list and still send the command, rather than aborting the user's speed change.
+    if (!this.hasDeviceFanModes && !this.triedDeviceFanModes) {
+      this.triedDeviceFanModes = true;
+      try {
+        this.updateFanModeCache(await this.getDeviceStatus());
+      } catch (error) {
+        this.log.debug(`[${this.name}] Could not refresh fan modes before setting speed; using fallback list: ${error}`);
+      }
     }
     const fanMode = this.levelToFanMode(value as number);
     if (fanMode === undefined) {
