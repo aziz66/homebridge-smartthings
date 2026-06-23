@@ -1,7 +1,9 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [1.0.68-beta.0] - Air purifier support + AC numeric fan-mode mapping
+
+> Two device-support improvements bundled for beta testing. **Air purifiers** (#48) now derive their HomeKit fan slider from the device's advertised mode list, expose HEPA filter life, and let an always-`null` humidity sensor self-heal. **Air conditioners** (#49) that report numeric/`max` fan modes (`1`/`2`/`3`/`4`/`max`) now map to the correct HomeKit speed instead of snapping back to `0%`. Both are opt-in by virtue of the devices that report these capabilities; existing ACs/purifiers using the legacy `auto`/`low`/`medium`/`high` set are unaffected. Please report any issues before the stable release.
 
 ### Fixed
 - **Air purifier fan modes** (#48) — Samsung air purifiers now derive their HomeKit speed slider from `airConditionerFanMode.supportedAcFanModes`, so models that expose modes like `smart`, `max`, `windfree`, `sleep`, or `pet` no longer receive unsupported hardcoded `low`/`high` commands. Devices that omit or empty `supportedAcFanModes` fall back to the legacy `auto`/`low`/`medium`/`high` set so fan control continues to work.
