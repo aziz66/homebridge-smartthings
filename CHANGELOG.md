@@ -1,6 +1,16 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.67-beta.0] - Optional SmartThings webhook signature verification
+
+> Opt-in hardening for the webhook (tunnel) route. SmartThings already signs every inbound webhook POST with an HTTP Signature (RSA-SHA256 over the request body, using its rotating "Padlock CA" certificate), but the plugin previously did not verify it — any host that could reach the public webhook URL could forge device events. This release adds verification behind a new, **off-by-default** flag, so existing setups are unaffected until they opt in.
+
+### Added
+- **`verifyWebhookSignatures` config option** (default `false`). When enabled, every inbound webhook POST must carry a valid SmartThings HTTP signature, a matching body digest, and a recent `Date` (within ±15 minutes) — otherwise it is rejected with **HTTP 401** before any processing. The signed-header set is required to cover `(request-target)`, `digest`, and `date`, so the digest is genuinely bound to the RSA signature. Only known SmartThings lifecycles (`PING`, `CONFIRMATION`, `INSTALL`, `UPDATE`, `UNINSTALL`, `CONFIGURATION`, `EVENT`) are processed; anything else is dropped with **HTTP 400**. Requires an `https` Server URL — if the Server URL is not https, verification stays disabled (with a logged warning) rather than breaking the webhook. The signing certificate is fetched from `key.smartthings.com` (key id validated to a safe path shape) and cached per key id with a size cap and brief negative caching (keys rotate ~monthly). When the flag is off, webhook handling is unchanged.
+
+### Security
+- **Webhook endpoint hardening** (applies regardless of the flag): the inbound body is now capped (oversized POSTs get **HTTP 413**) to protect the public endpoint from memory exhaustion, and the `CONFIRMATION` lifecycle's outbound call is restricted to `https` URLs with no redirects and a timeout, reducing the server-side request forgery surface.
+
 ## [1.0.66] - Samsung Frame & Tizen TV Control + Laundry/Dishwasher Countdown
 
 > Consolidates the `1.0.66-beta.0`–`beta.7` work (see the beta entries below for full detail). Two themes: Samsung **Frame & Tizen TV** control over the local WebSocket (#46), and a working **remaining-time countdown** for Samsung washers, dryers, and dishwashers in Apple Home (#13). Does not include the in-progress air-purifier work (PR #48).

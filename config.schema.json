@@ -62,6 +62,13 @@
         "default": 3000,
         "description": "Port for webhook server (only used if Server URL is configured)"
       },
+      "verifyWebhookSignatures": {
+        "title": "Verify SmartThings Webhook Signatures",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "When enabled, every inbound webhook POST must carry a valid SmartThings HTTP signature (and a recent timestamp) or it is rejected with HTTP 401. Only applies when an https Server URL is configured; with a non-https URL it stays disabled. Register/confirm your Server URL with SmartThings BEFORE enabling, then confirm real-time updates still work (polling continues either way). Off (default) preserves existing behavior."
+      },
       "GarageDoorMaxPoll": {
         "title": "Garage Door Max Poll",
         "type": "integer",
