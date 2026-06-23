@@ -132,6 +132,33 @@ Once webhooks are working, you can control which capabilities get real-time subs
 
 ---
 
+## Verifying webhook signatures
+
+By default the plugin processes any POST that reaches your Target URL. Because that URL is public, anyone who discovers it could send forged device events. SmartThings actually **signs every webhook request** (an RSA-SHA256 HTTP Signature over the request body), and the optional **`verifyWebhookSignatures`** setting makes the plugin verify that signature and reject anything that fails.
+
+When enabled, each inbound POST must have:
+
+- a valid SmartThings signature (verified against SmartThings' published certificate),
+- a body digest that matches the signed value, and
+- a timestamp within ±15 minutes (replay protection).
+
+Requests that fail are rejected with **HTTP 401** before any processing; unrecognized request types are dropped with **HTTP 400**. Legitimate SmartThings traffic is unaffected.
+
+### Enabling it safely
+
+> ℹ️ Verification also covers the `CONFIRMATION` handshake — and SmartThings signs that request too, so turning this on does **not** block registration (confirmed in live testing). As good practice, get real-time updates working first, then enable verification, so it's easy to confirm events keep flowing.
+
+1. Make sure your **Server URL is `https`**. Verification requires it — with a plain `http` URL the plugin logs a warning and leaves verification **disabled** (it does not break your webhook).
+2. Ideally confirm real-time updates already work (see [Step 5](#5-confirm-the-target-url--required-or-no-events-will-arrive)), so you have a known-good baseline.
+3. Enable **Verify SmartThings Webhook Signatures** in the plugin settings and restart.
+4. Watch the logs: you should see events continue to flow. If you instead see `Rejected webhook POST on / - HTTP signature verification failed (401)`, see the troubleshooting note below.
+
+**Polling still runs regardless**, so even in the worst case (verification wrongly rejecting events) your devices keep updating via polling — you won't lose state, only the real-time push.
+
+For polling-only setups (no Server URL), this setting does nothing — the webhook server never starts.
+
+---
+
 ## Troubleshooting webhooks
 
 **"SmartThings subscriptions will not be set up"**
@@ -149,6 +176,13 @@ Once webhooks are working, you can control which capabilities get real-time subs
   - **Fix:** in the Cloudflare dashboard, create a **WAF custom rule** that **skips all WAF checks** for SmartThings' event-delivery IP range — `18.221.0.0/16` (AWS `us-east-2`, where SmartThings runs event delivery). With that in place, events flow through the Cloudflare Tunnel just as reliably as ngrok.
 - For any tunnel provider with bot/WAF protection, make sure it isn't dropping SmartThings' POSTs (no browser headers — easily flagged as bot traffic).
 - SmartThings will send a PING challenge first — check logs for `Received SmartThings PING challenge`.
+
+**Real-time updates stopped right after enabling `verifyWebhookSignatures`**
+
+- Check the logs for `Rejected webhook POST on / - HTTP signature verification failed (401)`. If present, verification is rejecting requests.
+- Confirm your **Server URL is `https`**. With a non-https URL the plugin logs `verifyWebhookSignatures is enabled but Server URL is not https` and disables verification — so this isn't the cause, but it means the feature isn't actually protecting you.
+- If the host clock is wrong, the ±15-minute freshness check can reject valid events (`Date header outside 15-minute window`). Fix time sync (NTP) on the Homebridge host.
+- As a quick recovery, set `verifyWebhookSignatures` back to `false`; polling keeps devices updated while you investigate.
 
 **Events are working but some devices don't update in real time**
 

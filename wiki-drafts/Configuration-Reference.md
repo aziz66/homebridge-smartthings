@@ -19,6 +19,7 @@ Every setting available in `config.schema.json`, in the order it appears in the 
 | `oauth_refresh_token` | string | *(auto)* | Auto-filled by the OAuth wizard. **Don't edit manually.** |
 | `oauth_expires_in` | integer | *(auto)* | Auto-filled by the OAuth wizard. **Don't edit manually.** |
 | `webhook_port` | integer | `3000` | Local port the webhook server listens on. Only used if `server_url` is set. |
+| `verifyWebhookSignatures` | boolean | `false` | Reject inbound webhook POSTs that don't carry a valid SmartThings HTTP signature (returns 401). **Only applies to the webhook route** — a no-op for polling-only setups with no `server_url`. Requires an `https` `server_url`; with a non-https URL it stays disabled and logs a warning. Best enabled once real-time updates are already working. See [Webhooks and Real-Time Updates → Verifying webhook signatures](https://github.com/aziz66/homebridge-smartthings/wiki/Webhooks-and-Real-Time-Updates#verifying-webhook-signatures). |
 
 ---
 

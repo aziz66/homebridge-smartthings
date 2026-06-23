@@ -436,7 +436,6 @@ export class AirConditionerService extends BaseService {
   // Switch state is managed by the Fan service.
   // If fan is turned on, and thermostat is not active, sets the air conditioner to the Wind mode or mantains the current one.
   private async setSwitchState(value: CharacteristicValue): Promise<void> {
-    const CurrentHeatingCoolingState = this.platform.Characteristic.CurrentHeatingCoolingState;
     const heatingCoolingState = await this.getTargetHeatingCoolingState(); // Use target state for mode decision when turning on
     const currentAirConditionerMode = this.targetHeatingCoolingStateToAirConditionerMode(heatingCoolingState);
     const airConditionerMode = heatingCoolingState === this.platform.Characteristic.TargetHeatingCoolingState.OFF ? AirConditionerMode.Wind : currentAirConditionerMode;
@@ -763,7 +762,7 @@ export class AirConditionerService extends BaseService {
       case 'relativeHumidityMeasurement':
         this.humidityService?.updateCharacteristic(this.platform.Characteristic.CurrentRelativeHumidity, event.value);
         break;
-      case 'custom.airConditionerOptionalMode':
+      case 'custom.airConditionerOptionalMode': {
         const currentDeviceMode = event.value;
         this.log.info(`[${this.name}] Event for custom.airConditionerOptionalMode: ${currentDeviceMode}`);
 
@@ -777,6 +776,7 @@ export class AirConditionerService extends BaseService {
           this.optionalModeSwitchService?.updateCharacteristic(this.platform.Characteristic.On, currentDeviceMode === this.optionalMode);
         }
         break;
+      }
       case 'switchLevel':
         this.lightService?.updateCharacteristic(this.platform.Characteristic.On, event.value > 0);
         this.lightService?.updateCharacteristic(this.platform.Characteristic.Brightness, event.value);
