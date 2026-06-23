@@ -27,7 +27,11 @@ export class WebhookServer {
     // Opt-in HTTP signature verification of inbound SmartThings webhooks.
     if (this.platform.config.verifyWebhookSignatures === true) {
       const serverUrl = (this.platform.config.server_url || '').trim();
-      if (serverUrl.toLowerCase().startsWith('https://')) {
+      if (serverUrl === '') {
+        // Polling-only setup: the webhook server never starts, so the flag is a harmless no-op.
+        this.log.debug('verifyWebhookSignatures is set but no Server URL is configured - this setting only ' +
+          'applies to the webhook route, so it has no effect in polling mode.');
+      } else if (serverUrl.toLowerCase().startsWith('https://')) {
         this.verifyEnabled = true;
         this.signatureVerifier = new SignatureVerifier(this.log);
         this.log.info('Webhook signature verification is ENABLED - unsigned/invalid requests will be rejected with 401');

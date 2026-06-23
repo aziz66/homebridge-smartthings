@@ -1,6 +1,19 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.67] - Optional SmartThings webhook signature verification
+
+> Stable release of the `1.0.67-beta.0` work (below), validated end-to-end against live SmartThings traffic: with verification enabled, the signed `CONFIRMATION` handshake and live device `EVENT`s are accepted and applied, while unsigned/forged requests are rejected with **HTTP 401**; with the flag off (the default) webhook handling is unchanged. Opt-in and **off by default**, so existing setups are unaffected until they enable it.
+
+### Added
+- **`verifyWebhookSignatures` config option** (default `false`). When enabled, every inbound webhook POST must carry a valid SmartThings HTTP signature, a matching body digest, and a recent `Date` (within ±15 minutes) — otherwise it is rejected with **HTTP 401** before any processing. The signed-header set must cover `(request-target)`, `digest`, and `date`, so the digest is bound to the RSA signature. Only known SmartThings lifecycles (`PING`, `CONFIRMATION`, `INSTALL`, `UPDATE`, `UNINSTALL`, `CONFIGURATION`, `EVENT`) are processed; anything else is dropped with **HTTP 400**. Requires an `https` Server URL — otherwise verification stays disabled (logged) rather than breaking the webhook; for polling-only setups (no Server URL) the option is a harmless no-op. The signing certificate is fetched from `key.smartthings.com` (key id validated, cached per key id with a size cap and brief negative caching). When the flag is off, webhook handling is unchanged.
+
+### Security
+- **Webhook endpoint hardening** (applies regardless of the flag): the inbound body is capped (oversized POSTs get **HTTP 413**) to protect the public endpoint from memory exhaustion, and the `CONFIRMATION` lifecycle's outbound call is restricted to `https` URLs with no redirects and a timeout, reducing the server-side request-forgery surface.
+
+### Fixed
+- Resolved long-standing ESLint errors in the air conditioner service (an unused variable and a `case`-block declaration) and corrected the `lint` script glob (`src/**.ts` → `src/**/*.ts`) so the whole `src/` tree is actually linted.
+
 ## [1.0.67-beta.0] - Optional SmartThings webhook signature verification
 
 > Opt-in hardening for the webhook (tunnel) route. SmartThings already signs every inbound webhook POST with an HTTP Signature (RSA-SHA256 over the request body, using its rotating "Padlock CA" certificate), but the plugin previously did not verify it — any host that could reach the public webhook URL could forge device events. This release adds verification behind a new, **off-by-default** flag, so existing setups are unaffected until they opt in.

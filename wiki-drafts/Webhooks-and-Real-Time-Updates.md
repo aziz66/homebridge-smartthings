@@ -146,10 +146,10 @@ Requests that fail are rejected with **HTTP 401** before any processing; unrecog
 
 ### Enabling it safely
 
-> ⚠️ **Confirm your Target URL before turning this on.** Verification applies to the `CONFIRMATION` handshake too, so if you enable it *before* your Target URL is `CONFIRMED` (see [Step 5](#5-confirm-the-target-url--required-or-no-events-will-arrive)), the confirmation can be rejected and your app will stay `PENDING`. Order of operations: get to `CONFIRMED` first, **then** enable `verifyWebhookSignatures`.
+> ℹ️ Verification also covers the `CONFIRMATION` handshake — and SmartThings signs that request too, so turning this on does **not** block registration (confirmed in live testing). As good practice, get real-time updates working first, then enable verification, so it's easy to confirm events keep flowing.
 
 1. Make sure your **Server URL is `https`**. Verification requires it — with a plain `http` URL the plugin logs a warning and leaves verification **disabled** (it does not break your webhook).
-2. Confirm your Target URL is `CONFIRMED` and real-time updates already work.
+2. Ideally confirm real-time updates already work (see [Step 5](#5-confirm-the-target-url--required-or-no-events-will-arrive)), so you have a known-good baseline.
 3. Enable **Verify SmartThings Webhook Signatures** in the plugin settings and restart.
 4. Watch the logs: you should see events continue to flow. If you instead see `Rejected webhook POST on / - HTTP signature verification failed (401)`, see the troubleshooting note below.
 
@@ -181,7 +181,6 @@ For polling-only setups (no Server URL), this setting does nothing — the webho
 
 - Check the logs for `Rejected webhook POST on / - HTTP signature verification failed (401)`. If present, verification is rejecting requests.
 - Confirm your **Server URL is `https`**. With a non-https URL the plugin logs `verifyWebhookSignatures is enabled but Server URL is not https` and disables verification — so this isn't the cause, but it means the feature isn't actually protecting you.
-- If you enabled it **before** the Target URL was `CONFIRMED`, the `CONFIRMATION` may have been rejected and the app left `PENDING`. Turn the setting **off**, complete `smartthings apps:register <app-id>` to reach `CONFIRMED`, then turn it back on.
 - If the host clock is wrong, the ±15-minute freshness check can reject valid events (`Date header outside 15-minute window`). Fix time sync (NTP) on the Homebridge host.
 - As a quick recovery, set `verifyWebhookSignatures` back to `false`; polling keeps devices updated while you investigate.
 
