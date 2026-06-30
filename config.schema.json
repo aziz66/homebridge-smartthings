@@ -170,6 +170,27 @@
         "required": false,
         "default": true
       },
+      "ExposeEnergyMonitoring": {
+        "title": "Expose Energy Monitoring (Eve app)",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "Map SmartThings power/energy capabilities (powerMeter, energyMeter, powerConsumptionReport, voltageMeasurement) to Eve custom characteristics. These show live watts/kWh in the Eve app, Controller for HomeKit, and Home+. Apple's own Home app does NOT display these (its native Energy view is Matter-only). Default: off."
+      },
+      "ExposeEnergyAsOutlet": {
+        "title": "Publish energy-reporting switches as Outlets",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "Requires Expose Energy Monitoring. Republishes switches that report power/energy as an Outlet service, which the Eve app expects for its energy UI. WARNING: breaking presentation change — existing Switch tiles in Apple Home become Outlets and may need their automations/scenes re-added. Default: off."
+      },
+      "EnableMatterEnergy": {
+        "title": "Enable Matter ElectricalMeter export (experimental, forward-compatible)",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "Requires Expose Energy Monitoring. Attempts to publish energy-reporting devices as a Matter ElectricalMeter so they appear in the Apple Home Energy view (iOS 27+). This is a guaranteed no-op on current Homebridge builds — it only activates once Homebridge exposes the Matter energy device types (tracking: homebridge#3942). Safe to enable ahead of platform support. Default: off."
+      },
       "removeLegacySwitchForLaundry": {
         "title": "Remove Legacy Switch Service for Laundry Devices",
         "type": "boolean",

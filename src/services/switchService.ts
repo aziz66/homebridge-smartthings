@@ -11,9 +11,16 @@ export class SwitchService extends BaseService {
     name: string, deviceStatus) {
     super(platform, accessory, componentId, capabilities, multiServiceAccessory, name, deviceStatus);
 
-    this.setServiceType(platform.Service.Switch);
+    // Opt-in: publish energy-reporting switches as an Outlet so the Eve app renders
+    // the power/energy UI (its energy view conventionally expects an Outlet service).
+    // This is a breaking presentation change for existing tiles, hence flag-gated.
+    const exposeAsOutlet = platform.config.ExposeEnergyAsOutlet === true
+      && (multiServiceAccessory.mainHasCapability('powerMeter')
+        || multiServiceAccessory.mainHasCapability('powerConsumptionReport')
+        || multiServiceAccessory.mainHasCapability('energyMeter'));
+    this.setServiceType(exposeAsOutlet ? platform.Service.Outlet : platform.Service.Switch);
     // Set the event handlers
-    this.log.debug(`Adding SwitchService to ${this.name}`);
+    this.log.debug(`Adding SwitchService to ${this.name}${exposeAsOutlet ? ' (as Outlet for energy)' : ''}`);
     this.service.getCharacteristic(platform.Characteristic.On)
       .onGet(this.getSwitchState.bind(this))
       .onSet(this.setSwitchState.bind(this));

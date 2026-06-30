@@ -35,6 +35,7 @@ import { AirPurifierService } from './services/airPurifierService';
 import { SecuritySystemService } from './services/securitySystemService';
 import { RefrigeratorTemperatureService } from './services/refrigeratorTemperatureService';
 import { ZigbangSmartDoorlockService } from './services/zigbangSmartDoorlockService';
+import { EnergyService } from './services/energyService';
 import { extractDisabledComponents } from './util/samsungRefrigerator';
 import { Command } from './services/smartThingsCommand';
 import { CrashLoopManager, CrashErrorType } from './auth/CrashLoopManager';
@@ -506,6 +507,23 @@ export class MultiServiceAccessory {
         service,
       );
     });
+
+    // Energy monitoring: opt-in. Runs LAST so the device's on/off host service
+    // (Switch/Outlet/Lightbulb) already exists for the Eve characteristics to attach to.
+    // Modeled on the TV/volume-slider special cases rather than the combo map, because
+    // energy capabilities are alternatives (a device may report any subset) which the
+    // combo map's "ALL required" semantics can't express. Subscriptions + event routing
+    // are auto-wired via the service's capabilities[] (getRegisteredCapabilities/processEvent).
+    if (this.platform.config.ExposeEnergyMonitoring === true) {
+      const energyCaps = EnergyService.ENERGY_CAPABILITIES.filter(c => capabilitiesToCover.includes(c));
+      if (energyCaps.length > 0) {
+        this.log.debug(`Adding EnergyService to ${this.name} for [${energyCaps.join(', ')}]`);
+        this.services.push(
+          new EnergyService(this.platform, this.accessory, componentId, energyCaps, this, this.name, component),
+        );
+        capabilitiesToCover = capabilitiesToCover.filter(c => !energyCaps.includes(c));
+      }
+    }
   }
 
   public isOnline(): boolean {
