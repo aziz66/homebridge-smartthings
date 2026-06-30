@@ -45,7 +45,7 @@ Special thanks to each of you for believing in this project.
 - **Automatic device discovery** — devices are added (and removed) as your SmartThings network changes.
 - **UI-based OAuth wizard** — set up authentication from the Homebridge UI without a public tunnel.
 - **Optional real-time webhooks** — push updates from SmartThings for instant device state changes (polling continues as a fallback).
-- **Broad device support** — lights, switches, climate, sensors, locks, security panels, washers/dryers/dishwashers, Samsung TVs (including Frame TVs), multi-zone refrigerators, and more.
+- **Broad device support** — lights, switches, climate, sensors, locks, security panels, washers/dryers/dishwashers, Samsung robot vacuums, Samsung TVs (including Frame TVs), multi-zone refrigerators, and more.
 
 ## Supported Devices
 
@@ -61,7 +61,7 @@ The plugin automatically maps SmartThings capabilities to HomeKit accessories. A
 | **Sensors** | Motion, occupancy, contact, water leak, smoke, CO, illuminance, buttons |
 | **Security Systems** | Arm/disarm panels with live alarm reporting |
 | **Televisions** | Samsung TVs with input picker, volume, app launcher; full Frame TV control |
-| **Appliances** | Washers, dryers, dishwashers, multi-zone Samsung Family Hub refrigerators |
+| **Appliances** | Washers, dryers, dishwashers, Samsung robot vacuums (auto-detected, exposed as a Switch — On = start, Off = return-to-home), multi-zone Samsung Family Hub refrigerators |
 | **Valves** | Smart water valves |
 | **Battery** | Reported as a companion characteristic on supported devices |
 
