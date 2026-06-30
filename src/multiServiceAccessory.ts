@@ -508,15 +508,23 @@ export class MultiServiceAccessory {
       );
     });
 
-    // Energy monitoring: opt-in. Runs LAST so the device's on/off host service
-    // (Switch/Outlet/Lightbulb) already exists for the Eve characteristics to attach to.
-    // Modeled on the TV/volume-slider special cases rather than the combo map, because
-    // energy capabilities are alternatives (a device may report any subset) which the
-    // combo map's "ALL required" semantics can't express. Subscriptions + event routing
-    // are auto-wired via the service's capabilities[] (getRegisteredCapabilities/processEvent).
-    if (this.platform.config.ExposeEnergyMonitoring === true) {
+    // Energy monitoring: opt-in. Scoped to plug/switch/outlet accessories — runs LAST so
+    // the on/off host (Switch/Outlet) already exists for the Eve characteristics to attach
+    // to, and never synthesizes a tile. TVs and ACs are excluded: they report power too but
+    // have no plain on/off host (energy would land on the wrong tile, e.g. an AC mode switch
+    // or a TV volume slider). Modeled on the TV/volume-slider special cases rather than the
+    // combo map, because energy capabilities are alternatives (a device may report any subset)
+    // which the combo map's "ALL required" semantics can't express. Subscriptions + event
+    // routing are auto-wired via the service's capabilities[] (getRegisteredCapabilities/processEvent).
+    if (this.platform.config.ExposeEnergyMonitoring === true
+      && componentId === 'main'
+      && capabilities.includes('switch')
+      && !this.isTelevisionDevice()
+      && !this.mainHasCapability('airConditionerMode')) {
+      const host = this.accessory.getService(this.platform.Service.Outlet)
+        || this.accessory.getService(this.platform.Service.Switch);
       const energyCaps = EnergyService.ENERGY_CAPABILITIES.filter(c => capabilitiesToCover.includes(c));
-      if (energyCaps.length > 0) {
+      if (host && energyCaps.length > 0) {
         this.log.debug(`Adding EnergyService to ${this.name} for [${energyCaps.join(', ')}]`);
         this.services.push(
           new EnergyService(this.platform, this.accessory, componentId, energyCaps, this, this.name, component),

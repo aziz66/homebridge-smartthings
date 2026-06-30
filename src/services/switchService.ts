@@ -13,11 +13,19 @@ export class SwitchService extends BaseService {
 
     // Opt-in: publish energy-reporting switches as an Outlet so the Eve app renders
     // the power/energy UI (its energy view conventionally expects an Outlet service).
-    // This is a breaking presentation change for existing tiles, hence flag-gated.
+    // This is a breaking presentation change for existing tiles, hence double-gated
+    // (it only makes sense alongside ExposeEnergyMonitoring, which adds the Eve data).
     const exposeAsOutlet = platform.config.ExposeEnergyAsOutlet === true
+      && platform.config.ExposeEnergyMonitoring === true
       && (multiServiceAccessory.mainHasCapability('powerMeter')
         || multiServiceAccessory.mainHasCapability('powerConsumptionReport')
         || multiServiceAccessory.mainHasCapability('energyMeter'));
+    // Prune the opposite cached service so flipping the flag doesn't leave a ghost tile
+    // alongside the new one (setServiceType only ever adds, never removes).
+    const stale = accessory.getService(exposeAsOutlet ? platform.Service.Switch : platform.Service.Outlet);
+    if (stale) {
+      accessory.removeService(stale);
+    }
     this.setServiceType(exposeAsOutlet ? platform.Service.Outlet : platform.Service.Switch);
     // Set the event handlers
     this.log.debug(`Adding SwitchService to ${this.name}${exposeAsOutlet ? ' (as Outlet for energy)' : ''}`);

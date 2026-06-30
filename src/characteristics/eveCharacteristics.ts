@@ -8,14 +8,12 @@ export const EVE_UUID = {
   CurrentConsumption: 'E863F10D-079E-48FF-8F27-9C2605A29F52', // instantaneous power, Watts
   TotalConsumption: 'E863F10C-079E-48FF-8F27-9C2605A29F52', // accumulated energy, kWh
   Voltage: 'E863F10A-079E-48FF-8F27-9C2605A29F52', // Volts
-  ElectricCurrent: 'E863F126-079E-48FF-8F27-9C2605A29F52', // Amperes
 } as const;
 
 export interface EveCharacteristics {
   CurrentConsumption: WithUUID<new () => Characteristic>;
   TotalConsumption: WithUUID<new () => Characteristic>;
   Voltage: WithUUID<new () => Characteristic>;
-  ElectricCurrent: WithUUID<new () => Characteristic>;
 }
 
 /**
@@ -46,6 +44,5 @@ export function makeEveCharacteristics(api: API): EveCharacteristics {
     CurrentConsumption: make('Current Consumption', EVE_UUID.CurrentConsumption, 'W', 65535, 0.1),
     TotalConsumption: make('Total Consumption', EVE_UUID.TotalConsumption, 'kWh', 1000000, 0.001),
     Voltage: make('Voltage', EVE_UUID.Voltage, 'V', 380, 0.1),
-    ElectricCurrent: make('Electric Current', EVE_UUID.ElectricCurrent, 'A', 100, 0.01),
   };
 }
