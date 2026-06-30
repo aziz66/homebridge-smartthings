@@ -31,6 +31,7 @@ import { VolumeSliderService } from './services/volumeSliderService';
 import { WasherService } from './services/washerService';
 import { DryerService } from './services/dryerService';
 import { DishwasherService } from './services/dishwasherService';
+import { RobotVacuumService } from './services/robotVacuumService';
 import { AirPurifierService } from './services/airPurifierService';
 import { SecuritySystemService } from './services/securitySystemService';
 import { RefrigeratorTemperatureService } from './services/refrigeratorTemperatureService';
@@ -189,6 +190,11 @@ export class MultiServiceAccessory {
       capabilities: ['dishwasherOperatingState'],
       optionalCapabilities: ['dishwasherMode', 'remoteControlStatus'],
       service: DishwasherService,
+    },
+    {
+      capabilities: ['samsungce.robotCleanerOperatingState', 'switch'],
+      optionalCapabilities: ['robotCleanerMovement'],
+      service: RobotVacuumService,
     },
     {
       capabilities: ['securitySystem'],

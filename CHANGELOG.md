@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Samsung robot vacuum support** — devices that expose `samsungce.robotCleanerOperatingState` together with `switch` (and typically the `robotCleanerMovement` status) are auto-detected and exposed as a HomeKit `Switch`. Reading the switch reflects whether the vacuum is currently active (`cleaning`, `homing`, or `moving`); setting it on sends `start` and setting it off sends `returnToHome` against the `samsungce.robotCleanerOperatingState` capability. Generic — no device-, model-, or firmware-specific assumptions; works for any Samsung robot vacuum that exposes the capability set.
+
 ## [1.0.67] - Optional SmartThings webhook signature verification
 
 > Stable release of the `1.0.67-beta.0` work (below), validated end-to-end against live SmartThings traffic: with verification enabled, the signed `CONFIRMATION` handshake and live device `EVENT`s are accepted and applied, while unsigned/forged requests are rejected with **HTTP 401**; with the flag off (the default) webhook handling is unchanged. Opt-in and **off by default**, so existing setups are unaffected until they enable it.
