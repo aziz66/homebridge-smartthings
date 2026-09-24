@@ -728,7 +728,32 @@ export class MultiServiceAccessory {
         this.commandInProgress = true;
         this.axInstance.post(this.commandURL, commandBody).then(() => {
           this.log.debug(`${JSON.stringify(commands)} successful for ${this.name}`);
+          // Was declared but never assigned anywhere, so startPollingState()'s 20s post-command
+          // cooldown check was permanently a no-op, causing the background poller to potentially
+          // race a just-issued command's real-world propagation delay.
+          this.lastCommandCompleted = Date.now();
           this.deviceStatusTimestamp = 0; // Force a refresh on next poll after a state change
+          // Optimistically apply simple switch on/off commands to the cached status, and mark it
+          // fresh. This gives refreshStatus() its normal 5s cache window to bridge the real-world
+          // delay between SmartThings accepting a command and the physical device reporting its
+          // new state back through the hub/cloud - without that, a status check triggered right
+          // after this command (e.g. the Home app re-checking state) could read stale data and
+          // briefly show the pre-command state in HomeKit.
+          //
+          // Deliberately NOT a longer cooldown: after the 5s window, refreshStatus() still does a
+          // real live check, so a device that silently failed to execute the command (e.g. an
+          // unresponsive mesh device) gets corrected back to its true state quickly rather than
+          // HomeKit confidently showing the commanded-but-never-applied value.
+          commands.forEach(cmd => {
+            if (cmd.capability === 'switch' && (cmd.command === 'on' || cmd.command === 'off')) {
+              const compId = cmd.component ?? 'main';
+              const component = this.components.find(c => c.componentId === compId) as any;
+              if (component?.status?.switch?.switch) {
+                component.status.switch.switch.value = cmd.command;
+                this.deviceStatusTimestamp = Date.now();
+              }
+            }
+          });
           this.commandInProgress = false;
           resolve(true);
           // Force a small delay so that status fetch is correct
