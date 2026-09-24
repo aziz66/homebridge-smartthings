@@ -217,6 +217,20 @@ export class MultiServiceAccessory {
   protected commandInProgress = false;
   protected lastCommandCompleted = 0;
 
+  // Short-lived optimistic values applied on top of live status, so a command's effect isn't
+  // clobbered by a concurrent/racing status read that lands stale data before the real device
+  // has reported its new state back through SmartThings. Re-applied after every live status
+  // update (see refreshStatus()) so it survives regardless of how refreshes interleave with the
+  // command, and expires on its own so a device that doesn't actually respond is still reported
+  // correctly once the window passes - see sendCommands() and applyOptimisticPins().
+  private optimisticPins: {
+    componentId: string;
+    capability: string;
+    attribute: string;
+    value: unknown;
+    expires: number;
+  }[] = [];
+
   protected statusQueryInProgress = false;
   protected lastStatusResult = true;
   protected hasInitialStatus = false;
@@ -576,6 +590,10 @@ export class MultiServiceAccessory {
                 this.log.error(`Failed to get status for ${this.name}-${component.componentId}`);
               }
             });
+            // Re-assert any still-active optimistic pins on top of what we just fetched live -
+            // the fetch above may have raced the real device's state propagating back through
+            // SmartThings and landed stale data.
+            this.applyOptimisticPins();
 
             // Notify VolumeSliderService about global status update
             this.notifyVolumeSliderOfStatusUpdate();
@@ -620,6 +638,24 @@ export class MultiServiceAccessory {
 
   public forceNextStatusRefresh() {
     this.deviceStatusTimestamp = 0;
+  }
+
+  // Re-applies any not-yet-expired optimistic pins on top of the current cached status, and
+  // drops expired ones. Called immediately after pinning a new value, and again every time a
+  // live status fetch lands, so the pinned value survives regardless of how many refreshes race
+  // against it. See the optimisticPins field for why this exists instead of relying on
+  // deviceStatusTimestamp alone (that field gets reset by forceNextStatusRefresh(), which
+  // switchService/lightService call right after a successful command).
+  private applyOptimisticPins() {
+    const now = Date.now();
+    this.optimisticPins = this.optimisticPins.filter(pin => pin.expires > now);
+    for (const pin of this.optimisticPins) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const component = this.components.find(c => c.componentId === pin.componentId) as any;
+      if (component?.status?.[pin.capability]?.[pin.attribute]) {
+        component.status[pin.capability][pin.attribute].value = pin.value;
+      }
+    }
   }
 
   public hasCachedStatus(): boolean {
@@ -733,27 +769,36 @@ export class MultiServiceAccessory {
           // race a just-issued command's real-world propagation delay.
           this.lastCommandCompleted = Date.now();
           this.deviceStatusTimestamp = 0; // Force a refresh on next poll after a state change
-          // Optimistically apply simple switch on/off commands to the cached status, and mark it
-          // fresh. This gives refreshStatus() its normal 5s cache window to bridge the real-world
-          // delay between SmartThings accepting a command and the physical device reporting its
-          // new state back through the hub/cloud - without that, a status check triggered right
-          // after this command (e.g. the Home app re-checking state) could read stale data and
-          // briefly show the pre-command state in HomeKit.
+          // Pin simple switch on/off commands to the cached status for a short window, bridging
+          // the real-world delay between SmartThings accepting a command and the physical device
+          // reporting its new state back through the hub/cloud. Without this, a status check
+          // triggered right after this command (e.g. the Home app re-checking state, or the
+          // forceNextStatusRefresh() call switchService/lightService make right after this
+          // resolves) can race that delay and read/report stale data.
           //
-          // Deliberately NOT a longer cooldown: after the 5s window, refreshStatus() still does a
-          // real live check, so a device that silently failed to execute the command (e.g. an
-          // unresponsive mesh device) gets corrected back to its true state quickly rather than
-          // HomeKit confidently showing the commanded-but-never-applied value.
+          // Uses a pin re-applied after every live fetch (see applyOptimisticPins()) rather than
+          // just writing the cache once, because a concurrent/in-flight status query started
+          // before this command completed can still land its (stale) result afterwards and
+          // clobber a one-time write. The pin expires on its own, so a device that silently
+          // failed to execute the command (e.g. an unresponsive mesh device) is corrected back to
+          // its true state once the window passes, rather than HomeKit confidently showing the
+          // commanded-but-never-applied value indefinitely.
+          const PIN_DURATION_MS = 10 * 1000;
           commands.forEach(cmd => {
             if (cmd.capability === 'switch' && (cmd.command === 'on' || cmd.command === 'off')) {
               const compId = cmd.component ?? 'main';
-              const component = this.components.find(c => c.componentId === compId) as any;
-              if (component?.status?.switch?.switch) {
-                component.status.switch.switch.value = cmd.command;
-                this.deviceStatusTimestamp = Date.now();
-              }
+              this.optimisticPins = this.optimisticPins.filter(pin =>
+                !(pin.componentId === compId && pin.capability === 'switch' && pin.attribute === 'switch'));
+              this.optimisticPins.push({
+                componentId: compId,
+                capability: 'switch',
+                attribute: 'switch',
+                value: cmd.command,
+                expires: Date.now() + PIN_DURATION_MS,
+              });
             }
           });
+          this.applyOptimisticPins();
           this.commandInProgress = false;
           resolve(true);
           // Force a small delay so that status fetch is correct
