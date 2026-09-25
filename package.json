@@ -18,6 +18,12 @@
     "homebridge": "^1.6.0 || ^2.0.0-beta.0"
   },
   "main": "dist/index.js",
+  "files": [
+    "dist",
+    "homebridge-ui",
+    "config.schema.json",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
     "watch": "npm run build && npm link && nodemon",

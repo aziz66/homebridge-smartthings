@@ -1,3 +1,6 @@
+# NOTE: package.json "files" is the primary allowlist for the published tarball.
+# This file is kept as a second safety net (it still filters inside allowed dirs).
+
 # Ignore source code
 src
 
