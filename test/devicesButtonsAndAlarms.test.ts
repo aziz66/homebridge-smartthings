@@ -28,9 +28,51 @@ function makeButton(config: Record<string, unknown> = {}) {
   return { ...made, presses };
 }
 
-test('a button is never polled, so the last press is not replayed as a phantom press', () => {
+test('a button is not polled through startPollingState, so the last press is not replayed', () => {
   assert.equal(makeButton().msa.polls.length, 0);
   assert.equal(makeButton({ PollSwitchesAndLightsSeconds: 5 }).msa.polls.length, 0);
+});
+
+// The polling fallback fires only when the button attribute's timestamp changes.
+test('polling reports a press only when the button timestamp changes', async () => {
+  const E = C.ProgrammableSwitchEvent;
+  const { instance, deviceStatus, presses } = makeButton();
+  const poll = () => (instance as unknown as { pollForPress: () => Promise<void> }).pollForPress();
+  const setButton = (value: string, timestamp: string) => {
+    deviceStatus.status = { button: { button: { value, timestamp } } };
+  };
+
+  setButton('held', '2026-09-25T10:00:00.000Z');
+  await poll();                                   // baseline: the old press is not replayed
+  await poll();                                   // unchanged: nothing
+  assert.deepEqual(presses, []);
+
+  setButton('pushed', '2026-09-25T10:00:05.000Z');
+  await poll();
+  setButton('pushed', '2026-09-25T10:00:09.000Z'); // same value, new timestamp = a second press
+  await poll();
+  await poll();
+  assert.deepEqual(presses, [E.SINGLE_PRESS, E.SINGLE_PRESS]);
+});
+
+test('polling stays quiet once webhook events are delivering presses', async () => {
+  const E = C.ProgrammableSwitchEvent;
+  const { instance, deviceStatus, presses } = makeButton();
+  const poll = () => (instance as unknown as { pollForPress: () => Promise<void> }).pollForPress();
+
+  deviceStatus.status = { button: { button: { value: 'pushed', timestamp: 't1' } } };
+  await poll();
+  instance.processEvent(event('button', 'button', 'pushed'));
+  deviceStatus.status = { button: { button: { value: 'pushed', timestamp: 't2' } } };
+  await poll();
+  assert.deepEqual(presses, [E.SINGLE_PRESS]);    // only the webhook press, not a duplicate
+});
+
+test('polling tolerates missing button status', async () => {
+  const { instance, deviceStatus, presses } = makeButton();
+  deviceStatus.status = {};
+  await assert.doesNotReject((instance as unknown as { pollForPress: () => Promise<void> }).pollForPress());
+  assert.deepEqual(presses, []);
 });
 
 test('reading ProgrammableSwitchEvent returns null and emits no press', async () => {
