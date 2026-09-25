@@ -706,7 +706,7 @@ export class MultiServiceAccessory {
 
     if (pollSeconds > 0) {
       return setInterval(() => {
-        // If we are in the middle of a commmand call, or it hasn't been at least 10 seconds, we don't want to poll.
+        // If we are in the middle of a command call, or it hasn't been at least 20 seconds, we don't want to poll.
         if (this.commandInProgress || Date.now() - this.lastCommandCompleted < 20 * 1000) {
           // Skip polling until command is complete
           this.log.debug(`Command in progress, skipping polling for ${this.name}`);
@@ -777,6 +777,7 @@ export class MultiServiceAccessory {
         this.axInstance.post(this.commandURL, commandBody).then(() => {
           this.log.debug(`${JSON.stringify(commands)} successful for ${this.name}`);
           this.deviceStatusTimestamp = 0; // Force a refresh on next poll after a state change
+          this.lastCommandCompleted = Date.now(); // Pause polling briefly so the cloud catches up
           this.commandInProgress = false;
           resolve(true);
           // Force a small delay so that status fetch is correct
@@ -786,6 +787,7 @@ export class MultiServiceAccessory {
           //   resolve(true);
           // }, 1500);
         }).catch((error) => {
+          this.lastCommandCompleted = Date.now();
           this.commandInProgress = false;
           this.log.error(`${JSON.stringify(commands)} failed for ${this.name}: ${error}`);
           resolve(false);
