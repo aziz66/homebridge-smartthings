@@ -16,6 +16,14 @@ export class LightService extends BaseService {
 
   requireSetColor = false;
 
+  private normalizeLevel(value: unknown): number | undefined {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      return undefined;
+    }
+
+    return Math.min(100, Math.max(0, value));
+  }
+
   constructor(platform: IKHomeBridgeHomebridgePlatform, accessory: PlatformAccessory, componentId: string, capabilities: string[],
     multiServiceAccessory: MultiServiceAccessory,
     name: string, deviceStatus) {
@@ -150,12 +158,13 @@ export class LightService extends BaseService {
         }
 
         try {
-          if (this.deviceStatus.status.switchLevel.level.value !== undefined) {
-            level = this.deviceStatus.status.switchLevel.level.value;
+          const normalizedLevel = this.normalizeLevel(this.deviceStatus.status.switchLevel.level.value);
+          if (normalizedLevel !== undefined) {
+            level = normalizedLevel;
             this.log.debug('getLevel() SUCCESSFUL for ' + this.name + '. value = ' + level);
             resolve(level);
           } else {
-            this.log.error('getLevel() FAILED for ' + this.name + '. Undefined value');
+            this.log.error('getLevel() FAILED for ' + this.name + '. Invalid value');
             reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
           }
         } catch (e) {
@@ -351,7 +360,12 @@ export class LightService extends BaseService {
 
       case 'switchLevel': {
         this.log.debug(`Event updating switchLevel capability for ${this.name} to ${event.value}`);
-        this.service.updateCharacteristic(this.platform.Characteristic.Brightness, event.value);
+        const normalizedLevel = this.normalizeLevel(event.value);
+        if (normalizedLevel !== undefined) {
+          this.service.updateCharacteristic(this.platform.Characteristic.Brightness, normalizedLevel);
+        } else {
+          this.log.debug(`Ignoring invalid switchLevel value for ${this.name}: ${event.value}`);
+        }
         return;
       }
 
