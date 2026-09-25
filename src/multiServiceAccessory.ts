@@ -2,7 +2,6 @@ import { PlatformAccessory, Characteristic, CharacteristicValue, Service, WithUU
 import axios = require('axios');
 import { IKHomeBridgeHomebridgePlatform } from './platform';
 import { BaseService } from './services/baseService';
-// import { BasePlatformAccessory } from './basePlatformAccessory';
 import { MotionService } from './services/motionService';
 import { Battery } from './services/batteryService';
 import { TemperatureService } from './services/temperatureService';
@@ -52,7 +51,6 @@ import { describeError } from './auth/sanitizeError';
  * An instance of this class is created for each accessory your platform registers
  * Each accessory may expose multiple services of different service types.
  */
-// export class MultiServiceAccessory extends BasePlatformAccessory {
 export class MultiServiceAccessory {
   //  service: Service;
   //capabilities;

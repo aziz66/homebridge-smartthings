@@ -5,7 +5,6 @@ import * as path from 'path';
 
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import axios = require('axios');
-//import { BasePlatformAccessory } from './basePlatformAccessory';
 import { MultiServiceAccessory } from './multiServiceAccessory';
 import { SubscriptionHandler } from './webhook/subscriptionHandler';
 import { SmartThingsAuth } from './auth/auth';
