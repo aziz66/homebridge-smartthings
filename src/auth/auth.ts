@@ -4,7 +4,7 @@ import axios from 'axios';
 import * as http from 'http';
 import { IKHomeBridgeHomebridgePlatform } from '../platform';
 import { TokenManager, TokenData, isAuthRejection } from './tokenManager';
-import { describeError } from './sanitizeError';
+import { describeError, redactAxiosError } from './sanitizeError';
 import { WebhookServer } from '../webhook/webhookServer';
 
 const SMARTTHINGS_AUTH_URL = 'https://api.smartthings.com/oauth/authorize';
@@ -51,7 +51,7 @@ export class SmartThingsAuth {
 
       this.log.info('Successfully authenticated with SmartThings');
     } catch (error) {
-      this.log.error('OAuth callback error:', error);
+      this.log.error(`OAuth callback error: ${describeError(error)}`);
       res.writeHead(500, { 'Content-Type': 'text/html' });
       res.end('<h1>Authentication failed</h1><p>Please try again.</p>');
     }
@@ -73,15 +73,19 @@ export class SmartThingsAuth {
     params.append('code', code);
     params.append('redirect_uri', redirectUri);
 
-    const response = await axios.post(SMARTTHINGS_TOKEN_URL, params, {
-      headers: {
-        'Authorization': `Basic ${basicAuth}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      timeout: 15000,
-    });
-
-    return response.data;
+    try {
+      const response = await axios.post(SMARTTHINGS_TOKEN_URL, params, {
+        headers: {
+          'Authorization': `Basic ${basicAuth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        timeout: 15000,
+      });
+      return response.data;
+    } catch (error) {
+      // Carries the Basic client credentials and the authorization code.
+      throw redactAxiosError(error, true);
+    }
   }
 
   // Accepts refreshToken, performs API call, returns new token data
@@ -112,8 +116,9 @@ export class SmartThingsAuth {
       return response.data;
 
     } catch (error) {
-      this.log.error('Error during token refresh API call:', error);
-      throw error;
+      this.log.error(`Error during token refresh API call: ${describeError(error)}`);
+      // Carries the Basic client credentials and the refresh token.
+      throw redactAxiosError(error, true);
     }
   }
 

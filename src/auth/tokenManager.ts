@@ -154,7 +154,7 @@ export class TokenManager {
         this.loadConfigTokens();
       }
     } catch (error) {
-      this.log.error('Error loading tokens:', error);
+      this.log.error(`Error loading tokens: ${describeError(error)}`);
     }
   }
 
@@ -187,7 +187,7 @@ export class TokenManager {
         this.log.debug('Saved tokens to storage');
       }
     } catch (error) {
-      this.log.error('Error saving tokens:', error);
+      this.log.error(`Error saving tokens: ${describeError(error)}`);
     }
   }
 
@@ -284,7 +284,7 @@ return false;
         this.log.info('No stored tokens file found to clear.');
       }
     } catch (error) {
-      this.log.error('Error clearing tokens:', error);
+      this.log.error(`Error clearing tokens: ${describeError(error)}`);
       // Optionally re-throw or handle as appropriate for your plugin's error strategy
       throw error;
     }

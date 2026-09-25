@@ -6,6 +6,7 @@ import { SmartThingsAuth } from '../auth/auth';
 import { ShortEvent } from './subscriptionHandler';
 import { SignatureVerifier } from './signatureVerifier';
 import axios from 'axios';
+import { describeError } from '../auth/sanitizeError';
 
 // Lifecycles we process when signature verification is enabled. Anything else is dropped (400).
 const KNOWN_LIFECYCLES = ['PING', 'CONFIRMATION', 'INSTALL', 'UPDATE', 'UNINSTALL', 'CONFIGURATION', 'EVENT'];
@@ -94,7 +95,7 @@ export class WebhookServer {
       }
       await this.authHandler.handleOAuthCallback(query, res);
     } catch (error) {
-      this.log.error('OAuth callback error:', error);
+      this.log.error(`OAuth callback error: ${describeError(error)}`);
       res.writeHead(500, { 'Content-Type': 'text/html' });
       res.end('<h1>Authentication failed</h1><p>Please try again.</p>');
     }
@@ -280,7 +281,7 @@ export class WebhookServer {
             this.log.info('Successfully confirmed SmartThings app registration');
           })
           .catch((error) => {
-            this.log.error('Failed to confirm SmartThings app registration:', error);
+            this.log.error(`Failed to confirm SmartThings app registration: ${describeError(error)}`);
           });
       } else {
         this.log.error('Refusing to call non-https confirmation URL from CONFIRMATION lifecycle');
@@ -380,7 +381,7 @@ export class WebhookServer {
       try {
         handler(event);
       } catch (error) {
-        this.log.error('Error in event handler:', error);
+        this.log.error(`Error in event handler: ${describeError(error)}`);
       }
     });
   }

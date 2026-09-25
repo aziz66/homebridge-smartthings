@@ -12,7 +12,7 @@ import { SmartThingsAuth } from './auth/auth';
 import { WebhookServer } from './webhook/webhookServer';
 import { SmartThingsSubscriptionManager } from './webhook/smartthingsSubscriptionManager';
 import { CrashLoopManager, CrashErrorType, defaultCrashLoopConfig } from './auth/CrashLoopManager';
-import { describeError } from './auth/sanitizeError';
+import { describeError, redactAxiosError } from './auth/sanitizeError';
 import { isAuthRejection } from './auth/tokenManager';
 import { ArtModeSwitchService } from './services/artModeSwitchService';
 import { TelevisionService } from './services/televisionService';
@@ -127,7 +127,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
           if (!this.auth.tokenManager.getRefreshToken()) {
             this.log.error('Cannot refresh token: No refresh token available.');
             this.triggerAuthFlow();
-            return Promise.reject(error);
+            return Promise.reject(redactAxiosError(error));
           }
 
           // Shared with the token expiry monitor: never two refreshes of the same refresh token.
@@ -145,7 +145,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
             if (isAuthRejection(refreshError)) {
               this.triggerAuthFlow();
             }
-            return Promise.reject(refreshError);
+            return Promise.reject(redactAxiosError(refreshError));
           }
 
           // Retry with the new token
@@ -159,7 +159,8 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
           }
         }
 
-        return Promise.reject(error);
+        // Callers (including services) may log the whole error: never let it carry the token.
+        return Promise.reject(redactAxiosError(error));
       },
     );
 
@@ -215,7 +216,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
           this.log.error('Authentication failed or token invalid after initialization.');
         }
       } catch (error) {
-        this.log.error('Error during platform initialization in didFinishLaunching:', error);
+        this.log.error(`Error during platform initialization in didFinishLaunching: ${describeError(error)}`);
         // Record that an initialization error occurred.
         // If this error is one that leads to a crash and restart, it will be logged by CrashLoopManager.
         await this.crashLoopManager.recordPotentialCrash(CrashErrorType.API_INIT_FAILURE);

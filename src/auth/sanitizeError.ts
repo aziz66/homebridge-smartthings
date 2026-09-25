@@ -44,3 +44,39 @@ export function describeError(error: unknown): string {
   }
   return parts.join(' ');
 }
+
+/**
+ * Strip credentials from an (axios) error in place before it is rethrown, so callers that log
+ * the whole object - including service code - cannot print them: masks the Authorization
+ * header, optionally the request body (token requests carry the refresh token / authorization
+ * code), and hides the raw request objects, whose header block (`_header`) repeats the
+ * Authorization value, from util.inspect.
+ */
+export function redactAxiosError<T>(error: T, redactBody = false): T {
+  if (!error || typeof error !== 'object') {
+    return error;
+  }
+  const e = error as { config?: Record<string, unknown>; response?: Record<string, unknown> };
+  for (const config of [e.config, e.response?.config as Record<string, unknown> | undefined]) {
+    if (!config || typeof config !== 'object') {
+      continue;
+    }
+    const headers = config.headers as Record<string, unknown> | undefined;
+    if (headers && typeof headers === 'object') {
+      for (const name of ['Authorization', 'authorization']) {
+        if (headers[name] !== undefined) {
+          headers[name] = '[REDACTED]';
+        }
+      }
+    }
+    if (redactBody && config.data !== undefined) {
+      config.data = '[REDACTED]';
+    }
+  }
+  for (const holder of [e as Record<string, unknown>, e.response]) {
+    if (holder && typeof holder === 'object' && 'request' in holder) {
+      Object.defineProperty(holder, 'request', { value: holder.request, enumerable: false, configurable: true, writable: true });
+    }
+  }
+  return error;
+}

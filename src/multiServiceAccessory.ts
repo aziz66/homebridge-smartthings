@@ -40,6 +40,7 @@ import { EnergyService } from './services/energyService';
 import { extractDisabledComponents } from './util/samsungRefrigerator';
 import { Command } from './services/smartThingsCommand';
 import { SamsungWebSocket } from './local/samsungWebSocket';
+import { describeError } from './auth/sanitizeError';
 // type DeviceStatus = {
 //   timestamp: number;
 //   //status: Record<string, unknown>;
@@ -412,7 +413,7 @@ export class MultiServiceAccessory {
           try {
             await serviceInstance.registerInputSourceCapability();
           } catch (error) {
-            this.log.error(`Failed to register input sources for ${this.name}:`, error);
+            this.log.error(`Failed to register input sources for ${this.name}: ${describeError(error)}`);
           }
         }
 
