@@ -74,6 +74,8 @@ export class BaseService {
   protected async getStatus(): Promise<boolean> {
     if (!this.multiServiceAccessory.isOnline()) {
       this.log.debug(`${this.name} is offline`);
+      // Throttled background probe: the only recovery path when polling is disabled.
+      this.multiServiceAccessory.attemptOfflineRecovery();
       return false;
     }
 

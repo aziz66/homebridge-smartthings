@@ -225,6 +225,8 @@ export class MultiServiceAccessory {
   protected giveUpTime = 0;
   protected commandInProgress = false;
   protected lastCommandCompleted = 0;
+  private static readonly MAX_CONSECUTIVE_FAILURES = 5;
+  private static readonly OFFLINE_RETRY_INTERVAL_MS = 60 * 1000;
 
   protected statusQueryInProgress = false;
   protected lastStatusResult = true;
@@ -599,7 +601,6 @@ export class MultiServiceAccessory {
         }
         this.log.debug(`Calling Smartthings to get an update for ${this.name}`);
         this.statusQueryInProgress = true;
-        this.failureCount = 0;
         this.waitFor(() => this.commandInProgress === false).then(() => {
           this.lastStatusResult = true;
           this.axInstance.get(this.statusURL).then((res) => {
@@ -621,6 +622,7 @@ export class MultiServiceAccessory {
             this.notifyTelevisionServiceOfStatusUpdate();
 
             this.hasInitialStatus = true;
+            this.markOnline();
             this.statusQueryInProgress = false;
             resolve(true);
             // if (res.data.components.main !== undefined) {
@@ -635,13 +637,13 @@ export class MultiServiceAccessory {
             //   resolve(this.lastStatusResult = false);
             // }
           }).catch(async error => {
+            // Count consecutive failed status refreshes; any successful refresh resets the count.
             this.failureCount++;
             this.log.error(`Failed to request status from ${this.name}: ${error}.  This is failure number ${this.failureCount}`);
-            // If consistent polling failures for a device cause broader instability/crashes,
-            // we might record it. For now, focusing on init-time crashes.
-            // Example: await this.crashLoopManager.recordPotentialCrash(CrashErrorType.UNKNOWN_API_FAILURE);
-            if (this.failureCount >= 5) {
-              this.log.error(`Exceeded allowed failures for ${this.name}.  Device is offline`);
+            if (this.failureCount >= MultiServiceAccessory.MAX_CONSECUTIVE_FAILURES) {
+              if (this.online) {
+                this.log.error(`Exceeded allowed failures for ${this.name}.  Device is offline`);
+              }
               this.giveUpTime = Date.now();
               this.online = false;
             }
@@ -652,6 +654,39 @@ export class MultiServiceAccessory {
       } else {
         resolve(true);
       }
+    });
+  }
+
+  // The device answered (status, command or webhook event): clear any offline state.
+  protected markOnline(): void {
+    if (!this.online) {
+      this.log.info(`${this.name} is responding again - marking it online`);
+    }
+    this.online = true;
+    this.failureCount = 0;
+    this.giveUpTime = 0;
+  }
+
+  /**
+   * While offline, periodically try a real status refresh; success brings the device back online
+   * (see refreshStatus). Throttled via giveUpTime so an offline device costs one request per
+   * OFFLINE_RETRY_INTERVAL_MS. Called from the poll loop and from reads (so it also works with
+   * polling disabled). Cloud /health is not used: it is unreliable for Edge drivers.
+   */
+  public attemptOfflineRecovery(): void {
+    if (this.online || this.statusQueryInProgress) {
+      return;
+    }
+    if (this.giveUpTime > 0 && Date.now() - this.giveUpTime < MultiServiceAccessory.OFFLINE_RETRY_INTERVAL_MS) {
+      return;
+    }
+    this.giveUpTime = Date.now();
+    this.log.debug(`Trying to reach offline device ${this.name}`);
+    this.forceNextStatusRefresh();
+    this.refreshStatus().catch((error) => {
+      // Must not reject unhandled: Node turns that into an uncaughtException and
+      // Homebridge shuts down. Stay offline and retry later.
+      this.log.debug(`Offline recovery failed for ${this.name}: ${error?.message || error}`);
     });
   }
 
@@ -718,21 +753,11 @@ export class MultiServiceAccessory {
           getValue().then((v) => {
             service.updateCharacteristic(chracteristic, v);
             this.log.debug(`${this.name} value updated.`);
-            // Reset failure count on successful poll
-            this.failureCount = 0;
           }).catch((error) => {
-            // Track polling failures but don't crash
-            this.failureCount++;
-            this.log.warn(`Poll failure on ${this.name} (attempt ${this.failureCount}): ${error?.message || error}`);
-
-            // If we've had too many consecutive failures, mark device offline
-            if (this.failureCount >= 5) {
-              this.log.error(`${this.name} marked offline after ${this.failureCount} consecutive poll failures`);
-              this.online = false;
-              this.giveUpTime = Date.now();
-            }
-            // Don't update characteristic with error during polling -
-            // this prevents crashing and allows recovery on next successful poll
+            // Don't crash and don't update the characteristic with an error. Offline state is
+            // driven by consecutive failed status refreshes (refreshStatus), which the getter
+            // behind a failed poll already counted - counting here too would double it.
+            this.log.warn(`Poll failure on ${this.name}: ${error?.message || error}`);
           });
           // Update target if we have to
           if (targetStateCharacteristic && getTargetState) {
@@ -743,22 +768,7 @@ export class MultiServiceAccessory {
               });
           }
         } else {
-          // If we failed this accessory due to errors. Reset the failure count and online status after 10 minutes.
-          if (this.giveUpTime > 0 && (Date.now() - this.giveUpTime > (10 * 60 * 1000))) {
-            this.axInstance.get(this.healthURL)
-              .then(res => {
-                if (res.data.state === 'ONLINE') {
-                  this.online = true;
-                  this.giveUpTime = 0;
-                  this.failureCount = 0;
-                }
-              })
-              .catch((error) => {
-                // Must not reject unhandled: Node turns that into an uncaughtException and
-                // Homebridge shuts down. Stay offline and retry on the next poll.
-                this.log.debug(`Offline recovery health check failed for ${this.name}: ${error?.message || error}`);
-              });
-          }
+          this.attemptOfflineRecovery();
         }
       }, pollSeconds * 1000 + Math.floor(Math.random() * 1000));  // Add a random delay to avoid collisions
     }
@@ -779,6 +789,7 @@ export class MultiServiceAccessory {
           this.deviceStatusTimestamp = 0; // Force a refresh on next poll after a state change
           this.lastCommandCompleted = Date.now(); // Pause polling briefly so the cloud catches up
           this.commandInProgress = false;
+          this.markOnline();
           resolve(true);
           // Force a small delay so that status fetch is correct
           // setTimeout(() => {
@@ -841,6 +852,7 @@ export class MultiServiceAccessory {
 
   public processEvent(event: ShortEvent): void {
     this.log.debug(`Received events for ${this.name}`);
+    this.markOnline(); // SmartThings only sends events for a device it can reach
 
     const service = this.services.find(s => s.componentId === event.componentId && s.capabilities.find(c => c === event.capability));
 
