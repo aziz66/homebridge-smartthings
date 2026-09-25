@@ -37,7 +37,7 @@ export class WindowCoveringService extends BaseService {
       .onGet(this.getTargetPosition.bind(this))
       .onSet(this.setTargetPosition.bind(this));
 
-    let pollWindowShadesSeconds = 10; // default to 10 seconds
+    let pollWindowShadesSeconds = 20; // default to 20 seconds (matches config.schema.json)
     if (this.platform.config.PollWindowShadesSeconds !== undefined) {
       pollWindowShadesSeconds = this.platform.config.PollWindowShadesSeconds;
     }
@@ -89,15 +89,12 @@ export class WindowCoveringService extends BaseService {
       command = 'setShadeLevel';
     }
 
-    this.multiServiceAccessory.sendCommand(this.componentId, capability, command, args)
-      .then(() => {
-        this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
-        this.multiServiceAccessory.forceNextStatusRefresh();
-      })
-      .catch(reason => {
-        this.log.error('onSet(' + value + ') FAILED for ' + this.name + ': reason ' + reason);
-        throw (new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
-      });
+    if (!(await this.multiServiceAccessory.sendCommand(this.componentId, capability, command, args))) {
+      this.log.error('onSet(' + value + ') FAILED for ' + this.name);
+      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
+    this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
+    this.multiServiceAccessory.forceNextStatusRefresh();
   }
 
   async getTargetPosition(): Promise<CharacteristicValue> {
@@ -120,7 +117,7 @@ export class WindowCoveringService extends BaseService {
           // Guard the read: the service can also be matched on a
           // windowShadeLevel/switchLevel-only device that never exposes
           // windowShade, in which case there is no movement state to report.
-          const state = this.deviceStatus.status.windowShade?.windowShade?.value;
+          const state = this.deviceStatus.status?.windowShade?.windowShade?.value;
           // HomeKit position semantics: 100 = fully open, 0 = fully closed,
           // so 'opening' means the position is INCREASING.
           if (state === 'opening') {
@@ -138,7 +135,7 @@ export class WindowCoveringService extends BaseService {
           this.log.error('getCurrentPositionState() FAILED for ' + this.name);
           reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
         }
-      });
+      }).catch(() => reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE)));
     });
   }
 
@@ -185,7 +182,7 @@ export class WindowCoveringService extends BaseService {
           this.log.error('onGet() FAILED for ' + this.name + '. Undefined value');
           reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
         }
-      });
+      }).catch(() => reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE)));
     });
   }
 
@@ -217,8 +214,8 @@ export class WindowCoveringService extends BaseService {
   private readPositionFromStatus(): number | null {
     const status = this.deviceStatus.status;
     const position = this.useWindowShadeLevel
-      ? status.windowShadeLevel?.shadeLevel?.value
-      : status.switchLevel?.level?.value;
+      ? status?.windowShadeLevel?.shadeLevel?.value
+      : status?.switchLevel?.level?.value;
     return typeof position === 'number' ? position : null;
   }
 

@@ -68,19 +68,19 @@ export class ZigbangSmartDoorlockService extends BaseService {
           const ns = ZigbangSmartDoorlockService.serviceNamespace;
           const langStatus = this.deviceStatus.status[`${ns}.languageSupport`];
           const lockStatus = this.deviceStatus.status[`${ns}.lockstaterelease`];
-          if (!langStatus || !lockStatus) {
+          if (!langStatus || lockStatus?.lock?.value === undefined || lockStatus?.lock?.value === null) {
             reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
             return;
           }
-          this.selectedLanguage = langStatus.language.value;
+          this.selectedLanguage = langStatus.language?.value ?? this.selectedLanguage;
           this.log.debug(`LanguageSupport value from ${this.name}: ${this.selectedLanguage}`);
-          this.targetState = lockStatus.lock.value ===
+          this.targetState = lockStatus.lock?.value ===
             `locked.${this.selectedLanguage}` ?
             this.platform.Characteristic.LockTargetState.SECURED :
             this.platform.Characteristic.LockTargetState.UNSECURED;
           this.log.debug(`Reset ${this.name} to ${this.targetState}`);
           resolve(this.targetState);
-        });
+        }).catch(() => reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE)));
       });
     } else {
       return this.targetState;
@@ -106,16 +106,13 @@ export class ZigbangSmartDoorlockService extends BaseService {
     }
 
     this.service.updateCharacteristic(this.platform.Characteristic.LockTargetState, value);
-    this.multiServiceAccessory.sendCommand(this.componentId, ZigbangSmartDoorlockService.COMMAND_CAPABILITY_ID, 'unlock')
-    .then((success) => {
-      if (success) {
-        this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
-        this.multiServiceAccessory.forceNextStatusRefresh();
-        // this.deviceStatus.timestamp = 0; // Force refresh
-      } else {
-        this.log.error(`Command failed for ${this.name}`);
-      }
-    });
+    if (!(await this.multiServiceAccessory.sendCommand(this.componentId, ZigbangSmartDoorlockService.COMMAND_CAPABILITY_ID, 'unlock'))) {
+      this.log.error(`Command failed for ${this.name}`);
+      this.lockInTransitionStart = 0;
+      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
+    this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
+    this.multiServiceAccessory.forceNextStatusRefresh();
   }
 
 
@@ -138,9 +135,9 @@ export class ZigbangSmartDoorlockService extends BaseService {
       if (!langStatus || !lockStatus) {
         throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
       }
-      this.selectedLanguage = langStatus.language.value;
+      this.selectedLanguage = langStatus.language?.value ?? this.selectedLanguage;
       this.log.debug(`LanguageSupport value from ${this.name}: ${this.selectedLanguage}`);
-      const lockState = lockStatus.lock.value;
+      const lockState = lockStatus.lock?.value;
       this.log.debug(`LockState value from ${this.name}: ${lockState}`);
       return this.mapLockState(lockState);
     } catch (error) {

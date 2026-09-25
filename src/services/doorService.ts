@@ -39,7 +39,7 @@ export class DoorService extends BaseService {
 
     let PollDoorsSeconds = 10; // default to 10 seconds
     if (this.platform.config.PollDoorsSeconds !== undefined) {
-      PollDoorsSeconds = this.platform.config.PollSensorsSeconds;
+      PollDoorsSeconds = this.platform.config.PollDoorsSeconds;
     }
 
     if (PollDoorsSeconds > 0) {
@@ -57,17 +57,16 @@ export class DoorService extends BaseService {
     if (Date.now() - this.doorInTransitionStart > 20000) {
       return new Promise((resolve, reject) => {
         this.getStatus().then(success => {
-          if (!success) {
+          const doorState = success ? this.deviceStatus.status?.doorControl?.door?.value : undefined;
+          if (doorState === undefined || doorState === null) {
             reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
             return;
           }
-          this.targetState = this.deviceStatus.status.doorControl.door.value === 'closed' ||
-            this.deviceStatus.status.doorControl.door.value === 'closing' ?
-            this.platform.Characteristic.TargetDoorState.CLOSED :
-            this.platform.Characteristic.TargetDoorState.OPEN;
+          // 'unknown' (or any unmapped state) keeps the current target.
+          this.targetState = this.mapTargetState(doorState) ?? this.targetState;
           this.log.debug(`Reset ${this.name} to ${this.targetState}`);
           resolve(this.targetState);
-        });
+        }).catch(() => reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE)));
       });
     } else {
       return this.targetState;
@@ -80,10 +79,6 @@ export class DoorService extends BaseService {
 
     this.targetState = value as number;
 
-    if (!this.multiServiceAccessory.isOnline) {
-      this.log.error(this.name + ' is offline');
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-    }
     this.doorInTransitionStart = Date.now();
     this.service.updateCharacteristic(this.platform.Characteristic.TargetDoorState, value);
 
@@ -93,15 +88,14 @@ export class DoorService extends BaseService {
     } else {
       command = 'open';
     }
-    this.multiServiceAccessory.sendCommand(this.componentId, 'doorControl', command).then((success) => {
-      if (success) {
-        this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
-        this.multiServiceAccessory.forceNextStatusRefresh();
-        // this.deviceStatus.timestamp = 0;  // Force refresh
-      } else {
-        this.log.error(`Command failed for ${this.name}`);
-      }
-    });
+    if (!(await this.multiServiceAccessory.sendCommand(this.componentId, 'doorControl', command))) {
+      this.log.error(`Command failed for ${this.name}`);
+      // Let the next read resync the target from the device rather than hold the failed one.
+      this.doorInTransitionStart = 0;
+      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
+    this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
+    this.multiServiceAccessory.forceNextStatusRefresh();
   }
 
 
@@ -113,24 +107,37 @@ export class DoorService extends BaseService {
 
     return new Promise((resolve, reject) => {
       this.getStatus().then(success => {
-        if (success) {
-          const doorState = this.deviceStatus.status.doorControl.door.value;
+        const doorState = success ? this.deviceStatus.status?.doorControl?.door?.value : undefined;
+        if (doorState !== undefined && doorState !== null) {
           this.log.debug(`DoorState value from ${this.name}: ${doorState}`);
 
           resolve(this.mapDoorState(doorState));
         } else {
           reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
         }
-      });
+      }).catch(() => reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE)));
     });
   }
 
   public processEvent(event: ShortEvent): void {
     this.service.updateCharacteristic(this.platform.Characteristic.CurrentDoorState, this.mapDoorState(event.value));
-    if (event.value === 'closed' || event.value === 'closing') {
-      this.service.updateCharacteristic(this.platform.Characteristic.TargetDoorState, this.platform.Characteristic.TargetDoorState.CLOSED);
-    } else {
-      this.service.updateCharacteristic(this.platform.Characteristic.TargetDoorState, this.platform.Characteristic.TargetDoorState.OPEN);
+    const targetState = this.mapTargetState(event.value);
+    if (targetState !== undefined) {
+      this.targetState = targetState;
+      this.service.updateCharacteristic(this.platform.Characteristic.TargetDoorState, targetState);
+    }
+  }
+
+  private mapTargetState(doorState: string): number | undefined {
+    switch (doorState) {
+      case 'closed':
+      case 'closing':
+        return this.platform.Characteristic.TargetDoorState.CLOSED;
+      case 'open':
+      case 'opening':
+        return this.platform.Characteristic.TargetDoorState.OPEN;
+      default:
+        return undefined;
     }
   }
 
@@ -145,7 +152,8 @@ export class DoorService extends BaseService {
       case 'opening':
         return(this.platform.Characteristic.CurrentDoorState.OPENING);
       default: {
-        return(this.platform.Characteristic.CurrentDoorState.CLOSED);
+        // 'unknown' or an unmapped state: don't claim the door is closed.
+        return(this.platform.Characteristic.CurrentDoorState.STOPPED);
       }
     }
   }

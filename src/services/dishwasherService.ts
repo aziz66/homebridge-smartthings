@@ -326,6 +326,7 @@ export class DishwasherService extends BaseService {
           this.cachedCompletionTime = null;
           this.lastInUse = this.platform.Characteristic.InUse.NOT_IN_USE;
           this.remainingSeeded = false;
+          this.service.updateCharacteristic(this.platform.Characteristic.InUse, this.platform.Characteristic.InUse.NOT_IN_USE);
           this.service.updateCharacteristic(this.platform.Characteristic.RemainingDuration, 0);
           this.contactSensorService?.updateCharacteristic(
             this.platform.Characteristic.ContactSensorState,
