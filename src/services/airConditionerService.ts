@@ -189,7 +189,13 @@ export class AirConditionerService extends BaseService {
     this.service.getCharacteristic(platform.Characteristic.CurrentTemperature)
       .onGet(this.getCurrentTemperature.bind(this));
 
-    this.service.getCharacteristic(platform.Characteristic.TargetTemperature)
+    const targetTemperature = this.service.getCharacteristic(platform.Characteristic.TargetTemperature);
+    // HAP initialises the value to its own minimum (10), below our minValue of 16; seed a valid
+    // value first so setProps() doesn't log an "illegal value" warning on every startup.
+    if (typeof targetTemperature.value !== 'number' || targetTemperature.value < 16) {
+      targetTemperature.updateValue(16);
+    }
+    targetTemperature
       .onGet(this.getTargetTemperature.bind(this))
       .onSet(this.setTargetTemperature.bind(this))
       .setProps({
