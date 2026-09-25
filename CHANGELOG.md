@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
 - **Invalid light brightness values** (#56) — `switchLevel` values that aren't a finite number (e.g. `null`) are no longer pushed to HomeKit, which made Homebridge log "illegal value" warnings; reads report the light as not responding instead, and webhook events with such values are ignored. Out-of-range levels are clamped to 0–100. Thanks to @yenba.
 
 ### Changed
-- **Automated tests in CI** — the build workflow now runs a unit-test suite (`npm test`, Node's built-in test runner) after lint and build, so regressions like the ones fixed below are caught on every push and pull request.
+- **Automated tests in CI** — the build workflow now runs a unit-test suite (`npm test`, Node's built-in test runner) after lint and build, so regressions like the ones fixed above are caught on every push and pull request.
 
 ## [1.0.68-beta.2] - Power / energy monitoring for plugs and switches
 
