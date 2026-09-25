@@ -399,6 +399,14 @@ export class ThermostatService extends BaseService {
     let characteristic = this.platform.Characteristic.TargetTemperature;
     let value: CharacteristicValue;
 
+    const isTemperature = event.attribute === 'heatingSetpoint' || event.attribute === 'coolingSetpoint'
+      || event.attribute === 'temperatureSetpoint' || event.attribute === 'temperature';
+    if (isTemperature && (typeof event.value !== 'number' || !Number.isFinite(event.value))) {
+      // A null reading would otherwise be pushed as null / -17.8 °C
+      this.log.debug(`Ignoring non-numeric ${event.attribute} event for ${this.name}`);
+      return;
+    }
+
     if (event.attribute === 'heatingSetpoint' || event.attribute === 'coolingSetpoint' || event.attribute === 'temperatureSetpoint') {
       value = this.units === 'F' ? (event.value - 32) * (5 / 9): event.value;
     } else if (event.attribute === 'temperature') {
@@ -415,6 +423,23 @@ export class ThermostatService extends BaseService {
         this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.OFF;
       }
       // switch on: the thermostatMode event will follow to set the correct mode
+      return;
+    } else if (event.attribute === 'thermostatOperatingState') {
+      // What the device is doing right now (mirrors getCurrentHeatingCoolingState); never the target mode.
+      characteristic = this.platform.Characteristic.CurrentHeatingCoolingState;
+      if (event.value === 'idle' || event.value === 'pending heat' || event.value === 'pending cool') {
+        value = this.platform.Characteristic.CurrentHeatingCoolingState.OFF;
+      } else if (event.value === 'heating') {
+        value = this.platform.Characteristic.CurrentHeatingCoolingState.HEAT;
+      } else if (event.value === 'cooling') {
+        value = this.platform.Characteristic.CurrentHeatingCoolingState.COOL;
+      } else {
+        // e.g. 'fan only': no clean mapping, leave it to the next poll
+        return;
+      }
+    } else if (event.attribute !== 'thermostatMode') {
+      // supportedThermostatModes, setpoint ranges, etc. are not a mode change
+      this.log.debug(`Ignoring ${event.attribute} event for ${this.name}`);
       return;
     } else {
       characteristic = this.platform.Characteristic.TargetHeatingCoolingState;
