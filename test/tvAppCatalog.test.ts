@@ -39,3 +39,9 @@ test('config schema lists the same TV apps as the runtime catalog', () => {
 test('settings UI lists the same TV apps as the runtime catalog', () => {
   assertSameCatalog(uiCatalog());
 });
+
+test('offers the Prime Video app ID used by older Samsung TVs (#59)', () => {
+  const catalog = new Map(runtimeCatalog);
+  assert.equal(catalog.get('3201910019365'), 'Prime Video');
+  assert.equal(catalog.get('3201512006785'), 'Prime Video (older TVs)');
+});

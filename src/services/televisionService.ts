@@ -10,6 +10,7 @@ export class TelevisionService extends BaseService {
   private static readonly AVAILABLE_APPS: Record<string, string> = {
     '3201907018807': 'Netflix',
     '3201910019365': 'Prime Video',
+    '3201512006785': 'Prime Video (older TVs)', // older Tizen models don't launch the ID above
     '111299001912': 'YouTube',
     '3201611010983': 'YouTube Kids',
     '3201606009684': 'Spotify',
@@ -257,7 +258,7 @@ export class TelevisionService extends BaseService {
     for (const appId of tvApps) {
       const appName = TelevisionService.AVAILABLE_APPS[appId];
       if (!appName) {
-        this.log.debug(`Skipping unknown app ID "${appId}" - not in AVAILABLE_APPS catalog`);
+        this.log.warn(`Skipping unknown TV app ID "${appId}" for ${this.name} - it is not in the app catalog`);
         continue;
       }
 

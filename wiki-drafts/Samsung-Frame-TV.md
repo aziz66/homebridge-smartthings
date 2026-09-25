@@ -139,6 +139,8 @@ Selected apps will appear in the input source list of your TV accessory in HomeK
 
 No apps are enabled by default.
 
+If **Prime Video** doesn't launch on an older TV, select **Prime Video (older TVs)** instead — older Tizen models use a different Prime Video app ID (reported on a 2019 RU7100).
+
 ---
 
 ## Troubleshooting Frame TV
