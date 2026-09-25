@@ -58,7 +58,8 @@ export class RobotVacuumService extends BaseService {
           try {
             movement = this.deviceStatus.status[ROBOT_MOVEMENT_CAPABILITY][ROBOT_MOVEMENT_ATTRIBUTE].value;
           } catch (error) {
-            this.log.error(`Missing robotCleanerMovement from ${this.name}`);
+            // debug, not error: this runs on every poll for a vacuum that never reports it
+            this.log.debug(`Missing robotCleanerMovement from ${this.name}; reporting Off`);
           }
           const isActive = ACTIVE_STATES.includes(movement);
           this.log.debug(`movement from ${this.name}: ${movement} -> HomeKit On = ${isActive}`);

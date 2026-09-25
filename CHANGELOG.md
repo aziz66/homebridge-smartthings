@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Samsung robot vacuum support** (#54) — opt-in via the new **`ExposeRobotVacuum`** flag (default `false`). Vacuums that expose `samsungce.robotCleanerOperatingState` + `switch` get a HomeKit Switch: On sends `start`, Off sends `returnToHome`, and the switch reads On while `robotCleanerMovement` reports cleaning, homing or moving (with real-time webhook updates). Off by default so the existing Switch tile on these devices keeps its current meaning. Thanks to @LaetoRamso.
+- **Samsung robot vacuum support** (#54) — opt-in via the new **`ExposeRobotVacuum`** flag (default `false`). Vacuums that expose `samsungce.robotCleanerOperatingState` + `switch` get a HomeKit Switch: On sends `start`, Off sends `returnToHome`, and the switch reads On while `robotCleanerMovement` reports cleaning, homing or moving (with real-time webhook updates). Off by default so the existing Switch tile on these devices keeps its current meaning. A vacuum that doesn't report `robotCleanerMovement` reads as Off, logged at debug level rather than as an error on every poll. Thanks to @LaetoRamso.
 
 ## [1.0.68-beta.3] - Sensor polling, outage crash, Prime Video & brightness fixes
 
