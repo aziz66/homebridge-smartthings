@@ -3,6 +3,7 @@ import { IKHomeBridgeHomebridgePlatform } from '../platform';
 import { BaseService } from './baseService';
 import { MultiServiceAccessory } from '../multiServiceAccessory';
 import { ShortEvent } from '../webhook/subscriptionHandler';
+import { EnergyService } from './energyService';
 
 export class SwitchService extends BaseService {
 
@@ -15,14 +16,17 @@ export class SwitchService extends BaseService {
     // the power/energy UI (its energy view conventionally expects an Outlet service).
     // This is a breaking presentation change for existing tiles, hence double-gated
     // (it only makes sense alongside ExposeEnergyMonitoring, which adds the Eve data).
+    // The eligibility test is shared with MultiServiceAccessory.addComponent so the two
+    // stay in lockstep: without it a metering TV (which reports powerConsumptionReport and
+    // keeps a legacy Switch unless removeLegacySwitchForTV is set) would have its tile
+    // converted to an Outlet while EnergyService skips it, leaving the breaking
+    // presentation change with none of the benefit.
     const exposeAsOutlet = platform.config.ExposeEnergyAsOutlet === true
-      && platform.config.ExposeEnergyMonitoring === true
-      && (multiServiceAccessory.mainHasCapability('powerMeter')
-        || multiServiceAccessory.mainHasCapability('powerConsumptionReport')
-        || multiServiceAccessory.mainHasCapability('energyMeter'));
+      && EnergyService.isEligible(platform, multiServiceAccessory, componentId, capabilities)
+      && EnergyService.hasMeteringCapability(capabilities);
     // Prune the opposite cached service so flipping the flag doesn't leave a ghost tile
     // alongside the new one (setServiceType only ever adds, never removes).
-    const stale = accessory.getService(exposeAsOutlet ? platform.Service.Switch : platform.Service.Outlet);
+    const stale = this.findOwnService(exposeAsOutlet ? platform.Service.Switch : platform.Service.Outlet);
     if (stale) {
       accessory.removeService(stale);
     }

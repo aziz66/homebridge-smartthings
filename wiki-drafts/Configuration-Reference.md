@@ -50,6 +50,17 @@ All intervals are in seconds. Set to `0` to disable polling for that device clas
 | `ExposeACDisplayLight` | boolean | `true` | Expose the AC display light as a switch if available. |
 | `OptionalModeForAirConditioners` | string enum | `None` | Add an extra switch on AC accessories for an optional mode. Options: `None`, `Sleep`, `Speed`, `WindFree`, `WindFreeSleep`, `Speed and Windfree`. |
 
+### Energy monitoring
+
+Applies to smart plugs, switches, and outlets that report power/energy. TVs and air conditioners are excluded — they report power too, but have no plain on/off tile for the characteristics to attach to. Values appear in the **Eve app**, Controller for HomeKit, and Home+; Apple's own Home app does not render them (its Energy view is Matter-only).
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `ExposeEnergyMonitoring` | boolean | `false` | Map `powerMeter`, `energyMeter`, `powerConsumptionReport`, and `voltageMeasurement` onto the device's existing on/off tile as Eve characteristics (watts, kWh, volts). Only devices that already have a Switch, Outlet, or Lightbulb tile on `main` are eligible; no tile is ever synthesized. |
+| `ExposeEnergyAsOutlet` | boolean | `false` | Requires `ExposeEnergyMonitoring`. Republishes energy-reporting switches as an Outlet, which the Eve app expects for its energy UI. **Breaking presentation change** — existing Switch tiles become Outlets and may need scenes/automations re-added; turning it back off reverts them. |
+| `PollEnergySeconds` | integer | `30` | How often to poll power/energy when energy monitoring is on. Webhook subscriptions provide real-time updates where available; this is the fallback. `0` disables polling entirely. Energy adds up to 4 capabilities to the 20-subscription budget, so on a large setup enabling it may demote a lower-traffic capability to polling (the log says which). |
+| `EnableMatterEnergy` | boolean | `false` | Requires `ExposeEnergyMonitoring`. Forward-compatible Matter `ElectricalMeter` export for Apple Home's native Energy view. A guaranteed no-op on current Homebridge builds — it activates only once Homebridge exposes the Matter energy device types (homebridge#3942). Safe to enable ahead of platform support. |
+
 ### Laundry & appliances
 
 | Field | Type | Default | Description |

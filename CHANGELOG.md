@@ -1,6 +1,15 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Power / energy monitoring for smart plugs and switches** (#53) — opt-in via the new **`ExposeEnergyMonitoring`** flag (default `false`). SmartThings `powerMeter`, `energyMeter`, `powerConsumptionReport`, and `voltageMeasurement` are mapped onto the accessory's existing on/off tile as Eve custom characteristics (live watts, accumulated kWh, volts). Values update from webhook events where subscriptions are available and fall back to polling on their own slower cadence (**`PollEnergySeconds`**, default 30; `0` disables). Only devices that already have a Switch, Outlet, or Lightbulb tile on `main` are eligible — the plugin never synthesizes a tile — and TVs and air conditioners are excluded because their power reports have no plain on/off host to attach to.
+- **`ExposeEnergyAsOutlet`** (default `false`) — republishes energy-reporting switches as an Outlet service, which the Eve app expects for its energy UI. **Breaking presentation change**: existing Switch tiles become Outlets in Apple Home and may need their scenes and automations re-added; turning it back off reverts them (and requires re-adding again). Requires `ExposeEnergyMonitoring`.
+- **`EnableMatterEnergy`** (default `false`) — forward-compatible Matter `ElectricalMeter` export, a deliberate no-op on current Homebridge builds. It activates only once Homebridge exposes the Matter energy device types (tracking homebridge#3942), at which point these devices would appear in Apple Home's native Energy view. Safe to enable ahead of platform support.
+
+> **Where the values show up:** the Eve app, Controller for HomeKit, and Home+. Apple's own Home app does **not** render Eve characteristics — its Energy view is Matter-only, which is what `EnableMatterEnergy` is staged for. If you enabled this expecting power under the tile in Apple Home, that arrives with the Matter path, not this release.
+
 ## [1.0.67] - Optional SmartThings webhook signature verification
 
 > Stable release of the `1.0.67-beta.0` work (below), validated end-to-end against live SmartThings traffic: with verification enabled, the signed `CONFIRMATION` handshake and live device `EVENT`s are accepted and applied, while unsigned/forged requests are rejected with **HTTP 401**; with the flag off (the default) webhook handling is unchanged. Opt-in and **off by default**, so existing setups are unaffected until they enable it.

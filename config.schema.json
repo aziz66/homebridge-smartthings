@@ -189,7 +189,7 @@
         "type": "integer",
         "required": false,
         "default": 30,
-        "description": "How often to poll power/energy values when Expose Energy Monitoring is on. Webhook subscriptions provide real-time updates when available; this polling is the fallback. Energy changes constantly, so a slower interval than the sensor poll is recommended. Default: 30 seconds."
+        "description": "How often to poll power/energy values when Expose Energy Monitoring is on. Webhook subscriptions provide real-time updates when available; this polling is the fallback. Energy changes constantly, so a slower interval than the sensor poll is recommended. Note that energy adds up to 4 capabilities to the 20-subscription budget, so on a large setup enabling this may push a lower-traffic capability over the limit and back to polling (the log says which). Default: 30 seconds."
       },
       "EnableMatterEnergy": {
         "title": "Enable Matter ElectricalMeter export (experimental, forward-compatible)",

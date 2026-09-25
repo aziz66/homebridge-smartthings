@@ -1,9 +1,9 @@
-import { PlatformAccessory, CharacteristicValue, Characteristic } from 'homebridge';
+import { PlatformAccessory, CharacteristicValue, Characteristic, Service } from 'homebridge';
 import { IKHomeBridgeHomebridgePlatform } from '../platform';
 import { BaseService } from './baseService';
 import { MultiServiceAccessory } from '../multiServiceAccessory';
 import { ShortEvent } from '../webhook/subscriptionHandler';
-import { makeEveCharacteristics, EveCharacteristics } from '../characteristics/eveCharacteristics';
+import { makeEveCharacteristics, EveCharacteristics, EVE_UUID } from '../characteristics/eveCharacteristics';
 import { MatterEnergyBridge, EnergyReadings } from '../matter/matterEnergyBridge';
 
 // Eve characteristic value ceilings (mirror the characteristic definitions).
@@ -18,11 +18,15 @@ const MAX_V = 380;
  * Energy view). A single getReadings() feeds both paths.
  *
  * Scope: only attached to plug/switch/outlet accessories that already have a
- * Switch or Outlet host tile (see MultiServiceAccessory.addComponent). It never
- * synthesizes a tile, and TV/AC accessories are excluded.
+ * Switch, Outlet or Lightbulb host tile (see MultiServiceAccessory.addComponent).
+ * It never synthesizes a tile, and TV/AC accessories are excluded.
  */
 export class EnergyService extends BaseService {
   static readonly ENERGY_CAPABILITIES = ['powerMeter', 'energyMeter', 'powerConsumptionReport', 'voltageMeasurement'];
+
+  // Capabilities that make a device a *metering* device. voltageMeasurement is deliberately
+  // excluded: a voltage-only report is not grounds for republishing a Switch as an Outlet.
+  static readonly METERING_CAPABILITIES = ['powerMeter', 'energyMeter', 'powerConsumptionReport'];
 
   private eve: EveCharacteristics;
   private readonly hasPower: boolean;
@@ -31,9 +35,67 @@ export class EnergyService extends BaseService {
   private matter?: MatterEnergyBridge;
   private last: EnergyReadings = { powerW: null, energyKwh: null, voltageV: null };
   private lastEnergyUnit: string | undefined;
+  private lastEventAt = 0;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private primaryChar: any;
   private primaryGet: () => number = () => 0;
+
+  /**
+   * The on/off tile on `main` that energy characteristics attach to.
+   *
+   * Resolved against `accessory.services` rather than `getService()` because hap-nodejs
+   * matches by UUID and *ignores* the subtype, so on a multi-component accessory
+   * `getService(Switch)` can return a sub-component's `Switch-<componentId>` tile.
+   * main's service is the one with no subtype. Lightbulb is included because the
+   * `['switch','switchLevel'] -> LightService` mapping consumes `switch` on dimmable
+   * metering plugs (Zooz ZEN30, Inovelli), which would otherwise be silently skipped.
+   */
+  public static findHost(accessory: PlatformAccessory, platform: IKHomeBridgeHomebridgePlatform): Service | undefined {
+    const hostUuids = [platform.Service.Outlet.UUID, platform.Service.Switch.UUID, platform.Service.Lightbulb.UUID];
+    return accessory.services.find(s => s.subtype === undefined && hostUuids.includes(s.UUID));
+  }
+
+  public static hasMeteringCapability(capabilities: string[]): boolean {
+    return EnergyService.METERING_CAPABILITIES.some(c => capabilities.includes(c));
+  }
+
+  /**
+   * Whether energy monitoring applies to this component at all.
+   *
+   * Shared by MultiServiceAccessory.addComponent (which decides whether to build the
+   * service) and SwitchService (which decides whether to republish the tile as an
+   * Outlet), so the two can never disagree about a device. TVs and ACs are excluded:
+   * they report power too, but have no plain on/off host, so the characteristics would
+   * land on the wrong tile (an AC mode switch, a TV volume slider).
+   */
+  public static isEligible(platform: IKHomeBridgeHomebridgePlatform, multiServiceAccessory: MultiServiceAccessory,
+    componentId: string, capabilities: string[]): boolean {
+    return platform.config.ExposeEnergyMonitoring === true
+      && componentId === 'main'
+      && capabilities.includes('switch')
+      && !multiServiceAccessory.isTelevisionDevice()
+      && !multiServiceAccessory.mainHasCapability('airConditionerMode');
+  }
+
+  /**
+   * Strip Eve characteristics off cached services when the feature is turned back off.
+   * Homebridge persists added characteristics in cachedAccessories, so without this the
+   * restored tile keeps advertising CurrentConsumption/TotalConsumption/Voltage with no
+   * handler and no updater behind them - frozen at their last value forever.
+   */
+  public static pruneCachedCharacteristics(accessory: PlatformAccessory): boolean {
+    const uuids: string[] = Object.values(EVE_UUID);
+    let removed = false;
+    accessory.services.forEach(service => {
+      service.characteristics
+        .filter(c => uuids.includes(c.UUID))
+        .forEach(c => {
+          service.removeCharacteristic(c);
+          removed = true;
+        });
+    });
+    return removed;
+  }
 
   constructor(platform: IKHomeBridgeHomebridgePlatform, accessory: PlatformAccessory, componentId: string,
     capabilities: string[], multiServiceAccessory: MultiServiceAccessory, name: string, deviceStatus) {
@@ -45,9 +107,8 @@ export class EnergyService extends BaseService {
     this.hasVoltage = capabilities.includes('voltageMeasurement');
 
     // Attach to the device's existing on/off tile. addComponent only constructs this
-    // service when a Switch/Outlet host exists on the main component, so the fallback
-    // below is purely defensive and should not be reached in practice.
-    const host = accessory.getService(platform.Service.Outlet) || accessory.getService(platform.Service.Switch);
+    // service when a host exists, so the fallback below is purely defensive.
+    const host = EnergyService.findHost(accessory, platform);
     if (host) {
       this.service = host;
     } else {
@@ -57,20 +118,22 @@ export class EnergyService extends BaseService {
     // Expose only the characteristics the device actually reports. The first one added
     // becomes the polling "primary" (its value is returned to startPollingState).
     if (this.hasPower) {
-      this.addChar(this.eve.CurrentConsumption).onGet(() => this.eveVal(this.last.powerW, MAX_W));
+      this.addChar(this.eve.CurrentConsumption).onGet(() => this.readChar(() => this.last.powerW, MAX_W));
       this.setPrimary(this.eve.CurrentConsumption, () => this.eveVal(this.last.powerW, MAX_W));
     }
     if (this.hasEnergy) {
-      this.addChar(this.eve.TotalConsumption).onGet(() => this.eveVal(this.last.energyKwh, MAX_KWH));
+      this.addChar(this.eve.TotalConsumption).onGet(() => this.readChar(() => this.last.energyKwh, MAX_KWH));
       this.setPrimary(this.eve.TotalConsumption, () => this.eveVal(this.last.energyKwh, MAX_KWH));
     }
     if (this.hasVoltage) {
-      this.addChar(this.eve.Voltage).onGet(() => this.eveVal(this.last.voltageV, MAX_V));
+      this.addChar(this.eve.Voltage).onGet(() => this.readChar(() => this.last.voltageV, MAX_V));
       this.setPrimary(this.eve.Voltage, () => this.eveVal(this.last.voltageV, MAX_V));
     }
 
-    // Seed from any status already available — also captures the energyMeter unit so the
-    // first webhook event (which carries no unit) converts correctly.
+    // Seed from any status already available. Note this is normally a no-op: addComponent
+    // builds services before the first status fetch, so component.status is still {}. The
+    // energyMeter unit is therefore resolved lazily per event (see energyUnit()) rather
+    // than captured here.
     this.refreshFromStatus();
 
     // Forward-compatible Matter ElectricalMeter shim (no-op until homebridge#3942).
@@ -119,6 +182,15 @@ export class EnergyService extends BaseService {
     return Math.min(max, Math.max(0, v));
   }
 
+  // A HomeKit read refreshes status like every other service, so the value can still be
+  // recovered when polling is disabled (PollEnergySeconds: 0) and no webhook is wired up.
+  private async readChar(pick: () => number | null, max: number): Promise<CharacteristicValue> {
+    if (await this.getStatus()) {
+      this.refreshFromStatus();
+    }
+    return this.eveVal(pick(), max);
+  }
+
   private async pollReadings(): Promise<CharacteristicValue> {
     const ok = await this.getStatus();
     if (ok) {
@@ -128,8 +200,25 @@ export class EnergyService extends BaseService {
     return this.primaryGet();
   }
 
+  /**
+   * Merge the latest status snapshot into the cached readings.
+   *
+   * Deliberately not a wholesale replace. getStatus() returns the *cached* status
+   * immediately and refreshes in the background, so the snapshot read here can be older
+   * than a webhook event already applied. A field is only taken when the snapshot
+   * actually carries it, and a stale snapshot never overwrites a value an event set.
+   */
   private refreshFromStatus(): void {
-    this.last = this.readFrom(this.deviceStatus.status);
+    const fresh = this.readFrom(this.deviceStatus.status);
+    const stale = this.multiServiceAccessory.statusTimestamp() <= this.lastEventAt;
+    const merge = (next: number | null, prev: number | null): number | null =>
+      (next === null || (stale && prev !== null)) ? prev : next;
+
+    this.last = {
+      powerW: merge(fresh.powerW, this.last.powerW),
+      energyKwh: merge(fresh.energyKwh, this.last.energyKwh),
+      voltageV: merge(fresh.voltageV, this.last.voltageV),
+    };
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -140,8 +229,7 @@ export class EnergyService extends BaseService {
     let energyKwh: number | null = null;
     const em = s?.energyMeter?.energy;
     if (typeof em?.value === 'number') {
-      this.lastEnergyUnit = em.unit; // remembered so webhook events (which carry no unit) convert correctly
-      energyKwh = this.toKwh(em.value, em.unit);
+      energyKwh = this.toKwh(em.value, this.energyUnit());
     } else if (typeof pcr?.energy === 'number') {
       energyKwh = pcr.energy / 1000; // powerConsumptionReport energy is Wh
     }
@@ -152,6 +240,23 @@ export class EnergyService extends BaseService {
       energyKwh: typeof energyKwh === 'number' ? energyKwh : null,
       voltageV: typeof rawVoltage === 'number' ? rawVoltage : null,
     };
+  }
+
+  /**
+   * The energyMeter unit, resolved from the latest status read.
+   *
+   * Only /status carries the unit - webhook events never do. It is resolved lazily (and
+   * remembered) rather than seeded in the constructor, because services are built before
+   * the first status fetch. Without this, a device reporting Wh would have every event
+   * before the first poll converted as kWh, i.e. 1000x too large - and permanently so
+   * when PollEnergySeconds is 0.
+   */
+  private energyUnit(): string | undefined {
+    const unit = this.deviceStatus.status?.energyMeter?.energy?.unit;
+    if (typeof unit === 'string') {
+      this.lastEnergyUnit = unit;
+    }
+    return this.lastEnergyUnit;
   }
 
   private toKwh(value: number, unit: string | undefined): number {
@@ -183,7 +288,7 @@ export class EnergyService extends BaseService {
             next.powerW = value.power;
           }
           if (typeof value.energy === 'number') {
-            next.energyKwh = value.energy / 1000; // Wh → kWh
+            next.energyKwh = value.energy / 1000; // Wh -> kWh
           }
         }
         break;
@@ -194,7 +299,7 @@ export class EnergyService extends BaseService {
         break;
       case 'energyMeter':
         if (typeof value === 'number') {
-          next.energyKwh = this.toKwh(value, this.lastEnergyUnit); // honor the unit seen on the last status read
+          next.energyKwh = this.toKwh(value, this.energyUnit()); // events carry no unit
         }
         break;
       case 'voltageMeasurement':
@@ -206,6 +311,7 @@ export class EnergyService extends BaseService {
         return;
     }
     this.last = next;
+    this.lastEventAt = Date.now();
     this.log.debug(`Energy event for ${this.name}: ${event.capability} -> ${this.last.powerW}W`);
     this.pushAll();
   }
