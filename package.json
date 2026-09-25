@@ -14,7 +14,7 @@
   },
   "homepage": "https://github.com/aziz66/homebridge-smartthings#readme",
   "engines": {
-    "node": ">=20.0.0",
+    "node": "^20.19.0 || ^22.12.0 || >=24.0.0",
     "homebridge": "^1.6.0 || ^2.0.0-beta.0"
   },
   "main": "dist/index.js",
