@@ -8,6 +8,10 @@ import { Command } from './smartThingsCommand';
 export class SecuritySystemService extends BaseService {
   private targetState: number;
   private supportsArmNight = false;
+  // True once validValues were derived from a real supportedSecuritySystemCommands report.
+  // At construction the component status is still empty, so the first derivation is only
+  // the conservative default and must be redone after the first successful status read.
+  private validTargetsFromStatus = false;
 
   // Last fully-settled CurrentState (STAY/AWAY/NIGHT/DISARMED). Used to mask
   // intermediate panel states like 'arming'/'disarming' so the HomeKit tile
@@ -36,12 +40,7 @@ export class SecuritySystemService extends BaseService {
     // Constrain valid target states based on supportedSecuritySystemCommands.
     // Devices that don't expose the array fall back to a conservative subset
     // (no NIGHT_ARM) — better UX than silently mapping NIGHT_ARM to STAY.
-    const validTargets = this.deriveValidTargetValues();
-    this.supportsArmNight = validTargets.includes(platform.Characteristic.SecuritySystemTargetState.NIGHT_ARM);
-    this.log.debug(`${this.name} supported target states: ${validTargets.join(',')}`);
-
-    this.service.getCharacteristic(platform.Characteristic.SecuritySystemTargetState)
-      .setProps({ validValues: validTargets });
+    this.applyValidTargetValues();
 
     this.service.getCharacteristic(platform.Characteristic.SecuritySystemCurrentState)
       .onGet(this.getCurrentState.bind(this));
@@ -76,6 +75,21 @@ export class SecuritySystemService extends BaseService {
         platform.Characteristic.SecuritySystemCurrentState,
         platform.Characteristic.SecuritySystemTargetState, this.getTargetState.bind(this));
     }
+  }
+
+  // (Re)apply validValues for SecuritySystemTargetState. A no-op once they came from real status.
+  private applyValidTargetValues(): void {
+    if (this.validTargetsFromStatus) {
+      return;
+    }
+    const supported = this.deviceStatus?.status?.securitySystem?.supportedSecuritySystemCommands?.value;
+    this.validTargetsFromStatus = Array.isArray(supported) && supported.length > 0;
+
+    const validTargets = this.deriveValidTargetValues();
+    this.supportsArmNight = validTargets.includes(this.platform.Characteristic.SecuritySystemTargetState.NIGHT_ARM);
+    this.log.debug(`${this.name} supported target states: ${validTargets.join(',')}`);
+    this.service.getCharacteristic(this.platform.Characteristic.SecuritySystemTargetState)
+      .setProps({ validValues: validTargets });
   }
 
   // Build the validValues array for SecuritySystemTargetState. Reads
@@ -115,12 +129,12 @@ export class SecuritySystemService extends BaseService {
 
   async setTargetState(value: CharacteristicValue) {
     this.log.debug(`Received setTargetState(${value}) event for ${this.name}`);
-    this.targetState = value as number;
 
     if (!this.multiServiceAccessory.isOnline()) {
       this.log.error(`${this.name} is offline`);
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
+    this.targetState = value as number;
 
     const C = this.platform.Characteristic.SecuritySystemTargetState;
     let cmd: Command;
@@ -148,20 +162,24 @@ export class SecuritySystemService extends BaseService {
 
     // Optimistically push CurrentState so HomeKit doesn't sit on the
     // intermediate 'arming'/'disarming' value reported by the panel.
-    // Webhook/poll will correct if SmartThings rejects the command.
     this.service.updateCharacteristic(
       this.platform.Characteristic.SecuritySystemCurrentState,
       this.mapTargetToCurrent(this.targetState),
     );
 
-    this.multiServiceAccessory.sendCommands([cmd]).then(success => {
-      if (success) {
-        this.log.debug(`setTargetState(${value}) SUCCESSFUL for ${this.name}`);
-        this.multiServiceAccessory.forceNextStatusRefresh();
-      } else {
-        this.log.error(`Command failed for ${this.name}`);
-      }
-    });
+    if (!(await this.multiServiceAccessory.sendCommands([cmd]))) {
+      this.log.error(`Command failed for ${this.name}`);
+      // Roll the optimistic state back to the last settled one so the tile doesn't
+      // keep showing armed/arming for a command SmartThings never accepted.
+      this.targetState = this.mapCurrentToTarget(this.lastSettledCurrentState);
+      this.service.updateCharacteristic(this.platform.Characteristic.SecuritySystemTargetState, this.targetState);
+      this.service.updateCharacteristic(this.platform.Characteristic.SecuritySystemCurrentState, this.anyAlarmActive()
+        ? this.platform.Characteristic.SecuritySystemCurrentState.ALARM_TRIGGERED
+        : this.lastSettledCurrentState);
+      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
+    this.log.debug(`setTargetState(${value}) SUCCESSFUL for ${this.name}`);
+    this.multiServiceAccessory.forceNextStatusRefresh();
   }
 
   async getCurrentState(): Promise<CharacteristicValue> {
@@ -172,6 +190,8 @@ export class SecuritySystemService extends BaseService {
           reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
           return;
         }
+
+        this.applyValidTargetValues();
 
         const armState = this.deviceStatus?.status?.securitySystem?.securitySystemStatus?.value;
         this.log.debug(`securitySystemStatus value from ${this.name}: ${armState}`);
