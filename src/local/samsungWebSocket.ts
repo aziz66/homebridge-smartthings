@@ -146,10 +146,14 @@ export class SamsungWebSocket {
       }
 
       const ws = new WebSocket(this.remoteUrl, { rejectUnauthorized: false });
+      // Set once this attempt resolves or rejects, so late events from this socket
+      // can't reset `connecting` under a newer attempt.
+      let settled = false;
 
       // Give extra time for first-time authorization (user needs to press Allow on TV)
       const timeoutMs = connectTimeoutOverride ?? (hasToken ? 5000 : 30000);
       const connectTimeout = setTimeout(() => {
+        settled = true;
         this.connecting = false;
         ws.terminate();
         const msg = hasToken
@@ -167,6 +171,7 @@ export class SamsungWebSocket {
           const msg = JSON.parse(data.toString());
           if (msg.event === 'ms.channel.connect') {
             clearTimeout(connectTimeout);
+            settled = true;
             this.handleConnectMessage(msg);
             this.log.debug('Samsung WebSocket: Remote control channel connected');
             this.remoteWs = ws;
@@ -175,6 +180,7 @@ export class SamsungWebSocket {
             resolve(ws);
           } else if (msg.event === 'ms.channel.unauthorized') {
             clearTimeout(connectTimeout);
+            settled = true;
             this.connecting = false;
             ws.terminate();
             // Token is invalid/expired — clear it so next attempt shows popup
@@ -192,18 +198,29 @@ export class SamsungWebSocket {
 
       ws.on('error', (err) => {
         clearTimeout(connectTimeout);
-        this.connecting = false;
-        this.log.error(`Samsung WebSocket: Remote connection error: ${err.message}`);
-        reject(err);
+        // Routine when the TV is off/unreachable; callers log the rejection.
+        this.log.debug(`Samsung WebSocket: Remote connection error: ${err.message}`);
+        if (!settled) {
+          settled = true;
+          this.connecting = false;
+          reject(err);
+        }
       });
 
       ws.on('close', () => {
         clearTimeout(connectTimeout);
-        this.connecting = false;
         if (this.remoteWs === ws) {
           this.remoteWs = null;
         }
         this.log.debug('Samsung WebSocket: Remote control connection closed');
+        // The TV can drop the socket before the channel handshake (e.g. it is
+        // shutting down or the Allow popup was dismissed): settle the attempt so
+        // callers fall back instead of hanging forever.
+        if (!settled) {
+          settled = true;
+          this.connecting = false;
+          reject(new Error(`Samsung WebSocket: Remote connection to ${this.ip} closed before the channel connected`));
+        }
       });
     });
   }
@@ -240,12 +257,29 @@ export class SamsungWebSocket {
       // connect/disconnect lifecycle here is intentionally NOT logged — only
       // errors (below) and actual state changes (ArtModeSwitchService) are.
       const ws = new WebSocket(this.artModeUrl);
+      let settled = false;
 
       const connectTimeout = setTimeout(() => {
+        settled = true;
         this.artConnecting = false;
         ws.terminate();
         reject(new Error(`Samsung WebSocket: Art mode connection timeout to ${this.ip}`));
       }, 5000);
+
+      // Resolve once for this socket. It replaces any stale artWs (e.g. one the TV
+      // is still closing) - gating on `!this.artWs` could leave this promise, and
+      // artConnecting, stuck forever.
+      const succeed = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(connectTimeout);
+        clearTimeout(fallbackTimeout);
+        this.artWs = ws;
+        this.artConnecting = false;
+        resolve(ws);
+      };
 
       ws.on('message', (data: WebSocket.Data) => {
         try {
@@ -255,21 +289,9 @@ export class SamsungWebSocket {
             this.handleConnectMessage(msg);
           } else if (msg.event === 'ms.channel.ready') {
             // Reference: samsung-tizen plugin resolves on ms.channel.ready
-            clearTimeout(connectTimeout);
-            clearTimeout(fallbackTimeout);
-            if (!this.artWs) {
-              this.artWs = ws;
-              this.artConnecting = false;
-              resolve(ws);
-            }
+            succeed();
           } else if (msg.event === 'd2d_service_message') {
-            clearTimeout(connectTimeout);
-            clearTimeout(fallbackTimeout);
-            if (!this.artWs) {
-              this.artWs = ws;
-              this.artConnecting = false;
-              resolve(ws);
-            }
+            succeed();
           }
         } catch {
           // Ignore non-JSON messages
@@ -278,28 +300,33 @@ export class SamsungWebSocket {
 
       // Fallback: some TVs don't send a connect message on the art channel
       const fallbackTimeout = setTimeout(() => {
-        if (!this.artWs && ws.readyState === WebSocket.OPEN) {
-          clearTimeout(connectTimeout);
-          this.artWs = ws;
-          this.artConnecting = false;
-          resolve(ws);
+        if (ws.readyState === WebSocket.OPEN) {
+          succeed();
         }
       }, 2000);
 
       ws.on('error', (err) => {
         clearTimeout(connectTimeout);
         clearTimeout(fallbackTimeout);
-        this.artConnecting = false;
-        this.log.error(`Samsung WebSocket: Art mode connection error: ${err.message}`);
-        reject(err);
+        // Routine while the TV is off (polled every 30s); callers handle the rejection.
+        this.log.debug(`Samsung WebSocket: Art mode connection error: ${err.message}`);
+        if (!settled) {
+          settled = true;
+          this.artConnecting = false;
+          reject(err);
+        }
       });
 
       ws.on('close', () => {
         clearTimeout(connectTimeout);
         clearTimeout(fallbackTimeout);
-        this.artConnecting = false;
         if (this.artWs === ws) {
           this.artWs = null;
+        }
+        if (!settled) {
+          settled = true;
+          this.artConnecting = false;
+          reject(new Error(`Samsung WebSocket: Art mode connection to ${this.ip} closed before the channel was ready`));
         }
       });
     });
@@ -322,9 +349,16 @@ export class SamsungWebSocket {
     }
   }
 
-  private disconnectArt(): void {
-    if (this.artWs) {
-      this.artWs.close();
+  /**
+   * Close an art-channel socket. Pass the socket the caller used so a newer
+   * connection (owned by a concurrent call) isn't torn down by mistake.
+   */
+  private disconnectArt(ws: WebSocket | null = this.artWs): void {
+    if (!ws) {
+      return;
+    }
+    ws.close();
+    if (this.artWs === ws) {
       this.artWs = null;
     }
   }
@@ -406,7 +440,7 @@ export class SamsungWebSocket {
               ws.removeListener('message', messageHandler);
               const status = eventData.value === 'on' || eventData.status === 'on' ? 'on' : 'off';
               this.log.debug(`Samsung WebSocket: Art mode status: ${status}`);
-              this.disconnectArt();
+              this.disconnectArt(ws);
               resolve(status);
             }
           }
@@ -417,7 +451,7 @@ export class SamsungWebSocket {
 
       const timeout = setTimeout(() => {
         ws.removeListener('message', messageHandler);
-        this.disconnectArt();
+        this.disconnectArt(ws);
         // Default to 'off' if we can't determine status
         resolve('off');
       }, 3000);
@@ -443,7 +477,7 @@ export class SamsungWebSocket {
         clearTimeout(timeout);
         ws.removeListener('message', messageHandler);
         this.log.error(`Samsung WebSocket: Failed to send art mode status request: ${err}`);
-        this.disconnectArt();
+        this.disconnectArt(ws);
         resolve('off');
       }
     });
@@ -457,7 +491,7 @@ export class SamsungWebSocket {
 
     if (ws.readyState !== WebSocket.OPEN) {
       this.log.warn(`Samsung WebSocket: Cannot set art mode — WebSocket not open (state=${ws.readyState})`);
-      this.disconnectArt();
+      this.disconnectArt(ws);
       return;
     }
 
@@ -479,13 +513,13 @@ export class SamsungWebSocket {
       ws.send(request);
     } catch (err) {
       this.log.error(`Samsung WebSocket: Failed to send art mode command: ${err}`);
-      this.disconnectArt();
+      this.disconnectArt(ws);
       return;
     }
 
     // Give the TV a moment to process, then disconnect
     await new Promise<void>(resolve => setTimeout(resolve, 500));
-    this.disconnectArt();
+    this.disconnectArt(ws);
   }
 
   /**
