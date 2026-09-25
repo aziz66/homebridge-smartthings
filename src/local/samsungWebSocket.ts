@@ -367,8 +367,8 @@ export class SamsungWebSocket {
 
   private sendKey(ws: WebSocket, cmd: 'Click' | 'Press' | 'Release', key: string): void {
     if (ws.readyState !== WebSocket.OPEN) {
-      this.log.warn(`Samsung WebSocket: Cannot send key ${cmd} ${key} — WebSocket not open (state=${ws.readyState})`);
-      return;
+      // Throw so callers fall back (e.g. power-off to the cloud) instead of reporting success.
+      throw new Error(`Samsung WebSocket: Cannot send key ${cmd} ${key} — WebSocket not open (state=${ws.readyState})`);
     }
     const payload = JSON.stringify({
       method: 'ms.remote.control',
