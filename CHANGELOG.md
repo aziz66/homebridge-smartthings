@@ -1,7 +1,9 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [1.0.68-beta.3] - Sensor polling, outage crash, Prime Video & brightness fixes
+
+> Bug fixes on top of `1.0.68-beta.2` (below): sensors now update in HomeKit in polling mode (#57), Homebridge no longer shuts down when a device's offline-recovery check fails during an outage, older Samsung TVs get a working Prime Video shortcut (#59), and invalid brightness values are ignored (#56). Also adds an automated test suite to CI. No configuration changes. Please report any issues before the stable release.
 
 ### Fixed
 - **Sensors not updating in polling mode** (#57) — contact, leak, smoke, carbon monoxide, occupancy, temperature, humidity, and light sensors now push their polled state to HomeKit. Polling wrote every sensor's value into a `MotionDetected` characteristic instead of the sensor's own, so without webhooks Home only saw changes when it re-read the tile, and automations on these sensors could not fire. The stray `MotionDetected` this left on cached sensor tiles is removed on startup. Motion sensors were unaffected.
