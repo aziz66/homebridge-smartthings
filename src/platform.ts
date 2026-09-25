@@ -181,6 +181,12 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
     this.api.on('didFinishLaunching', async () => {
       this.log.debug('Executed didFinishLaunching callback');
 
+      // Warn if the dependent energy flags are set without the parent that activates them.
+      if (this.config.ExposeEnergyMonitoring !== true
+        && (this.config.ExposeEnergyAsOutlet === true || this.config.EnableMatterEnergy === true)) {
+        this.log.warn('ExposeEnergyAsOutlet / EnableMatterEnergy have no effect unless ExposeEnergyMonitoring is enabled.');
+      }
+
       try {
         // Check for crash loop BEFORE attempting any auth or API calls
         if (await this.crashLoopManager.isCrashLoopDetected(defaultCrashLoopConfig)) {

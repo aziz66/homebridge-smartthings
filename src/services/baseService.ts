@@ -44,6 +44,20 @@ export class BaseService {
     return component.capabilities.find(c => c.id === capabilityToFind);
   }
 
+  /**
+   * Resolve the service belonging to THIS component.
+   *
+   * hap-nodejs `getService()` matches by UUID and ignores the subtype, so on a
+   * multi-component accessory it returns whichever tile was added first - which may
+   * belong to another component. Use this whenever the result is acted on destructively.
+   */
+  protected findOwnService(serviceType: WithUUID<typeof Service>): Service | undefined {
+    if (this.componentId === 'main') {
+      return this.accessory.services.find(s => s.UUID === serviceType.UUID && s.subtype === undefined);
+    }
+    return this.accessory.getServiceById(serviceType, `${serviceType.name}-${this.componentId}`);
+  }
+
   protected setServiceType(serviceType: WithUUID<typeof Service>) {
     if (this.componentId === 'main') {
       this.service = this.accessory.getService(serviceType) ||

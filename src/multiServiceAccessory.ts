@@ -35,6 +35,7 @@ import { AirPurifierService } from './services/airPurifierService';
 import { SecuritySystemService } from './services/securitySystemService';
 import { RefrigeratorTemperatureService } from './services/refrigeratorTemperatureService';
 import { ZigbangSmartDoorlockService } from './services/zigbangSmartDoorlockService';
+import { EnergyService } from './services/energyService';
 import { extractDisabledComponents } from './util/samsungRefrigerator';
 import { Command } from './services/smartThingsCommand';
 import { CrashLoopManager, CrashErrorType } from './auth/CrashLoopManager';
@@ -509,6 +510,35 @@ export class MultiServiceAccessory {
         service,
       );
     });
+
+    // Energy monitoring: opt-in. Scoped to plug/switch/outlet accessories — runs LAST so
+    // the on/off host (Switch/Outlet) already exists for the Eve characteristics to attach
+    // to, and never synthesizes a tile. TVs and ACs are excluded: they report power too but
+    // have no plain on/off host (energy would land on the wrong tile, e.g. an AC mode switch
+    // or a TV volume slider). Modeled on the TV/volume-slider special cases rather than the
+    // combo map, because energy capabilities are alternatives (a device may report any subset)
+    // which the combo map's "ALL required" semantics can't express. Subscriptions + event
+    // routing are auto-wired via the service's capabilities[] (getRegisteredCapabilities/processEvent).
+    if (EnergyService.isEligible(this.platform, this, componentId, capabilities)) {
+      const host = EnergyService.findHost(this.accessory, this.platform);
+      const energyCaps = EnergyService.ENERGY_CAPABILITIES.filter(c => capabilitiesToCover.includes(c));
+      if (host && energyCaps.length > 0) {
+        this.log.debug(`Adding EnergyService to ${this.name} for [${energyCaps.join(', ')}]`);
+        this.services.push(
+          new EnergyService(this.platform, this.accessory, componentId, energyCaps, this, this.name, component),
+        );
+      } else if (energyCaps.length > 0) {
+        // Explain the skip rather than dropping silently - the common cause is a combo
+        // service having consumed `switch` (e.g. switch + switchLevel -> LightService).
+        this.log.debug(`Skipping EnergyService for ${this.name}: no Switch/Outlet/Lightbulb tile on main to attach `
+          + `[${energyCaps.join(', ')}] to`);
+      }
+    } else if (componentId === 'main' && this.platform.config.ExposeEnergyMonitoring !== true
+      && EnergyService.pruneCachedCharacteristics(this.accessory)) {
+      // Feature turned back off: drop Eve characteristics restored from cachedAccessories,
+      // which would otherwise sit on the tile frozen at their last value with no handler.
+      this.log.debug(`Removed cached energy characteristics from ${this.name} (energy monitoring is off)`);
+    }
   }
 
   public isOnline(): boolean {
@@ -541,7 +571,7 @@ export class MultiServiceAccessory {
   }
 
   // Check if this device is a Television
-  private isTelevisionDevice(): boolean {
+  public isTelevisionDevice(): boolean {
     return TelevisionService.isTelevisionDevice(this.accessory.context.device);
   }
 
@@ -627,6 +657,12 @@ export class MultiServiceAccessory {
 
   public hasCachedStatus(): boolean {
     return this.hasInitialStatus;
+  }
+
+  // When the cached status was last refreshed. Lets a service tell whether the snapshot
+  // it is reading predates a webhook event it has already applied.
+  public statusTimestamp(): number {
+    return this.deviceStatusTimestamp;
   }
 
   /**

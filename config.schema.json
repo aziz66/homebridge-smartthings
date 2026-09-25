@@ -170,6 +170,34 @@
         "required": false,
         "default": true
       },
+      "ExposeEnergyMonitoring": {
+        "title": "Expose Energy Monitoring (Eve app)",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "Map SmartThings power/energy capabilities (powerMeter, energyMeter, powerConsumptionReport, voltageMeasurement) to Eve custom characteristics. These show live watts/kWh in the Eve app, Controller for HomeKit, and Home+. Apple's own Home app does NOT display these (its native Energy view is Matter-only). Applies to smart plugs / switches / outlets only (TVs and ACs that also report power are excluded). Default: off."
+      },
+      "ExposeEnergyAsOutlet": {
+        "title": "Publish energy-reporting switches as Outlets",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "Requires Expose Energy Monitoring. Republishes switches that report power/energy as an Outlet service, which the Eve app expects for its energy UI. WARNING: breaking presentation change — existing Switch tiles in Apple Home become Outlets and may need their automations/scenes re-added; turning it back off reverts them to Switches (again requiring re-adding). Default: off."
+      },
+      "PollEnergySeconds": {
+        "title": "Poll Energy (zero = don't poll)",
+        "type": "integer",
+        "required": false,
+        "default": 30,
+        "description": "How often to poll power/energy values when Expose Energy Monitoring is on. Webhook subscriptions provide real-time updates when available; this polling is the fallback. Energy changes constantly, so a slower interval than the sensor poll is recommended. Note that energy adds up to 4 capabilities to the 20-subscription budget, so on a large setup enabling this may push a lower-traffic capability over the limit and back to polling (the log says which). Default: 30 seconds."
+      },
+      "EnableMatterEnergy": {
+        "title": "Enable Matter ElectricalMeter export (experimental, forward-compatible)",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "Requires Expose Energy Monitoring. Attempts to publish energy-reporting devices as a Matter ElectricalMeter so they appear in the Apple Home Energy view (requires iOS 27 or later on your devices). This is a guaranteed no-op on current Homebridge builds — it only activates once Homebridge exposes the Matter energy device types (tracking: homebridge#3942). Safe to enable ahead of platform support. Default: off."
+      },
       "removeLegacySwitchForLaundry": {
         "title": "Remove Legacy Switch Service for Laundry Devices",
         "type": "boolean",
