@@ -257,7 +257,7 @@ export class MultiServiceAccessory {
 
     // set accessory information
     accessory.getService(platform.Service.AccessoryInformation)!
-      .setCharacteristic(platform.Characteristic.Manufacturer, accessory.context.device.manufacturerName)
+      .setCharacteristic(platform.Characteristic.Manufacturer, accessory.context.device.manufacturerName || 'SmartThings')
       .setCharacteristic(platform.Characteristic.Model, 'Default-Model')
       .setCharacteristic(platform.Characteristic.SerialNumber, 'Default-Serial');
 

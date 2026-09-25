@@ -539,6 +539,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
    */
   async discoverDevices(devices) {
     const externalAccessories: PlatformAccessory[] = [];
+    const restoredAccessories: PlatformAccessory[] = [];
     this.externalTvUuids = new Set();
 
     for (const device of devices) {
@@ -589,7 +590,10 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
 
       if (existingAccessory) {
         this.log.info('Restoring existing accessory from cache:', existingAccessory.displayName);
+        // Refresh the cached device record (label, capabilities, components) before building services.
+        existingAccessory.context.device = device;
         this.accessoryObjects.push(await this.createAccessoryObject(device, existingAccessory));
+        restoredAccessories.push(existingAccessory);
       } else {
         this.log.info('Registering new accessory: ' + device.label);
 
@@ -599,6 +603,12 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
         this.accessoryObjects.push(await this.createAccessoryObject(device, accessory));
         this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
       }
+    }
+
+    // Persist the refreshed context of restored bridged accessories. (Never for external TVs:
+    // updatePlatformAccessories() corrupts the bridge cache for them, issue #31.)
+    if (restoredAccessories.length > 0) {
+      this.api.updatePlatformAccessories(restoredAccessories);
     }
 
     if (externalAccessories.length > 0) {
