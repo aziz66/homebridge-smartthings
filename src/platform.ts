@@ -472,22 +472,28 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
   unregisterDevices(devices, all = false) {
     const accessoriesToRemove: PlatformAccessory[] = [];
 
+    if (all) {
+      this.log.info('Unregistering all devices');
+    }
+
     //
     // Loop through each accessory.  If they are not present in the list
     // of current devices, then unregister them.
     //
     this.accessories.forEach(accessory => {
       if (all) {
-        this.log.info('Unregistering all devices');
-        this.log.info('Will unregister ' + accessory.context.device.label);
+        this.log.info('Will unregister ' + accessory.context.device?.label);
         accessoriesToRemove.push(accessory);
+        return;
       }
       if (!devices.find(device => {
         return device.deviceId === accessory.UUID;
       })) {
-        // Don't unregister Art Mode accessories — they use a derived UUID (deviceId + '-artmode')
-        // and will be managed by registerArtModeAccessories()
-        if (accessory.context.device?.deviceId?.endsWith('-artmode')) {
+        // Art Mode accessories use a derived UUID (deviceId + '-artmode'). Keep the ones
+        // registerArtModeAccessories() will restore; drop orphans whose TV is gone or whose
+        // Art Mode switch was turned off.
+        const deviceId: string | undefined = accessory.context.device?.deviceId;
+        if (deviceId?.endsWith('-artmode') && this.isArtModeAccessoryWanted(deviceId)) {
           return;
         }
         // Don't re-unregister TVs that were just migrated to external accessories
@@ -495,14 +501,35 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
         if (this.externalTvUuids.has(accessory.UUID)) {
           return;
         }
-        this.log.info('Will unregister ' + accessory.context.device.label);
+        this.log.info('Will unregister ' + accessory.context.device?.label);
         accessoriesToRemove.push(accessory);
       }
     });
 
-    if (accessoriesToRemove.length > 0) {
-      this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, accessoriesToRemove);
+    this.removeAccessories(accessoriesToRemove);
+  }
+
+  // Unregister accessories from Homebridge and drop them from the restored-accessory cache, so
+  // later lookups (discoverDevices, registerArtModeAccessories) don't treat them as existing.
+  private removeAccessories(accessories: PlatformAccessory[]): void {
+    const unique = [...new Set(accessories)];
+    if (unique.length === 0) {
+      return;
     }
+    this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, unique);
+    for (const accessory of unique) {
+      const index = this.accessories.indexOf(accessory);
+      if (index !== -1) {
+        this.accessories.splice(index, 1);
+      }
+    }
+  }
+
+  // True when a discovered Frame TV will (re)register the Art Mode accessory with this derived id.
+  private isArtModeAccessoryWanted(artModeDeviceId: string): boolean {
+    return this.accessoryObjects.some(accObj =>
+      accObj.samsungWebSocket && accObj.frameTvConfig?.enableArtModeSwitch
+      && accObj['accessory'].context.device.deviceId + '-artmode' === artModeDeviceId);
   }
 
   /**
@@ -543,7 +570,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
             'select the TV from nearby accessories → enter your bridge PIN ' +
             '(or child-bridge PIN if the plugin runs in a child bridge).',
           );
-          this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
+          this.removeAccessories([existingAccessory]);
         } else {
           this.log.info('Registering new external TV accessory: ' + device.label);
           this.log.info(
