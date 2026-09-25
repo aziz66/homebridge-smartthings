@@ -343,8 +343,9 @@ export class ThermostatService extends BaseService {
     this.log.debug('Received setTargetTemperature(' + value + ') event for ' + this.name);
     this.targetTemperature = value as number;
 
-    // If the thermostat's units is Farenheit, then we need to convert from celcius
-    const convertedTemp = this.units === 'F' ? (value as number * (9/5)) + 32 : value;
+    // If the thermostat's units is Farenheit, then we need to convert from celcius.
+    // Fahrenheit devices take whole degrees (22 °C would otherwise be sent as 71.6 °F).
+    const convertedTemp = this.units === 'F' ? Math.round((value as number * (9/5)) + 32) : value;
 
     // Devices using a single temperatureSetpoint (e.g. Koolnova HVAC)
     if (this.capabilities.includes('temperatureSetpoint')) {

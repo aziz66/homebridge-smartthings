@@ -650,7 +650,6 @@ export class AirConditionerService extends BaseService {
 
     const temp = deviceStatus.temperatureMeasurement.temperature.value;
     const unit = deviceStatus.temperatureMeasurement.temperature.unit as TemperatureUnit;
-    this.temperatureUnit = unit;
 
     if (!temp || !unit) {
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.RESOURCE_DOES_NOT_EXIST);
@@ -676,6 +675,7 @@ export class AirConditionerService extends BaseService {
   private setTargetTemperature(value: CharacteristicValue): Promise<void> {
     this.log.info(`[${this.name}] set target temperature to ${value}`);
 
+    this.learnTemperatureUnit(this.deviceStatus?.status);
     const convertedTemp = this.fromCelsius(value as number);
     const command = new Command(this.componentId, 'thermostatCoolingSetpoint', 'setCoolingSetpoint', [convertedTemp]);
     return this.sendCommandsOrFail([command]);
@@ -693,9 +693,18 @@ export class AirConditionerService extends BaseService {
     return this.temperatureUnit === TemperatureUnit.Farenheit ? (value - 32) * (5 / 9) : value;
   }
 
-  // converts to fahrenheit if needed
+  // converts to fahrenheit if needed. Fahrenheit devices take whole degrees (22 °C -> 72, not 71.6).
   private fromCelsius(value: number): number {
-    return this.temperatureUnit === TemperatureUnit.Farenheit ? (value * (9 / 5)) + 32 : value;
+    return this.temperatureUnit === TemperatureUnit.Farenheit ? Math.round((value * (9 / 5)) + 32) : value;
+  }
+
+  // Learn the device's unit from any status we read, so target reads/sets and setpoint events never
+  // treat a Fahrenheit device as Celsius just because getCurrentTemperature() hasn't run yet.
+  private learnTemperatureUnit(deviceStatus): void {
+    const unit = deviceStatus?.temperatureMeasurement?.temperature?.unit;
+    if (unit === TemperatureUnit.Celsius || unit === TemperatureUnit.Farenheit) {
+      this.temperatureUnit = unit;
+    }
   }
 
   private async sendCommandsOrFail(commands: Command[]) {
@@ -711,11 +720,13 @@ export class AirConditionerService extends BaseService {
       // This provides graceful degradation during temporary network failures
       if (this.deviceStatus?.status) {
         this.log.warn(`[${this.name}] Using cached status due to communication failure`);
+        this.learnTemperatureUnit(this.deviceStatus.status);
         return this.deviceStatus.status;
       }
       // Only throw if no cached data exists
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
+    this.learnTemperatureUnit(this.deviceStatus.status);
     return this.deviceStatus.status;
   }
 
@@ -729,6 +740,10 @@ export class AirConditionerService extends BaseService {
 
     switch (event.capability) {
       case 'thermostatCoolingSetpoint':
+        if (typeof event.value !== 'number') {
+          break; // e.g. coolingSetpointRange, or a null reading
+        }
+        this.learnTemperatureUnit(this.deviceStatus?.status);
         temperature = this.toCelsius(event.value);
         this.thermostatService.updateCharacteristic(this.platform.Characteristic.TargetTemperature, temperature);
         break;
