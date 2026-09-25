@@ -1,6 +1,95 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [1.0.68] - Final release
+
+> **This is the final release; the project is no longer actively maintained** (see the README). It consolidates everything from `1.0.68-beta.0` to `1.0.68-beta.4` (the beta entries below list those changes in detail) and adds a full audit pass over the whole plugin: crash fixes, reliability hardening, security fixes and corrected device behaviour. Requires **Node.js 20.19+, 22.12+ or 24** and works with **Homebridge 1.6+ and 2.x**. No configuration changes are needed to upgrade.
+
+### Highlights from the 1.0.68 betas
+- **Air purifiers** (#48): fan speeds follow the device's own modes, and HEPA filter life is shown. Thanks to @codemoo.
+- **Air conditioners** (#49): numeric and `max` fan modes map to the correct speed. Thanks to @codemoo.
+- **Energy monitoring** (#53): opt-in with `ExposeEnergyMonitoring`. Live watts, kWh and volts appear in the Eve app (not Apple's Home app).
+- **Samsung robot vacuums** (#54): opt-in with `ExposeRobotVacuum`. Thanks to @LaetoRamso.
+- **Sensors update in polling mode** (#57). Previously every non-motion sensor only updated through webhooks.
+- **Prime Video shortcut for older Samsung TVs** (#59). Thanks to @christopherlaing.
+- **Invalid light brightness values are ignored** (#56). Thanks to @yenba.
+- **Homebridge no longer shuts down during a long internet outage**.
+
+### Fixed: crashes (each of these could stop Homebridge)
+- **Colour bulbs** no longer crash Homebridge at startup when the first status request fails.
+- **Thermostats and fans** no longer crash on a failed or incomplete status reading. Several **lock, door, valve, battery and light** reads that could crash on a missing status field now report "No Response" instead.
+
+### Fixed: reliability
+- **Valid logins are no longer deleted after network trouble.** The crash-loop safeguard could wipe your saved tokens after a few restarts during an outage or rate-limiting, forcing you to run the OAuth wizard again. It now only logs a warning.
+- **Requests can no longer hang forever.** SmartThings API and token requests time out after 15 seconds, and a stuck command can no longer freeze a device until restart.
+- **Startup survives a missing network.** If SmartThings can't be reached at boot (for example after a power cut), device discovery is retried in the background until it succeeds instead of leaving every accessory stale.
+- **Offline devices recover by themselves.** A device is marked offline only after about a minute of consecutive failures. It then comes back as soon as a normal status request, a command or a webhook event succeeds, including when polling is turned off. Opening it in the Home app triggers a retry within seconds. The old cloud health check could report some working devices as offline indefinitely.
+- **Tiles no longer bounce back after a command.** The intended pause in polling right after a command now actually happens (#60). Thanks to @NickMillerUK.
+- **SmartThings rate limits (HTTP 429)** are respected: the whole plugin backs off for as long as SmartThings asks, serving cached values meanwhile, and the limited request is retried once. A device command is only retried after a short wait, so it can't land after a newer one.
+- **Outages don't multiply API calls:** a failed status request is not repeated by every polled characteristic within the same 5 seconds.
+- **Fewer API calls:** air conditioners, air purifiers and the AC display light no longer force a fresh SmartThings request on every read (that was up to about 90 requests a minute per AC). The per-device health check at every startup is also gone.
+- **Hand-written configs:** air conditioners, air purifiers and the AC display light now poll with a 10-second fallback when their polling key is missing from `config.json`. Before, they didn't poll at all.
+- **Token refresh is coordinated**, so two refreshes can no longer race and invalidate the token. An authorization link copied from the log keeps working. Re-running the OAuth wizard now reliably replaces an older saved token.
+- `UnregisterAll: true` no longer throws, and re-registers devices correctly. Renamed SmartThings devices pick up their new name after a restart. Leftover Art Mode accessories are removed when the TV or the switch is gone.
+
+### Fixed: devices
+- **Buttons:** no more phantom presses every poll. Presses are delivered from webhook events, or detected when polling sees a genuinely new press. Double and long presses map correctly.
+- **Carbon monoxide detectors:** real-time alarms now update the carbon monoxide characteristic. They previously updated a carbon dioxide one, so an alarm waited for the next poll.
+- **Colour temperature:** tunable-white bulbs show and set the correct temperature. The conversion was wrong, for example 2000 K showed as 389 mired instead of 500.
+- **Failed commands are reported to HomeKit** for switches, lights, locks, doors, valves, window coverings and robot vacuums, instead of the tile silently showing a state the device never reached.
+- **Security systems:** a failed arm rolls the tile back instead of showing "Armed" or "Arming…". Night and Stay modes are offered only if your panel supports them.
+- **Locks and garage doors:** `PollLocksSeconds` and `PollDoorsSeconds` now work (they were ignored). A jammed lock shows as jammed. A garage door in an unknown state shows as stopped instead of closed.
+- **Valves** ignore switch events and keep "In Use" in step with the valve.
+- **Washers, dryers and dishwashers** recognise more Samsung cycle states, including AI and pre-wash, and clear "In Use" when stopped.
+- **Air conditioners:**
+  - °F units are detected before the first setpoint is sent, and setpoints are sent as whole degrees.
+  - Fan speed follows the device's own advertised modes, so the slider positions for some models change slightly.
+  - Swing is reported for every non-fixed mode.
+- **Thermostats:** only mode changes affect the target mode. Operating-state events such as "heating" or "idle" no longer switch the mode.
+- **Temperature sensors** convert webhook readings using the device's real unit, and ignore empty readings instead of showing −17.8 °C.
+- **Air purifiers:** filter life and "replace filter" now appear on a linked Filter Maintenance service, where Apple Home looks for them. Before, they sat on the purifier tile where HAP doesn't define them, which also logged a warning at every start.
+- **Air purifiers:** a quick off→on is no longer skipped. On upgraded installs the humidity sensor is no longer grouped into the purifier tile, matching new installs. The middle speed (for example "medium") no longer jumps to the top speed when a scene or the Home app writes the displayed value back.
+- **Energy monitoring:** `ExposeEnergyAsOutlet` now actually publishes metering plugs as Outlets. It previously had no effect.
+- **Colour bulbs:** colour and colour-temperature changes made outside HomeKit now reach HomeKit through webhooks on bulbs that are also dimmable.
+- **Fans:** an empty speed no longer reports 100%.
+
+### Fixed: TVs and Frame TVs
+- **TV power state is polled** as `PollTelevisionsSeconds` always intended. Without webhooks, TV on/off automations now work.
+- The **active input** stays correct after the TV's input list changes. Stale inputs are removed from bridged TVs, and duplicate app shortcuts are ignored.
+- The **Frame/Tizen WebSocket** can no longer hang when the TV closes the connection early. **Art Mode** reads answer immediately from the last known state.
+- The **pairing token** saved by the plugin is preferred over an older one in the config, so you no longer see the TV's "Allow" prompt after every restart.
+- A remote key press fails properly when the connection is down, so power-off can fall back to the cloud. A TV that drops the connection while powering off is no longer reported as a failed power-off, and the tile no longer flips back to On afterwards.
+
+### Security
+- **Tokens and the client secret are kept out of the logs.** Failed token refreshes used to print them, and users often paste logs into issues.
+- **Webhook crash fixed:** a single malformed request to the webhook port could crash Homebridge. It now gets an HTTP 400. The webhook server also times out stalled clients.
+- **Webhook hardening:**
+  - app and location IDs from webhook requests are validated and can't overwrite stored values unless the request is signature-verified;
+  - bare device events outside the SmartThings envelope are rejected;
+  - the confirmation step only contacts SmartThings hosts.
+
+  Enabling `verifyWebhookSignatures` is recommended if you use webhooks.
+- The SmartThings token file and the Frame TV pairing token file are written readable only by their owner. An existing token file from an older version is tightened the next time it is loaded.
+- Dependencies updated to versions with no known vulnerabilities.
+
+### Changed
+- **Node.js 20.19+, 22.12+ or 24 is now required.** The settings wizard doesn't load on older Node 20 and 22 releases.
+- The settings form's defaults now match the plugin's actual behaviour. `registerVolumeSlider`, `ExposeACDisplayLight` and `ExposeZigbangSmartDoorlock` show as off unless you turn them on, which is how the plugin has always treated a missing value. Values you already saved are unchanged.
+- The Zigbang Smart Doorlock integration is opt-in (`ExposeZigbangSmartDoorlock`). The 1.0.64 notes described it as on by default, but the plugin has always required the setting.
+- The unused `GarageDoorMaxPoll` setting has been removed from the settings form. An existing value is harmlessly ignored.
+- The published package now contains only what the plugin needs to run.
+- The README carries an end-of-maintenance notice, and the issue templates list which secrets to redact.
+
+### What you may notice after upgrading
+- **"No Response" during outages.** During an outage lasting more than about a minute, most devices now show "No Response" instead of silently showing old values. Air conditioners and air purifiers keep showing their last known values. Everything recovers automatically once SmartThings answers again.
+- **Commands wait for SmartThings and report failures.** HomeKit shows an error if a command fails. A slow SmartThings response can make a tile briefly show "Updating…".
+- **Scenes with colour temperatures** will now produce the white tone they were set to. The old conversion was wrong, so some scenes may look different.
+- **TV power is polled** every `PollTelevisionsSeconds` (default 15 s). This adds a few API calls per TV but makes TV automations work without webhooks.
+- **Buttons without webhooks** report presses once per poll interval (default about 10 s), instead of firing phantom presses.
+- **Bridged TVs:** leftover input sources from earlier setups are removed.
+- **Polling pauses for 20 s after each command**, so tiles don't bounce back.
+- **Webhooks:** the endpoint only accepts genuine SmartThings lifecycle requests.
+
 ## [1.0.68-beta.4] - Samsung robot vacuum support
 
 > Adds opt-in Samsung robot vacuum support (#54) on top of `1.0.68-beta.3` (below). Off by default: set `ExposeRobotVacuum` to enable it. No other changes to device behavior. Please report any issues before the stable release.
