@@ -535,6 +535,11 @@ export class AirPurifierService extends BaseService {
           this.hasDeviceFanModes = resolved.fromDevice;
           break;
         }
+        if (event.attribute !== undefined && event.attribute !== 'fanMode') {
+          // e.g. availableAcFanModes: a mode list, not a fan mode. This service resolves its modes
+          // from supportedAcFanModes only (see updateFanModeCache), so leave the cache alone.
+          break;
+        }
         // attribute 'fanMode' (or unspecified, for back-compat).
         this.airPurifierService.updateCharacteristic(this.platform.Characteristic.TargetAirPurifierState,
           this.isAutoMode(event.value as string) ? 1 : 0);
