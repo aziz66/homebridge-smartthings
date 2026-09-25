@@ -4,6 +4,8 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
+const SMARTTHINGS_ID_PATTERN = /^[0-9a-f-]{36}$/i;
+
 class UiServer extends HomebridgePluginUiServer {
   constructor() {
     super();
@@ -150,6 +152,10 @@ class UiServer extends HomebridgePluginUiServer {
 
     if (!accessToken || !installedAppId || !locationId) {
       throw new RequestError('Missing required token data (access_token, installed_app_id, or location_id). Restart Homebridge to populate these values.');
+    }
+    // The IDs become URL path segments below: only accept SmartThings UUIDs.
+    if (!SMARTTHINGS_ID_PATTERN.test(installedAppId) || !SMARTTHINGS_ID_PATTERN.test(locationId)) {
+      throw new RequestError('Stored installed_app_id or location_id is invalid. Clear tokens from the OAuth wizard, re-authenticate and restart Homebridge.');
     }
 
     const baseURL = 'https://api.smartthings.com/v1/';

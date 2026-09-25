@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import fsExtra from 'fs-extra';
 import { describeError } from './sanitizeError';
+import { isSmartThingsId } from '../webhook/smartThingsIds';
 
 export interface TokenData {
   access_token: string;
@@ -248,12 +249,16 @@ export class TokenManager {
     return this.tokenData?.refresh_token || null;
   }
 
+  // IDs are used as URL path segments; ignore anything that is not a UUID (e.g. a value
+  // written by an older version from an unauthenticated webhook body).
   public getInstalledAppId(): string | null {
-    return this.tokenData?.installed_app_id || null;
+    const id = this.tokenData?.installed_app_id;
+    return isSmartThingsId(id) ? id : null;
   }
 
   public getLocationId(): string | null {
-    return this.tokenData?.location_id || null;
+    const id = this.tokenData?.location_id;
+    return isSmartThingsId(id) ? id : null;
   }
 
   public isTokenValid(): boolean {
