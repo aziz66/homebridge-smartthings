@@ -497,7 +497,7 @@ export class TelevisionService extends BaseService {
         } else {
           reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
         }
-      });
+      }).catch(() => reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE)));
     });
   }
 
@@ -570,7 +570,7 @@ export class TelevisionService extends BaseService {
         } else {
           resolve(this.currentInputSource);
         }
-      });
+      }).catch(() => resolve(this.currentInputSource));
     });
   }
 
@@ -804,7 +804,7 @@ export class TelevisionService extends BaseService {
         } else {
           resolve(this.platform.Characteristic.PictureMode.STANDARD);
         }
-      });
+      }).catch(() => resolve(this.platform.Characteristic.PictureMode.STANDARD));
     });
   }
 
@@ -855,7 +855,7 @@ export class TelevisionService extends BaseService {
         } else {
           resolve(this.isMuted);
         }
-      });
+      }).catch(() => resolve(this.isMuted));
     });
   }
 
@@ -919,7 +919,7 @@ export class TelevisionService extends BaseService {
         } else {
           resolve(this.currentVolume);
         }
-      });
+      }).catch(() => resolve(this.currentVolume));
     });
   }
 
@@ -1084,7 +1084,7 @@ export class TelevisionService extends BaseService {
           // Update picture mode if the service supports it
           this.getPictureMode().then(mode => {
             this.televisionService.updateCharacteristic(this.platform.Characteristic.PictureMode, mode);
-          });
+          }).catch(error => this.log.debug(`Could not update picture mode for ${this.name}: ${error}`));
         }
         break;
 

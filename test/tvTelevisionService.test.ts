@@ -162,6 +162,14 @@ test('stale cached InputSource services are removed from a restored (bridged) TV
   assert.deepEqual(remaining.map(identifierOf).sort(), [1, 2, 3]);
 });
 
+test('TV getters settle when the status fetch rejects', async () => {
+  const { tv } = createTv({ capabilities: [...TV_CAPABILITIES, 'custom.picturemode'] });
+  tv.getStatus = () => Promise.reject(new Error('boom'));
+  assert.equal(await tv.getPictureMode(), hap.Characteristic.PictureMode.STANDARD);
+  assert.equal(await tv.getActiveIdentifier(), 1);
+  await assert.rejects(tv.getTelevisionActive());
+});
+
 test('a TV app listed twice in tvApps is registered once', async () => {
   const { tv, accessory } = createTv({
     config: { tvApps: [NETFLIX, YOUTUBE, NETFLIX] },
