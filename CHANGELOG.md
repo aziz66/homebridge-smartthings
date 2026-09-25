@@ -3,6 +3,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Sensors not updating in polling mode** (#57) — contact, leak, smoke, carbon monoxide, occupancy, temperature, humidity, and light sensors now push their polled state to HomeKit. Polling wrote every sensor's value into a `MotionDetected` characteristic instead of the sensor's own, so without webhooks Home only saw changes when it re-read the tile, and automations on these sensors could not fire. The stray `MotionDetected` this left on cached sensor tiles is removed on startup. Motion sensors were unaffected.
+
 ### Changed
 - **Automated tests in CI** — the build workflow now runs a unit-test suite (`npm test`, Node's built-in test runner) after lint and build, so regressions like the ones fixed below are caught on every push and pull request.
 

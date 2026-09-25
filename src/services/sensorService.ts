@@ -24,6 +24,7 @@ export abstract class SensorService extends BaseService {
     this.statusTranslation = statusTranslation;
     this.setServiceType(sensorService);
     this.characteristic = sensorCharacteristic;
+    this.removeStrayMotionDetected(sensorService);
 
     // Set the event handlers
     this.service.getCharacteristic(sensorCharacteristic)
@@ -39,7 +40,7 @@ export abstract class SensorService extends BaseService {
         pollSensorsSeconds,
         this.getSensorState.bind(this),
         this.service,
-        this.platform.Characteristic.MotionDetected
+        sensorCharacteristic,
       );
 
       if (timerResult && typeof timerResult === 'object') {
@@ -47,6 +48,20 @@ export abstract class SensorService extends BaseService {
       } else {
         this.pollingTimer = undefined;
       }
+    }
+  }
+
+  // Before 1.0.68 every sensor was polled into MotionDetected, and HAP adds a characteristic
+  // that is missing when it is updated - so non-motion sensor tiles restored from
+  // cachedAccessories carry a stray MotionDetected, frozen at the last polled value.
+  private removeStrayMotionDetected(sensorService: WithUUID<typeof Service>) {
+    if (sensorService.UUID === this.platform.Service.MotionSensor.UUID) {
+      return;
+    }
+    const stray = this.service.characteristics.find(c => c.UUID === this.platform.Characteristic.MotionDetected.UUID);
+    if (stray) {
+      this.service.removeCharacteristic(stray);
+      this.log.debug(`Removed stray MotionDetected characteristic from ${this.name}`);
     }
   }
 
