@@ -122,12 +122,20 @@ export class TokenManager {
 
   public async updateTokens(tokenData: Partial<TokenData>): Promise<void> {
     const oldAccessToken = this.tokenData?.access_token;
-    this.tokenData = {
+    const updated = {
       ...this.tokenData,
       ...tokenData,
-      expires_at: Date.now() + (tokenData.expires_in || 0) * 1000,
-      refresh_token_expires_at: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days
     } as TokenData;
+    // Only a new access token (or expiry) moves the access expiry, and only a new refresh token
+    // moves the refresh expiry. Partial records such as { location_id } or { installed_app_id }
+    // must not reset them, or the next check forces an unnecessary refresh.
+    if (tokenData.access_token !== undefined || tokenData.expires_in !== undefined) {
+      updated.expires_at = Date.now() + (tokenData.expires_in || 0) * 1000;
+    }
+    if (tokenData.refresh_token !== undefined) {
+      updated.refresh_token_expires_at = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days
+    }
+    this.tokenData = updated;
 
     // Save tokens first
     this.saveTokens();
