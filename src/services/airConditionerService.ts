@@ -373,17 +373,17 @@ export class AirConditionerService extends BaseService {
       return 0;
     }
 
-    // Preserve the legacy display percentages for the modes this service already understood.
-    // Device-specific/dynamic handling is only for extra labels like '1'/'2'/'3'/'4'/'max'.
-    const legacyLevel = AirConditionerService.LEGACY_FAN_MODE_LEVEL[fanMode];
-    if (legacyLevel !== undefined) {
-      return legacyLevel;
-    }
-
-    const modes = this.manualFanModes();
-    const index = modes.indexOf(fanMode);
-    if (index >= 0) {
-      return Math.round(((index + 1) / modes.length) * 100);
+    // The legacy fixed percentages only fit the legacy mode list. When the device advertises its
+    // own modes, map by position in that list - the inverse of levelToFanMode() - otherwise a mixed
+    // list like [auto, quiet, low, medium, high] reads back one step low.
+    if (this.hasDeviceFanModes) {
+      const modes = this.manualFanModes();
+      const index = modes.indexOf(fanMode);
+      if (index >= 0) {
+        // floor, not round: keeps the level inside this mode's bucket, so it round-trips through
+        // levelToFanMode() (with round, 67 % of a 3-mode list would map back to the top mode).
+        return Math.floor(((index + 1) / modes.length) * 100);
+      }
     }
 
     return AirConditionerService.FALLBACK_FAN_MODE_LEVEL[fanMode] ?? 0;
