@@ -37,13 +37,10 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
   public auth: SmartThingsAuth;
   private crashLoopManager: CrashLoopManager;
 
-  private headerDict = {
-    'Authorization': 'Bearer: ' + this.config.AccessToken,
-  };
-
+  // The Authorization header is set per request by the interceptor below from the managed OAuth token.
   public readonly axInstance = axios.default.create({
-    baseURL: this.config.BaseURL,
-    headers: this.headerDict,
+    baseURL: this.config.BaseURL || 'https://api.smartthings.com/v1/',
+    timeout: 15000,
   });
 
   private refreshTokenPromise: Promise<void> | null = null;

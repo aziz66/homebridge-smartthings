@@ -794,19 +794,33 @@ export class MultiServiceAccessory {
     });
   }
 
-  // Wait for the condition to be true.  Will check every 500 ms
-  private async waitFor(condition: () => boolean): Promise<void> {
+  // Upper bound for waitFor(). Requests time out after 15 s, so this only trips if something
+  // is wedged; proceeding beats blocking every later command/refresh for this device forever.
+  protected waitForTimeoutMs = 30 * 1000;
+
+  // Wait for the condition to be true (checked every 250 ms), for at most waitForTimeoutMs.
+  // Resolves true if the condition was met, false if the wait timed out.
+  private async waitFor(condition: () => boolean): Promise<boolean> {
     if (condition()) {
-      return;
+      return true;
     }
 
     this.log.debug(`${this.name} command or request is waiting...`);
+    const deadline = Date.now() + this.waitForTimeoutMs;
     return new Promise(resolve => {
       const interval = setInterval(() => {
         if (condition()) {
           this.log.debug(`${this.name} command or request is proceeding.`);
           clearInterval(interval);
-          resolve();
+          resolve(true);
+          return;
+        }
+        if (Date.now() >= deadline) {
+          this.log.warn(`${this.name}: gave up waiting for a previous command or status request after `
+            + `${Math.round(this.waitForTimeoutMs / 1000)} s - proceeding`);
+          clearInterval(interval);
+          resolve(false);
+          return;
         }
         this.log.debug(`${this.name} still waiting...`);
       }, 250);

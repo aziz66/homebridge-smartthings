@@ -76,6 +76,7 @@ export class SmartThingsAuth {
         'Authorization': `Basic ${basicAuth}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
+      timeout: 15000,
     });
 
     return response.data;
@@ -102,6 +103,7 @@ export class SmartThingsAuth {
           'Authorization': `Basic ${basicAuth}`,
           'Content-Type': 'application/x-www-form-urlencoded',
         },
+        timeout: 15000,
       });
 
       this.log.info('Successfully obtained new tokens from API.');
