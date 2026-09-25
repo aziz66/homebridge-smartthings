@@ -51,8 +51,12 @@ export class ThermostatService extends BaseService {
 
     // set targets
 
-    this.getCurrentHeatingCoolingState().then((value) => this.targetHeatingCoolingState = value);
-    this.getCurrentTemperature().then((value) => this.targetTemperature = value as number);
+    // These run detached from HomeKit, so a failure must be caught here: an unhandled rejection
+    // becomes an uncaughtException and Homebridge shuts down.
+    this.getCurrentHeatingCoolingState().then((value) => this.targetHeatingCoolingState = value)
+      .catch((error) => this.log.debug(`Initial heating/cooling state unavailable for ${this.name}: ${error?.message || error}`));
+    this.getCurrentTemperature().then((value) => this.targetTemperature = value as number)
+      .catch((error) => this.log.debug(`Initial temperature unavailable for ${this.name}: ${error?.message || error}`));
 
     let pollSensors = 10; // default to 10 seconds
     if (this.platform.config.PollSensorsSeconds !== undefined) {
@@ -125,6 +129,9 @@ export class ThermostatService extends BaseService {
             resolve(this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.HEAT);
             return;
         }
+      }).catch((error) => {
+        this.log.warn(`Failed to read heating / cooling state for ${this.name}: ${error?.message || error}`);
+        resolve(this.targetHeatingCoolingState);
       });
     });
   }
@@ -260,6 +267,9 @@ export class ThermostatService extends BaseService {
         } else {
           reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
         }
+      }).catch((error) => {
+        this.log.warn(`Failed to read heating / cooling state for ${this.name}: ${error?.message || error}`);
+        reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
       });
     });
   }
@@ -267,23 +277,25 @@ export class ThermostatService extends BaseService {
   // CURRENT TEMP
   async getCurrentTemperature(): Promise<CharacteristicValue> {
     this.log.debug('Received getCurrentTemperature for ' + this.name);
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       this.getStatus().then((success) => {
         if (success) {
-          if (this.deviceStatus.status.temperatureMeasurement.temperature.value === null ||
-            this.deviceStatus.status.temperatureMeasurement.temperature.value === undefined ||
-            this.deviceStatus.status.temperatureMeasurement.temperature.unit === null ||
-            this.deviceStatus.status.temperatureMeasurement.temperature.value === undefined) {
+          const temperature = this.deviceStatus.status?.temperatureMeasurement?.temperature;
+          if (temperature?.value === null || temperature?.value === undefined ||
+            temperature?.unit === null || temperature?.unit === undefined) {
+            // Reject rather than throw: a throw inside this callback would be an unhandled
+            // rejection (fatal to Homebridge) and leave the HomeKit read hanging.
             this.log.warn(`${this.name} returned bad value for status`);
-            throw ('Bad Value');
+            reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
+            return;
           }
-          if (this.deviceStatus.status.temperatureMeasurement.temperature.unit === 'F') {
+          if (temperature.unit === 'F') {
             this.log.debug('Converting temp to celcius');
             this.units = 'F';
-            resolve((this.deviceStatus.status.temperatureMeasurement.temperature.value as number - 32) * (5 / 9)); // Convert to Celcius
+            resolve((temperature.value as number - 32) * (5 / 9)); // Convert to Celcius
           } else {
             this.units = 'C';
-            resolve(this.deviceStatus.status.temperatureMeasurement.temperature.value);
+            resolve(temperature.value);
           }
         } else {
           // reject (new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
@@ -291,6 +303,9 @@ export class ThermostatService extends BaseService {
           this.log.warn(`Failed to get status for ${this.name}`);
           resolve(0);
         }
+      }).catch((error) => {
+        this.log.warn(`Failed to read temperature for ${this.name}: ${error?.message || error}`);
+        reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
       });
     });
   }
@@ -309,9 +324,9 @@ export class ThermostatService extends BaseService {
         // fall through to null check below
       }
     } else if (await this.getTargetHeatingCoolingState() === this.platform.Characteristic.TargetHeatingCoolingState.COOL) {
-      temp = this.deviceStatus.status.thermostatCoolingSetpoint.coolingSetpoint.value;
+      temp = this.deviceStatus.status?.thermostatCoolingSetpoint?.coolingSetpoint?.value;
     } else {
-      temp = this.deviceStatus.status.thermostatHeatingSetpoint.heatingSetpoint.value;
+      temp = this.deviceStatus.status?.thermostatHeatingSetpoint?.heatingSetpoint?.value;
     }
 
     if (temp === null || temp === undefined) {
@@ -328,8 +343,9 @@ export class ThermostatService extends BaseService {
     this.log.debug('Received setTargetTemperature(' + value + ') event for ' + this.name);
     this.targetTemperature = value as number;
 
-    // If the thermostat's units is Farenheit, then we need to convert from celcius
-    const convertedTemp = this.units === 'F' ? (value as number * (9/5)) + 32 : value;
+    // If the thermostat's units is Farenheit, then we need to convert from celcius.
+    // Fahrenheit devices take whole degrees (22 °C would otherwise be sent as 71.6 °F).
+    const convertedTemp = this.units === 'F' ? Math.round((value as number * (9/5)) + 32) : value;
 
     // Devices using a single temperatureSetpoint (e.g. Koolnova HVAC)
     if (this.capabilities.includes('temperatureSetpoint')) {
@@ -384,6 +400,14 @@ export class ThermostatService extends BaseService {
     let characteristic = this.platform.Characteristic.TargetTemperature;
     let value: CharacteristicValue;
 
+    const isTemperature = event.attribute === 'heatingSetpoint' || event.attribute === 'coolingSetpoint'
+      || event.attribute === 'temperatureSetpoint' || event.attribute === 'temperature';
+    if (isTemperature && (typeof event.value !== 'number' || !Number.isFinite(event.value))) {
+      // A null reading would otherwise be pushed as null / -17.8 °C
+      this.log.debug(`Ignoring non-numeric ${event.attribute} event for ${this.name}`);
+      return;
+    }
+
     if (event.attribute === 'heatingSetpoint' || event.attribute === 'coolingSetpoint' || event.attribute === 'temperatureSetpoint') {
       value = this.units === 'F' ? (event.value - 32) * (5 / 9): event.value;
     } else if (event.attribute === 'temperature') {
@@ -400,6 +424,23 @@ export class ThermostatService extends BaseService {
         this.targetHeatingCoolingState = this.platform.Characteristic.TargetHeatingCoolingState.OFF;
       }
       // switch on: the thermostatMode event will follow to set the correct mode
+      return;
+    } else if (event.attribute === 'thermostatOperatingState') {
+      // What the device is doing right now (mirrors getCurrentHeatingCoolingState); never the target mode.
+      characteristic = this.platform.Characteristic.CurrentHeatingCoolingState;
+      if (event.value === 'idle' || event.value === 'pending heat' || event.value === 'pending cool') {
+        value = this.platform.Characteristic.CurrentHeatingCoolingState.OFF;
+      } else if (event.value === 'heating') {
+        value = this.platform.Characteristic.CurrentHeatingCoolingState.HEAT;
+      } else if (event.value === 'cooling') {
+        value = this.platform.Characteristic.CurrentHeatingCoolingState.COOL;
+      } else {
+        // e.g. 'fan only': no clean mapping, leave it to the next poll
+        return;
+      }
+    } else if (event.attribute !== 'thermostatMode') {
+      // supportedThermostatModes, setpoint ranges, etc. are not a mode change
+      this.log.debug(`Ignoring ${event.attribute} event for ${this.name}`);
       return;
     } else {
       characteristic = this.platform.Characteristic.TargetHeatingCoolingState;

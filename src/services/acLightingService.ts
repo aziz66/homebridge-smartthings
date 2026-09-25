@@ -85,7 +85,6 @@ export class ACLightingService extends BaseService {
 
   // Helper method to get device status safely
   private async getDeviceStatus(): Promise<any> {
-    this.multiServiceAccessory.forceNextStatusRefresh();
     if (!await this.getStatus()) {
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
@@ -94,11 +93,6 @@ export class ACLightingService extends BaseService {
 
   // Helper method to send commands or throw an error
   private async sendCommandsOrFail(commands: Command[]) {
-    if (!this.multiServiceAccessory.isOnline) {
-      this.log.error(`${this.name} is offline`);
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-    }
-
     if (!await this.multiServiceAccessory.sendCommands(commands)) {
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }

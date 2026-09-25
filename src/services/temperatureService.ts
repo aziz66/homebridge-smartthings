@@ -22,6 +22,7 @@ export class TemperatureService extends SensorService {
       }
       if (status.temperatureMeasurement.temperature.unit === 'F') {
         this.log.debug('Converting temp to celcius');
+        this.unit = 'F';
         return (status.temperatureMeasurement.temperature.value as number -  32) * (5/9) ; // Convert to Celcius
       } else {
         this.unit = 'C';
@@ -32,8 +33,18 @@ export class TemperatureService extends SensorService {
 
   public processEvent(event: ShortEvent): void {
     this.log.debug(`Event updating temperature measurement for ${this.name} to ${event.value}`);
+    if (typeof event.value !== 'number' || !Number.isFinite(event.value)) {
+      // A null reading would otherwise be pushed as -17.8 °C
+      this.log.debug(`Ignoring non-numeric temperature event for ${this.name}`);
+      return;
+    }
+    // Prefer the unit carried by the event, then the cached status, then the last unit learned from a read:
+    // with PollSensorsSeconds 0 no read may have happened yet, and the 'F' default would turn 22 °C into -5.6 °C.
+    const eventUnit = (event as { unit?: string }).unit;
+    const statusUnit = this.deviceStatus?.status?.temperatureMeasurement?.temperature?.unit;
+    const unit = [eventUnit, statusUnit].find(u => u === 'C' || u === 'F') ?? this.unit;
     this.service.updateCharacteristic(
       this.platform.Characteristic.CurrentTemperature,
-      this.unit === 'F' ? (event.value as number - 32) * (5/9) : event.value as number);
+      unit === 'F' ? (event.value - 32) * (5/9) : event.value);
   }
 }

@@ -189,7 +189,13 @@ export class AirConditionerService extends BaseService {
     this.service.getCharacteristic(platform.Characteristic.CurrentTemperature)
       .onGet(this.getCurrentTemperature.bind(this));
 
-    this.service.getCharacteristic(platform.Characteristic.TargetTemperature)
+    const targetTemperature = this.service.getCharacteristic(platform.Characteristic.TargetTemperature);
+    // HAP initialises the value to its own minimum (10), below our minValue of 16; seed a valid
+    // value first so setProps() doesn't log an "illegal value" warning on every startup.
+    if (typeof targetTemperature.value !== 'number' || targetTemperature.value < 16) {
+      targetTemperature.updateValue(16);
+    }
+    targetTemperature
       .onGet(this.getTargetTemperature.bind(this))
       .onSet(this.setTargetTemperature.bind(this))
       .setProps({
@@ -373,30 +379,30 @@ export class AirConditionerService extends BaseService {
       return 0;
     }
 
-    // Preserve the legacy display percentages for the modes this service already understood.
-    // Device-specific/dynamic handling is only for extra labels like '1'/'2'/'3'/'4'/'max'.
-    const legacyLevel = AirConditionerService.LEGACY_FAN_MODE_LEVEL[fanMode];
-    if (legacyLevel !== undefined) {
-      return legacyLevel;
-    }
-
-    const modes = this.manualFanModes();
-    const index = modes.indexOf(fanMode);
-    if (index >= 0) {
-      return Math.round(((index + 1) / modes.length) * 100);
+    // The legacy fixed percentages only fit the legacy mode list. When the device advertises its
+    // own modes, map by position in that list - the inverse of levelToFanMode() - otherwise a mixed
+    // list like [auto, quiet, low, medium, high] reads back one step low.
+    if (this.hasDeviceFanModes) {
+      const modes = this.manualFanModes();
+      const index = modes.indexOf(fanMode);
+      if (index >= 0) {
+        // floor, not round: keeps the level inside this mode's bucket, so it round-trips through
+        // levelToFanMode() (with round, 67 % of a 3-mode list would map back to the top mode).
+        return Math.floor(((index + 1) / modes.length) * 100);
+      }
     }
 
     return AirConditionerService.FALLBACK_FAN_MODE_LEVEL[fanMode] ?? 0;
   }
 
   private fanOscillationModeToSwingMode(fanOscillationMode: FanOscillationMode): CharacteristicValue {
-    switch (fanOscillationMode) {
-      case FanOscillationMode.All:
-      case FanOscillationMode.Vertical:
-        return this.platform.Characteristic.SwingMode.SWING_ENABLED;
-      case FanOscillationMode.Fixed:
-        return this.platform.Characteristic.SwingMode.SWING_DISABLED;
+    // 'fixed' and the fixed vane positions (fixedCenter/fixedLeft/fixedRight), or no reading, are
+    // "not swinging"; every other mode (all, vertical, horizontal, ...) is. Unknown modes used to
+    // return undefined, which HAP rejects.
+    if (typeof fanOscillationMode !== 'string' || fanOscillationMode.startsWith(FanOscillationMode.Fixed)) {
+      return this.platform.Characteristic.SwingMode.SWING_DISABLED;
     }
+    return this.platform.Characteristic.SwingMode.SWING_ENABLED;
   }
 
   private async getLightSwitchState(): Promise<CharacteristicValue> {
@@ -650,7 +656,6 @@ export class AirConditionerService extends BaseService {
 
     const temp = deviceStatus.temperatureMeasurement.temperature.value;
     const unit = deviceStatus.temperatureMeasurement.temperature.unit as TemperatureUnit;
-    this.temperatureUnit = unit;
 
     if (!temp || !unit) {
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.RESOURCE_DOES_NOT_EXIST);
@@ -676,6 +681,7 @@ export class AirConditionerService extends BaseService {
   private setTargetTemperature(value: CharacteristicValue): Promise<void> {
     this.log.info(`[${this.name}] set target temperature to ${value}`);
 
+    this.learnTemperatureUnit(this.deviceStatus?.status);
     const convertedTemp = this.fromCelsius(value as number);
     const command = new Command(this.componentId, 'thermostatCoolingSetpoint', 'setCoolingSetpoint', [convertedTemp]);
     return this.sendCommandsOrFail([command]);
@@ -693,17 +699,21 @@ export class AirConditionerService extends BaseService {
     return this.temperatureUnit === TemperatureUnit.Farenheit ? (value - 32) * (5 / 9) : value;
   }
 
-  // converts to fahrenheit if needed
+  // converts to fahrenheit if needed. Fahrenheit devices take whole degrees (22 °C -> 72, not 71.6).
   private fromCelsius(value: number): number {
-    return this.temperatureUnit === TemperatureUnit.Farenheit ? (value * (9 / 5)) + 32 : value;
+    return this.temperatureUnit === TemperatureUnit.Farenheit ? Math.round((value * (9 / 5)) + 32) : value;
+  }
+
+  // Learn the device's unit from any status we read, so target reads/sets and setpoint events never
+  // treat a Fahrenheit device as Celsius just because getCurrentTemperature() hasn't run yet.
+  private learnTemperatureUnit(deviceStatus): void {
+    const unit = deviceStatus?.temperatureMeasurement?.temperature?.unit;
+    if (unit === TemperatureUnit.Celsius || unit === TemperatureUnit.Farenheit) {
+      this.temperatureUnit = unit;
+    }
   }
 
   private async sendCommandsOrFail(commands: Command[]) {
-    if (!this.multiServiceAccessory.isOnline) {
-      this.log.error(this.name + ' is offline');
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-    }
-
     if (!await this.multiServiceAccessory.sendCommands(commands)) {
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
@@ -711,17 +721,18 @@ export class AirConditionerService extends BaseService {
   }
 
   private async getDeviceStatus(): Promise<any> {
-    this.multiServiceAccessory.forceNextStatusRefresh();
     if (!await this.getStatus()) {
       // If we have cached status, return it instead of throwing an error
       // This provides graceful degradation during temporary network failures
       if (this.deviceStatus?.status) {
         this.log.warn(`[${this.name}] Using cached status due to communication failure`);
+        this.learnTemperatureUnit(this.deviceStatus.status);
         return this.deviceStatus.status;
       }
       // Only throw if no cached data exists
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
+    this.learnTemperatureUnit(this.deviceStatus.status);
     return this.deviceStatus.status;
   }
 
@@ -735,6 +746,10 @@ export class AirConditionerService extends BaseService {
 
     switch (event.capability) {
       case 'thermostatCoolingSetpoint':
+        if (typeof event.value !== 'number') {
+          break; // e.g. coolingSetpointRange, or a null reading
+        }
+        this.learnTemperatureUnit(this.deviceStatus?.status);
         temperature = this.toCelsius(event.value);
         this.thermostatService.updateCharacteristic(this.platform.Characteristic.TargetTemperature, temperature);
         break;
