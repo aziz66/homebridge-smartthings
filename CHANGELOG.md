@@ -1,7 +1,9 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [1.0.68-beta.1] - Power / energy monitoring for plugs and switches
+
+> Adds the energy work (#53) on top of the air-purifier and AC fan-mode fixes already in `1.0.68-beta.0` (below). Opt-in and off by default, so existing setups are unaffected until they enable it. **Read the note below on where the values actually appear before testing:** the readings render in the Eve app, not in Apple Home. Please report any issues before the stable release.
 
 ### Added
 - **Power / energy monitoring for smart plugs and switches** (#53) — opt-in via the new **`ExposeEnergyMonitoring`** flag (default `false`). SmartThings `powerMeter`, `energyMeter`, `powerConsumptionReport`, and `voltageMeasurement` are mapped onto the accessory's existing on/off tile as Eve custom characteristics (live watts, accumulated kWh, volts). Values update from webhook events where subscriptions are available and fall back to polling on their own slower cadence (**`PollEnergySeconds`**, default 30; `0` disables). Only devices that already have a Switch, Outlet, or Lightbulb tile on `main` are eligible — the plugin never synthesizes a tile — and TVs and air conditioners are excluded because their power reports have no plain on/off host to attach to.
