@@ -3,7 +3,8 @@ import * as crypto from 'crypto';
 import axios from 'axios';
 import * as http from 'http';
 import { IKHomeBridgeHomebridgePlatform } from '../platform';
-import { TokenManager, TokenData } from './tokenManager';
+import { TokenManager, TokenData, isAuthRejection } from './tokenManager';
+import { describeError } from './sanitizeError';
 import { WebhookServer } from '../webhook/webhookServer';
 
 const SMARTTHINGS_AUTH_URL = 'https://api.smartthings.com/oauth/authorize';
@@ -43,6 +44,7 @@ export class SmartThingsAuth {
 
       const tokens = await this.exchangeCodeForTokens(query.code);
       await this.tokenManager.updateTokens(tokens);
+      this.state = null; // used - the next auth flow gets a fresh one
 
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end('<h1>Authentication successful!</h1><p>You can close this window and restart Homebridge.</p>');
@@ -118,7 +120,11 @@ export class SmartThingsAuth {
   public startAuthFlow(): void {
     // Check if server_url is configured (traditional flow with tunnel)
     if (this.platform.config.server_url && this.platform.config.server_url.trim() !== '') {
-      this.state = crypto.randomBytes(32).toString('hex');
+      // Keep the state stable until it is used, so an auth URL copied from the log keeps
+      // working even if the flow is started again (e.g. by a later refresh failure).
+      if (!this.state) {
+        this.state = crypto.randomBytes(32).toString('hex');
+      }
 
       const authUrl = new URL(SMARTTHINGS_AUTH_URL);
       authUrl.searchParams.append('client_id', this.clientId);
@@ -161,23 +167,23 @@ export class SmartThingsAuth {
     let authFlowStarted = false;
 
     if (!accessToken || !this.tokenManager.isTokenValid()) {
-      if (this.tokenManager.isRefreshTokenValid()) {
+      if (this.tokenManager.isRefreshTokenValid() && this.tokenManager.getRefreshToken()) {
         try {
-          const currentRefreshToken = this.tokenManager.getRefreshToken();
-          if (currentRefreshToken) {
-            const newTokenData = await this.refreshTokens(currentRefreshToken);
-            await this.tokenManager.updateTokens(newTokenData);
-          } else {
-            this.log.warn('No refresh token found during initialization.');
+          await this.tokenManager.refreshAccessToken();
+        } catch (error) {
+          if (isAuthRejection(error) || !accessToken) {
+            this.log.warn(`Token refresh failed during initialization (${describeError(error)}), starting auth flow.`);
             this.startAuthFlow();
             authFlowStarted = true;
+          } else {
+            // Transient (network, 5xx): keep the tokens; discovery retries and refreshes again on 401.
+            this.log.warn(`Token refresh failed during initialization (${describeError(error)}); will retry.`);
           }
-        } catch (error) {
-          this.log.warn('Token refresh failed during initialization, starting auth flow.');
-          this.startAuthFlow();
-          authFlowStarted = true;
         }
       } else {
+        if (this.tokenManager.isRefreshTokenValid()) {
+          this.log.warn('No refresh token found during initialization.');
+        }
         this.startAuthFlow();
         authFlowStarted = true;
       }

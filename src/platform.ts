@@ -13,6 +13,7 @@ import { WebhookServer } from './webhook/webhookServer';
 import { SmartThingsSubscriptionManager } from './webhook/smartthingsSubscriptionManager';
 import { CrashLoopManager, CrashErrorType, defaultCrashLoopConfig } from './auth/CrashLoopManager';
 import { describeError } from './auth/sanitizeError';
+import { isAuthRejection } from './auth/tokenManager';
 import { ArtModeSwitchService } from './services/artModeSwitchService';
 import { TelevisionService } from './services/televisionService';
 import {
@@ -44,7 +45,6 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
     timeout: 15000,
   });
 
-  private refreshTokenPromise: Promise<void> | null = null;
   private authFlowRetries = 0;
   private lastAuthFlowTime = 0;
 
@@ -111,59 +111,41 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
         const originalRequest = error.config;
 
         // If the error is 401 and we haven't tried to refresh the token yet
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
           originalRequest._retry = true;
 
-          // If a refresh is already in progress, wait for it instead of starting another
-          if (this.refreshTokenPromise) {
-            try {
-              await this.refreshTokenPromise;
-            } catch {
-              return Promise.reject(error);
-            }
-            // Retry with the new token from the completed refresh
-            const newToken = this.auth.getAccessToken();
-            if (newToken) {
-              if (!originalRequest.headers) {
-                originalRequest.headers = new AxiosHeaders();
-              }
-              originalRequest.headers.Authorization = `Bearer ${newToken}`;
-              return this.axInstance(originalRequest);
-            }
+          if (!this.auth.tokenManager.getRefreshToken()) {
+            this.log.error('Cannot refresh token: No refresh token available.');
+            this.triggerAuthFlow();
             return Promise.reject(error);
           }
 
-          // First 401 — initiate the refresh
-          this.refreshTokenPromise = (async () => {
-            const refreshToken = this.auth.tokenManager.getRefreshToken();
-            if (!refreshToken) {
-              this.log.error('Cannot refresh token: No refresh token available.');
-              this.triggerAuthFlow();
-              throw new Error('No refresh token available for automatic refresh.');
-            }
-            const newTokenData = await this.auth.refreshTokens(refreshToken);
-            await this.auth.tokenManager.updateTokens(newTokenData);
-          })();
-
+          // Shared with the token expiry monitor: never two refreshes of the same refresh token.
+          // If the token was already replaced after this request was sent, just retry with it.
+          const sentAuthorization = originalRequest.headers?.Authorization;
+          const currentToken = this.auth.getAccessToken();
           try {
-            await this.refreshTokenPromise;
-            this.refreshTokenPromise = null;
+            if (!currentToken || sentAuthorization === `Bearer ${currentToken}`) {
+              await this.auth.tokenManager.refreshAccessToken();
+            }
             // Reset auth retry counter on successful refresh
             this.authFlowRetries = 0;
-
-            const newToken = this.auth.getAccessToken();
-            if (newToken) {
-              if (!originalRequest.headers) {
-                originalRequest.headers = new AxiosHeaders();
-              }
-              originalRequest.headers.Authorization = `Bearer ${newToken}`;
-              return this.axInstance(originalRequest);
-            }
           } catch (refreshError) {
-            this.refreshTokenPromise = null;
-            this.log.error('Token refresh failed:', refreshError);
-            this.triggerAuthFlow();
+            this.log.error(`Token refresh failed: ${describeError(refreshError)}`);
+            if (isAuthRejection(refreshError)) {
+              this.triggerAuthFlow();
+            }
             return Promise.reject(refreshError);
+          }
+
+          // Retry with the new token
+          const newToken = this.auth.getAccessToken();
+          if (newToken) {
+            if (!originalRequest.headers) {
+              originalRequest.headers = new AxiosHeaders();
+            }
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            return this.axInstance(originalRequest);
           }
         }
 

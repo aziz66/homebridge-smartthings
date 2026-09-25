@@ -3,6 +3,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import fsExtra from 'fs-extra';
+import { describeError } from './sanitizeError';
 
 export interface TokenData {
   access_token: string;
@@ -14,6 +15,19 @@ export interface TokenData {
   location_id?: string;
   // SHA-256 of the config (OAuth wizard) refresh token this file was seeded from, if any.
   seeded_from_config_refresh_token_sha256?: string;
+}
+
+/**
+ * True when the token endpoint rejected the refresh itself (e.g. invalid_grant / invalid_client),
+ * i.e. re-authorization is needed. Network failures, timeouts, 5xx and 429 are transient.
+ */
+export function isAuthRejection(error: unknown): boolean {
+  const e = error as { response?: { status?: unknown }; noRefreshToken?: boolean } | null | undefined;
+  if (e?.noRefreshToken === true) {
+    return true;
+  }
+  const status = e?.response?.status;
+  return typeof status === 'number' && status >= 400 && status < 500 && status !== 408 && status !== 429;
 }
 
 function sha256(value: string): string {
@@ -28,6 +42,11 @@ export class TokenManager {
   private readonly REFRESH_CHECK_INTERVAL = 60 * 1000; // Check every minute
   private startAuthFlowCallback: () => void;
   private refreshTokenApiCallback: (refreshToken: string) => Promise<Partial<TokenData>>;
+  // The single in-flight refresh shared by every caller: with rotating refresh tokens, two
+  // concurrent refreshes would burn the token (the second one gets invalid_grant).
+  private refreshPromise: Promise<void> | null = null;
+  private lastAuthPromptTime = 0;
+  private readonly AUTH_PROMPT_INTERVAL = 10 * 60 * 1000;
 
   constructor(
     private readonly log: Logger,
@@ -71,19 +90,42 @@ export class TokenManager {
     if (timeUntilExpiry <= this.REFRESH_BEFORE_EXPIRY) {
       this.log.debug('Access token is about to expire, refreshing tokens');
       try {
-        const currentRefreshToken = this.getRefreshToken();
-        // Call the API callback with the current refresh token
-        const newTokenData = await this.refreshTokenApiCallback(currentRefreshToken!);
-        // Update internal tokens with the result from the API call
-        await this.updateTokens(newTokenData);
+        await this.refreshAccessToken();
         this.log.info('Successfully refreshed access token using API callback.');
       } catch (error) {
-        // If the API callback fails (e.g., invalid refresh token), trigger full auth flow
-        this.log.error('API token refresh failed:', error);
-        this.log.warn('Starting new auth flow due to refresh failure.');
-        this.startAuthFlowCallback();
+        this.log.error(`API token refresh failed: ${describeError(error)}`);
+        if (isAuthRejection(error)) {
+          // The refresh token itself was rejected: ask for re-authorization, but not every minute.
+          if (now - this.lastAuthPromptTime >= this.AUTH_PROMPT_INTERVAL) {
+            this.lastAuthPromptTime = now;
+            this.log.warn('Starting new auth flow due to refresh failure.');
+            this.startAuthFlowCallback();
+          }
+        } else {
+          this.log.warn('Token refresh will be retried in a minute.');
+        }
       }
     }
+  }
+
+  /**
+   * Refresh the access token with the stored refresh token and persist the result. Concurrent
+   * callers (the expiry monitor, the 401 interceptor, startup) share one in-flight request.
+   */
+  public refreshAccessToken(): Promise<void> {
+    if (!this.refreshPromise) {
+      this.refreshPromise = (async () => {
+        const refreshToken = this.getRefreshToken();
+        if (!refreshToken) {
+          throw Object.assign(new Error('No refresh token available'), { noRefreshToken: true });
+        }
+        const newTokenData = await this.refreshTokenApiCallback(refreshToken);
+        await this.updateTokens(newTokenData);
+      })().finally(() => {
+        this.refreshPromise = null;
+      });
+    }
+    return this.refreshPromise;
   }
 
   private loadTokens(): void {
