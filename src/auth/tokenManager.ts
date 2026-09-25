@@ -1,4 +1,5 @@
 import { Logger, PlatformConfig } from 'homebridge';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import fsExtra from 'fs-extra';
@@ -11,6 +12,12 @@ export interface TokenData {
   refresh_token_expires_at: number;
   installed_app_id?: string;
   location_id?: string;
+  // SHA-256 of the config (OAuth wizard) refresh token this file was seeded from, if any.
+  seeded_from_config_refresh_token_sha256?: string;
+}
+
+function sha256(value: string): string {
+  return crypto.createHash('sha256').update(value).digest('hex');
 }
 
 export class TokenManager {
@@ -81,38 +88,60 @@ export class TokenManager {
 
   private loadTokens(): void {
     try {
-      // First try to load from token file (existing flow)
+      const configRefreshToken = this.config?.oauth_refresh_token;
+      const hasConfigTokens = !!(this.config?.oauth_access_token && configRefreshToken);
+
+      // The token file normally wins: it holds the latest (rotated) tokens, which are never
+      // written back to the config. The exception is a file seeded from an older wizard run:
+      // if the wizard has since saved a different refresh token, the config is newer.
       if (fs.existsSync(this.tokenPath)) {
-        const data = fs.readFileSync(this.tokenPath, 'utf8');
-        this.tokenData = JSON.parse(data);
+        const fileData = JSON.parse(fs.readFileSync(this.tokenPath, 'utf8'));
+        const seed = fileData?.seeded_from_config_refresh_token_sha256;
+        if (hasConfigTokens && typeof seed === 'string' && seed !== sha256(configRefreshToken)) {
+          this.log.info('The OAuth wizard saved new tokens since the token file was created - using the tokens from the config');
+          this.loadConfigTokens();
+          return;
+        }
+        this.tokenData = fileData;
         this.log.debug('Loaded existing tokens from storage file');
         return;
       }
 
       // If no token file, check for tokens in config (OAuth wizard flow)
-      if (this.config?.oauth_access_token && this.config?.oauth_refresh_token) {
-        this.log.info('Loading tokens from config (OAuth wizard setup)');
-        const expiresIn = this.config.oauth_expires_in || 86400; // Use saved value or default to 24 hours
-        this.tokenData = {
-          access_token: this.config.oauth_access_token,
-          refresh_token: this.config.oauth_refresh_token,
-          expires_in: expiresIn,
-          expires_at: Date.now() + expiresIn * 1000,
-          refresh_token_expires_at: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days
-        };
-        // Save to token file for future use
-        this.saveTokens();
-        this.log.info('Tokens from OAuth wizard saved to storage file');
+      if (hasConfigTokens) {
+        this.loadConfigTokens();
       }
     } catch (error) {
       this.log.error('Error loading tokens:', error);
     }
   }
 
+  private loadConfigTokens(): void {
+    this.log.info('Loading tokens from config (OAuth wizard setup)');
+    const expiresIn = this.config!.oauth_expires_in || 86400; // Use saved value or default to 24 hours
+    this.tokenData = {
+      access_token: this.config!.oauth_access_token,
+      refresh_token: this.config!.oauth_refresh_token,
+      expires_in: expiresIn,
+      expires_at: Date.now() + expiresIn * 1000,
+      refresh_token_expires_at: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days
+      seeded_from_config_refresh_token_sha256: sha256(this.config!.oauth_refresh_token),
+    };
+    // Save to token file for future use
+    this.saveTokens();
+    this.log.info('Tokens from OAuth wizard saved to storage file');
+  }
+
   private saveTokens(): void {
     try {
       if (this.tokenData) {
-        fs.writeFileSync(this.tokenPath, JSON.stringify(this.tokenData, null, 2));
+        // Owner-only: the file holds the refresh token.
+        fs.writeFileSync(this.tokenPath, JSON.stringify(this.tokenData, null, 2), { mode: 0o600 });
+        try {
+          fs.chmodSync(this.tokenPath, 0o600); // also tighten files created by older versions
+        } catch {
+          // Best effort (e.g. filesystems without POSIX permissions).
+        }
         this.log.debug('Saved tokens to storage');
       }
     } catch (error) {
