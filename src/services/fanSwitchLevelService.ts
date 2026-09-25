@@ -61,12 +61,20 @@ export class FanSwitchLevelService extends BaseService {
     return new Promise((resolve, reject) => {
       this.getStatus().then(success => {
         if (success) {
-          const switchState = this.deviceStatus.status.switch.switch.value;
+          const switchState = this.deviceStatus.status?.switch?.switch?.value;
+          if (switchState === null || switchState === undefined) {
+            this.log.warn(`Missing switch state from ${this.name}`);
+            reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
+            return;
+          }
           this.log.debug(`SwitchState value from ${this.name}: ${switchState}`);
           resolve(switchState === 'on');
         } else {
           reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
         }
+      }).catch((error) => {
+        this.log.warn(`Failed to read switch state for ${this.name}: ${error?.message || error}`);
+        reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
       });
     });
   }
@@ -109,8 +117,9 @@ export class FanSwitchLevelService extends BaseService {
           return reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
         }
 
-        if (this.deviceStatus.status.switchLevel.level.value !== undefined) {
-          level = this.deviceStatus.status.switchLevel.level.value;
+        const switchLevel = this.deviceStatus.status?.switchLevel?.level?.value;
+        if (switchLevel !== undefined && switchLevel !== null) {
+          level = switchLevel;
           this.log.debug('getLevel() SUCCESSFUL for ' + this.name + '. value = ' + level);
           resolve(level);
 
@@ -118,6 +127,9 @@ export class FanSwitchLevelService extends BaseService {
           this.log.error('getLevel() FAILED for ' + this.name + '. Undefined value');
           reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
         }
+      }).catch((error) => {
+        this.log.warn(`Failed to read level for ${this.name}: ${error?.message || error}`);
+        reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
       });
     });
   }
