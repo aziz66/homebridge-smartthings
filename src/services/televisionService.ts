@@ -351,19 +351,7 @@ export class TelevisionService extends BaseService {
         const supportedInputSources = inputSourceData.supportedInputSourcesMap.value as { id: string; name: string }[];
 
         // Remove duplicates and ensure unique input source IDs
-        const uniqueInputSources = supportedInputSources.reduce((acc: { id: string; name: string }[], current) => {
-          const existingIndex = acc.findIndex(item => item.id === current.id);
-          if (existingIndex >= 0) {
-            // If duplicate ID found, use the one with more descriptive name (longer name usually)
-            if (current.name.length > acc[existingIndex].name.length) {
-              acc[existingIndex] = current;
-            }
-            this.log.debug(`⚠️  Duplicate input ID "${current.id}" found - keeping "${acc[existingIndex].name}"`);
-          } else {
-            acc.push(current);
-          }
-          return acc;
-        }, []);
+        const uniqueInputSources = this.dedupeInputSources(supportedInputSources, true);
 
         this.inputSourcesMap = uniqueInputSources.map((source: any) => ({
           id: source.id,        // SmartThings ID (e.g., "HDMI1")
@@ -376,8 +364,7 @@ export class TelevisionService extends BaseService {
         });
 
         // Initialize the hash for future change detection
-        const sortedSources = uniqueInputSources.sort((a, b) => a.id.localeCompare(b.id));
-        this.lastKnownInputSourcesHash = JSON.stringify(sortedSources);
+        this.lastKnownInputSourcesHash = this.inputSourcesFingerprint(supportedInputSources);
 
         return;
       } else {
@@ -398,8 +385,38 @@ export class TelevisionService extends BaseService {
     this.log.warn(`⚠️  Using fallback input sources for ${this.name} - fresh data not available`);
 
     // Initialize hash for fallback sources too
-    const sortedSources = [...this.inputSourcesMap].sort((a, b) => a.id.localeCompare(b.id));
-    this.lastKnownInputSourcesHash = JSON.stringify(sortedSources);
+    this.lastKnownInputSourcesHash = this.inputSourcesFingerprint(this.inputSourcesMap);
+  }
+
+  /**
+   * Remove duplicate input IDs, keeping the more descriptive (longer) name. Keeps the
+   * TV's order and never mutates the status array it is given.
+   */
+  private dedupeInputSources(sources: { id: string; name: string }[], logDuplicates = false): { id: string; name: string }[] {
+    return sources.reduce((acc: { id: string; name: string }[], current) => {
+      const existingIndex = acc.findIndex(item => item.id === current.id);
+      if (existingIndex >= 0) {
+        if (current.name.length > acc[existingIndex].name.length) {
+          acc[existingIndex] = current;
+        }
+        if (logDuplicates) {
+          this.log.debug(`⚠️  Duplicate input ID "${current.id}" found - keeping "${acc[existingIndex].name}"`);
+        }
+      } else {
+        acc.push(current);
+      }
+      return acc;
+    }, []);
+  }
+
+  /**
+   * Change-detection fingerprint of a supportedInputSourcesMap. Startup and polling must
+   * normalize identically, or the first poll sees a spurious change and rebuilds inputs.
+   */
+  private inputSourcesFingerprint(sources: { id: string; name: string }[]): string {
+    return JSON.stringify(this.dedupeInputSources(sources)
+      .map(source => ({ id: source.id, name: source.name }))
+      .sort((a, b) => a.id.localeCompare(b.id)));
   }
 
   private getInputSourceType(inputId: string): number {
@@ -1146,25 +1163,14 @@ export class TelevisionService extends BaseService {
         const supportedInputSources = inputSourceData.supportedInputSourcesMap.value as { id: string; name: string }[];
 
         // Create a hash of the current input sources to detect changes
-        const currentInputSourcesHash = JSON.stringify(supportedInputSources.sort((a, b) => a.id.localeCompare(b.id)));
+        const currentInputSourcesHash = this.inputSourcesFingerprint(supportedInputSources);
 
         // Check if input sources have changed
         if (this.lastKnownInputSourcesHash !== '' && this.lastKnownInputSourcesHash !== currentInputSourcesHash) {
           this.log.info(`📺 Input source changes detected for ${this.name} - updating HomeKit services`);
 
           // Parse the new input sources
-          const uniqueInputSources = supportedInputSources.reduce((acc: { id: string; name: string }[], current) => {
-            const existingIndex = acc.findIndex(item => item.id === current.id);
-            if (existingIndex >= 0) {
-              if (current.name.length > acc[existingIndex].name.length) {
-                acc[existingIndex] = current;
-              }
-              this.log.debug(`⚠️  Duplicate input ID "${current.id}" found - keeping "${acc[existingIndex].name}"`);
-            } else {
-              acc.push(current);
-            }
-            return acc;
-          }, []);
+          const uniqueInputSources = this.dedupeInputSources(supportedInputSources, true);
 
           // Update the input sources map (exclude app entries from old list to avoid false "obsolete" detection)
           const oldPhysicalInputSources = this.inputSourcesMap.filter(s => !this.appIds.has(s.id));
@@ -1187,6 +1193,15 @@ export class TelevisionService extends BaseService {
 
           // Re-append app input sources (they're config-based, not from SmartThings)
           this.reappendAppInputSources();
+
+          // New inputs were appended to inputServices, not inserted in the TV's order, so
+          // re-align inputSourcesMap with the HomeKit identifiers (inputServices index + 1)
+          // that getActiveIdentifier/setActiveIdentifier/processEvent resolve through it.
+          const sourcesById = new Map(this.inputSourcesMap.map(source => [source.id, source]));
+          this.inputSourcesMap = this.inputServices.map(service => {
+            const id = service.name ?? '';
+            return sourcesById.get(id) ?? { id, name: service.displayName };
+          });
 
           this.log.info(`📺 Input source update completed for ${this.name}`);
         }
