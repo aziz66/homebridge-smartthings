@@ -66,6 +66,7 @@ function createTv(options: {
 const identifierOf = (service: hap.Service) => service.getCharacteristic(hap.Characteristic.Identifier).value;
 const inputSources = (accessory: PlatformAccessory) => accessory.services.filter(s => s.UUID === hap.Service.InputSource.UUID);
 const NETFLIX = '3201907018807';
+const YOUTUBE = '111299001912';
 
 test('TV power state is polled on PollTelevisionsSeconds', async () => {
   const { msa, tvService } = createTv({ config: { PollTelevisionsSeconds: 30 } });
@@ -129,4 +130,16 @@ test('an unchanged input list with duplicate IDs does not trigger a rebuild on t
   assert.equal(rebuilt, false);
   // The device status array is left in the TV's order.
   assert.deepEqual(msa.component.status['samsungvd.mediaInputSource'].supportedInputSourcesMap.value, inputs);
+});
+
+test('a TV app listed twice in tvApps is registered once', async () => {
+  const { tv, accessory } = createTv({
+    config: { tvApps: [NETFLIX, YOUTUBE, NETFLIX] },
+    status: inputStatus([{ id: 'HDMI1', name: 'HDMI 1' }]),
+  });
+  await tv.registerInputSourceCapability();
+  assert.equal(tv.inputServices.length, 3);
+  assert.equal(new Set(tv.inputServices).size, 3);
+  assert.deepEqual(tv.inputSourcesMap.map((s: { id: string }) => s.id), ['HDMI1', NETFLIX, YOUTUBE]);
+  assert.deepEqual(inputSources(accessory).map(identifierOf).sort(), [1, 2, 3]);
 });

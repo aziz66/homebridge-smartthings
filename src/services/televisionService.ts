@@ -255,12 +255,14 @@ export class TelevisionService extends BaseService {
   }
 
   private registerAppInputSources(): void {
-    const tvApps: string[] = this.platform.config.tvApps ?? [];
+    const configuredApps: string[] = this.platform.config.tvApps ?? [];
 
-    if (!Array.isArray(tvApps) || tvApps.length === 0) {
+    if (!Array.isArray(configuredApps) || configuredApps.length === 0) {
       this.log.debug(`No TV apps configured for ${this.name}`);
       return;
     }
+    // A repeated app ID would reuse the same service and push it twice, colliding identifiers.
+    const tvApps = [...new Set(configuredApps)];
 
     this.log.info(`📱 Registering ${tvApps.length} app input sources for ${this.name}`);
 
