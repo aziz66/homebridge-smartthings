@@ -1,6 +1,8 @@
 # Configuration Reference
 
-Every setting available in `config.schema.json`, in the order it appears in the Homebridge UI form. The Homebridge UI shows the same descriptions inline next to each field — this page is a single-pager for users who configure via JSON or want to see everything at once.
+Every setting available in `config.schema.json`, grouped by topic. The Homebridge UI shows the same descriptions inline next to each field — this page is a single-pager for users who configure via JSON or want to see everything at once.
+
+> **Defaults** are what the plugin does when a key is absent from `config.json`. If you saved your config with an older plugin version, the Homebridge UI may have written an explicit value (for example `"registerVolumeSlider": true`), and that saved value keeps applying.
 
 > The plugin alias is `HomeBridgeSmartThings` (platform). Configuration lives under the `platforms` array of `~/.homebridge/config.json`.
 
@@ -29,7 +31,6 @@ All intervals are in seconds. Set to `0` to disable polling for that device clas
 
 | Field | Default (sec) | Description |
 |---|---|---|
-| `GarageDoorMaxPoll` | `40` | Max polls before giving up while a garage door is moving. |
 | `PollLocksSeconds` | `10` | Lock state. |
 | `PollDoorsSeconds` | `10` | Garage door state. |
 | `PollSensorsSeconds` | `5` | Motion, contact, leak, smoke, CO, occupancy, temperature, humidity, light. |
@@ -47,7 +48,7 @@ All intervals are in seconds. Set to `0` to disable polling for that device clas
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `ExposeHumiditySensorForAirConditioners` | boolean | `false` | Expose the AC's humidity sensor as a separate HomeKit accessory if available. |
-| `ExposeACDisplayLight` | boolean | `true` | Expose the AC display light as a switch if available. |
+| `ExposeACDisplayLight` | boolean | `false` | Expose the AC display light as a switch if available. |
 | `OptionalModeForAirConditioners` | string enum | `None` | Add an extra switch on AC accessories for an optional mode. Options: `None`, `Sleep`, `Speed`, `WindFree`, `WindFreeSleep`, `Speed and Windfree`. |
 
 ### Energy monitoring
@@ -84,7 +85,8 @@ Values appear in the **Eve app**, Controller for HomeKit, and Home+. Apple's own
 |---|---|---|---|
 | `enableTelevisionService` | boolean | `true` | Expose Samsung TVs as proper Television accessories with input source, volume, and picture mode controls. When disabled, TVs appear as simple switches. |
 | `removeLegacySwitchForTV` | boolean | `false` | Remove the basic switch service for TVs, leaving only the Television service. When disabled (default), both services are available for backward compatibility. |
-| `registerVolumeSlider` | boolean | `true` | Adds a separate volume slider accessory (exposed as a lightbulb) for TVs, because HomeKit's native TV interface doesn't show volume controls directly. The TV speaker still exposes relative volume when this is on, so the iPhone's hardware volume buttons (Apple TV Remote) keep working alongside the slider. |
+| `registerVolumeSlider` | boolean | `false` | Adds a separate volume slider accessory (exposed as a lightbulb) for TVs, because HomeKit's native TV interface doesn't show volume controls directly. The TV speaker still exposes relative volume when this is on, so the iPhone's hardware volume buttons (Apple TV Remote) keep working alongside the slider. |
+| `publishTVsAsExternal` | boolean | `true` | Publish Samsung TVs as standalone (external) HomeKit accessories so HomeKit shows the proper TV icon and the Control Center remote works. Each TV must then be paired individually (Apple Home → + → Add Accessory → More options… → enter the bridge or child-bridge PIN). Set to `false` for bridged TVs with the generic icon. Switching this later leaves orphan tiles in HomeKit that you must remove manually. |
 | `tvApps` | array of app IDs | `[]` | TV app shortcuts that appear as input sources. See [Samsung Frame TV → TV App Launcher](https://github.com/aziz66/homebridge-smartthings/wiki/Samsung-Frame-TV#tv-app-launcher). |
 | `frameTvDevices` | array of objects | `[]` | Per-device Samsung Frame TV configuration (local WebSocket control). See [Samsung Frame TV](https://github.com/aziz66/homebridge-smartthings/wiki/Samsung-Frame-TV). |
 
@@ -96,7 +98,14 @@ Values appear in the **Eve app**, Controller for HomeKit, and Home+. Apple's own
 | `ip` | string | *(required)* | TV's local IPv4 address. Set a static IP for reliability. |
 | `enableFullPowerOff` | boolean | `true` | Use a 3.5s long-press of KEY_POWER via local WebSocket instead of `switch.off` (which only enters Art Mode on Frame TVs). |
 | `enableArtModeSwitch` | boolean | `true` | Expose a separate switch in HomeKit to toggle Art Mode on/off. |
+| `infoButtonKey` | string | `KEY_INFO` | Samsung key sent when you press the **Info** button in the Control Center Apple TV Remote. Useful values: `KEY_INFO` (info banner), `KEY_AMBIENT` (Art/Ambient toggle), `KEY_HOME`, `KEY_SOURCE`, `KEY_MENU`, `KEY_GUIDE`. Any Samsung `KEY_*` is accepted. |
 | `token` | string | *(auto)* | Authorization token from the TV. Usually auto-saved after the first connection — leave empty unless troubleshooting. |
+
+### Locks
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `ExposeZigbangSmartDoorlock` | boolean | `false` | Expose Zigbang Wi-Fi smart doorlocks (vendor-specific `absoluteweather46907` capabilities) as a HomeKit lock. The lock auto-relocks on its own, so HomeKit "lock" is a no-op and only "unlock" is sent. Has no effect on other devices. |
 
 ### Thermostats
 
@@ -142,8 +151,7 @@ Values appear in the **Eve app**, Controller for HomeKit, and Home+. Apple's own
       "name": "Smartthings Plug (IK)",
       "BaseURL": "https://api.smartthings.com/v1/",
       "client_id": "7a850484-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-      "client_secret": "3581f317-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-      "GarageDoorMaxPoll": 40
+      "client_secret": "3581f317-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
     }
   ]
 }
