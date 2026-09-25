@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Samsung robot vacuum support** (#54) — opt-in via the new **`ExposeRobotVacuum`** flag (default `false`). Vacuums that expose `samsungce.robotCleanerOperatingState` + `switch` get a HomeKit Switch: On sends `start`, Off sends `returnToHome`, and the switch reads On while `robotCleanerMovement` reports cleaning, homing or moving (with real-time webhook updates). Off by default so the existing Switch tile on these devices keeps its current meaning. Thanks to @LaetoRamso.
+
 ## [1.0.68-beta.3] - Sensor polling, outage crash, Prime Video & brightness fixes
 
 > Bug fixes on top of `1.0.68-beta.2` (below): sensors now update in HomeKit in polling mode (#57), Homebridge no longer shuts down when a device's offline-recovery check fails during an outage, older Samsung TVs get a working Prime Video shortcut (#59), and invalid brightness values are ignored (#56). Also adds an automated test suite to CI. No configuration changes. Please report any issues before the stable release.

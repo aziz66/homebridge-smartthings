@@ -191,6 +191,13 @@
         "default": 30,
         "description": "How often to poll power/energy values when Expose Energy Monitoring is on. Webhook subscriptions provide real-time updates when available; this polling is the fallback. Energy changes constantly, so a slower interval than the sensor poll is recommended. Note that energy adds up to 4 capabilities to the 20-subscription budget, so on a large setup enabling this may push a lower-traffic capability over the limit and back to polling (the log says which). Default: 30 seconds."
       },
+      "ExposeRobotVacuum": {
+        "title": "Expose Samsung robot vacuums as a Switch if available.",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "Expose Samsung robot vacuums as a Switch (On = start cleaning, Off = return to dock). Off by default so existing Switch tiles on these devices keep their current meaning; enable to control the vacuum from HomeKit."
+      },
       "removeLegacySwitchForLaundry": {
         "title": "Remove Legacy Switch Service for Laundry Devices",
         "type": "boolean",

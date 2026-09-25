@@ -31,6 +31,7 @@ import { VolumeSliderService } from './services/volumeSliderService';
 import { WasherService } from './services/washerService';
 import { DryerService } from './services/dryerService';
 import { DishwasherService } from './services/dishwasherService';
+import { RobotVacuumService } from './services/robotVacuumService';
 import { AirPurifierService } from './services/airPurifierService';
 import { SecuritySystemService } from './services/securitySystemService';
 import { RefrigeratorTemperatureService } from './services/refrigeratorTemperatureService';
@@ -193,6 +194,11 @@ export class MultiServiceAccessory {
       capabilities: ['dishwasherOperatingState'],
       optionalCapabilities: ['dishwasherMode', 'remoteControlStatus'],
       service: DishwasherService,
+    },
+    {
+      capabilities: ['samsungce.robotCleanerOperatingState', 'switch'],
+      optionalCapabilities: ['robotCleanerMovement'],
+      service: RobotVacuumService,
     },
     {
       capabilities: ['securitySystem'],
@@ -463,6 +469,12 @@ export class MultiServiceAccessory {
     MultiServiceAccessory.comboCapabilityMap
       .sort((a, b) => a.capabilities.length > b.capabilities.length ? -1 : 1) // services with larger capability set first
       .forEach(entry => {
+        // Skip Robot Vacuum service if not enabled in config
+        if (entry.service === RobotVacuumService && !this.platform.config.ExposeRobotVacuum) {
+          this.log.debug(`Skipping Robot Vacuum service for ${this.name} - not enabled in config`);
+          return;
+        }
+
         capabilitiesToCover = this.registerServiceIfMatchesCapabilities(
           componentId,
           component,
