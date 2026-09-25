@@ -6,7 +6,10 @@ import { ShortEvent } from '../webhook/subscriptionHandler';
 
 export class StatelessProgrammableSwitchService extends BaseService {
   private lastPressTimestamp: string | undefined;
-  private webhookDelivering = false;
+  private lastWebhookEventAt = 0;
+  // Webhook events take over while they keep arriving; polling resumes if none has been seen for
+  // this long (e.g. subscriptions lapsed).
+  private static readonly WEBHOOK_QUIET_MS = 24 * 60 * 60 * 1000;
 
   constructor(platform: IKHomeBridgeHomebridgePlatform, accessory: PlatformAccessory, componentId: string, capabilities:string[],
     multiServiceAccessory: MultiServiceAccessory,
@@ -33,10 +36,10 @@ export class StatelessProgrammableSwitchService extends BaseService {
   }
 
   // A new press is recognised by a change of the button attribute's timestamp - its value repeats
-  // ("pushed" twice in a row is two presses). The first poll only records a baseline, and once a
-  // webhook event has arrived events are the source of truth, so a press is never delivered twice.
+  // ("pushed" twice in a row is two presses). The first poll only records a baseline, and while
+  // webhook events are arriving they are the source of truth, so a press is never delivered twice.
   private async pollForPress(): Promise<void> {
-    if (this.webhookDelivering) {
+    if (Date.now() - this.lastWebhookEventAt < StatelessProgrammableSwitchService.WEBHOOK_QUIET_MS) {
       return;
     }
     try {
@@ -68,7 +71,8 @@ export class StatelessProgrammableSwitchService extends BaseService {
       if (event.attribute !== undefined && event.attribute !== 'button') {
         return;   // e.g. numberOfButtons / supportedButtonValues
       }
-      this.webhookDelivering = true;
+      this.lastWebhookEventAt = Date.now();
+      this.lastPressTimestamp = undefined; // if polling ever resumes it starts from a fresh baseline
       this.log.debug(`Event updating button capability for ${this.name} to ${event.value}`);
       const characteristicValue = this.mapValue(event.value);
       if (characteristicValue !== undefined) {

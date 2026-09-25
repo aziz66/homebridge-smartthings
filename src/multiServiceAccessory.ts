@@ -226,6 +226,11 @@ export class MultiServiceAccessory {
   protected lastCommandCompleted = 0;
   private static readonly MAX_CONSECUTIVE_FAILURES = 5;
   private static readonly OFFLINE_RETRY_INTERVAL_MS = 60 * 1000;
+  // A device is only marked offline after failures spanning at least this long, so a short
+  // SmartThings or network blip doesn't turn working tiles into "No Response".
+  private static readonly MIN_FAILURE_SPAN_MS = 60 * 1000;
+  private static readonly ON_DEMAND_RETRY_INTERVAL_MS = 10 * 1000;
+  private firstFailureAt = 0;
 
   protected statusQueryInProgress = false;
   protected lastStatusResult = true;
@@ -546,7 +551,19 @@ export class MultiServiceAccessory {
     }
   }
 
+  // Every caller that finds the device offline (a HomeKit read or a command) also kicks off a
+  // recovery probe, throttled more loosely than the background one, so control comes back within
+  // seconds of SmartThings answering again instead of waiting for the next background retry.
+  // For commands sent outside sendCommands() (e.g. the Frame TV WebSocket power-off): pause
+  // polling briefly so a stale cached status isn't pushed back over the new state.
+  public pausePollingAfterCommand(): void {
+    this.lastCommandCompleted = Date.now();
+  }
+
   public isOnline(): boolean {
+    if (!this.online) {
+      this.attemptOfflineRecovery(MultiServiceAccessory.ON_DEMAND_RETRY_INTERVAL_MS);
+    }
     return this.online;
   }
 
@@ -637,9 +654,13 @@ export class MultiServiceAccessory {
             // }
           }).catch(async error => {
             // Count consecutive failed status refreshes; any successful refresh resets the count.
+            if (this.failureCount === 0) {
+              this.firstFailureAt = Date.now();
+            }
             this.failureCount++;
             this.log.error(`Failed to request status from ${this.name}: ${error}.  This is failure number ${this.failureCount}`);
-            if (this.failureCount >= MultiServiceAccessory.MAX_CONSECUTIVE_FAILURES) {
+            if (this.failureCount >= MultiServiceAccessory.MAX_CONSECUTIVE_FAILURES
+              && Date.now() - this.firstFailureAt >= MultiServiceAccessory.MIN_FAILURE_SPAN_MS) {
               if (this.online) {
                 this.log.error(`Exceeded allowed failures for ${this.name}.  Device is offline`);
               }
@@ -663,6 +684,7 @@ export class MultiServiceAccessory {
     }
     this.online = true;
     this.failureCount = 0;
+    this.firstFailureAt = 0;
     this.giveUpTime = 0;
   }
 
@@ -672,11 +694,11 @@ export class MultiServiceAccessory {
    * OFFLINE_RETRY_INTERVAL_MS. Called from the poll loop and from reads (so it also works with
    * polling disabled). Cloud /health is not used: it is unreliable for Edge drivers.
    */
-  public attemptOfflineRecovery(): void {
+  public attemptOfflineRecovery(minIntervalMs = MultiServiceAccessory.OFFLINE_RETRY_INTERVAL_MS): void {
     if (this.online || this.statusQueryInProgress) {
       return;
     }
-    if (this.giveUpTime > 0 && Date.now() - this.giveUpTime < MultiServiceAccessory.OFFLINE_RETRY_INTERVAL_MS) {
+    if (this.giveUpTime > 0 && Date.now() - this.giveUpTime < minIntervalMs) {
       return;
     }
     this.giveUpTime = Date.now();

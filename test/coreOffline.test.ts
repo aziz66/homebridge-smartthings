@@ -38,13 +38,30 @@ async function refreshFails(acc: MultiServiceAccessory, times: number) {
   }
 }
 
-test('five consecutive failed refreshes take the device offline', async () => {
+test('five consecutive failed refreshes spanning a minute take the device offline', async () => {
   const acc = accessory({ axInstance: { get: () => Promise.reject(new Error('Network Error')) } });
   await refreshFails(acc, 4);
   assert.equal(acc.isOnline(), true);
   await refreshFails(acc, 1);
+  assert.equal(acc.isOnline(), true, 'a short burst of failures does not mark the device offline');
+  (acc as unknown as { firstFailureAt: number }).firstFailureAt = Date.now() - 61 * 1000;
+  await refreshFails(acc, 1);
   assert.equal(acc.isOnline(), false);
   assert.ok(acc.giveUpTime > 0);
+});
+
+test('finding the device offline starts a recovery probe within seconds, not a minute', async () => {
+  let calls = 0;
+  const acc = accessory({
+    online: false, failureCount: 5, giveUpTime: Date.now() - 11 * 1000,
+    axInstance: { get: () => {
+      calls++; return Promise.resolve(STATUS);
+    } },
+  });
+  assert.equal(acc.isOnline(), false);          // this call starts the probe
+  await sleep(10);
+  assert.equal(calls, 1);
+  assert.equal(acc.isOnline(), true);           // the probe succeeded
 });
 
 test('a successful refresh resets the consecutive failure count', async () => {

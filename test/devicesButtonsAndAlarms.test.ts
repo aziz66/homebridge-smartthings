@@ -68,6 +68,20 @@ test('polling stays quiet once webhook events are delivering presses', async () 
   assert.deepEqual(presses, [E.SINGLE_PRESS]);    // only the webhook press, not a duplicate
 });
 
+test('polling resumes (from a fresh baseline) if webhook events stop arriving', async () => {
+  const E = C.ProgrammableSwitchEvent;
+  const { instance, deviceStatus, presses } = makeButton();
+  const poll = () => (instance as unknown as { pollForPress: () => Promise<void> }).pollForPress();
+
+  instance.processEvent(event('button', 'button', 'pushed'));       // webhook press
+  (instance as unknown as { lastWebhookEventAt: number }).lastWebhookEventAt = Date.now() - 25 * 60 * 60 * 1000;
+  deviceStatus.status = { button: { button: { value: 'pushed', timestamp: 't1' } } };
+  await poll();                                                     // baseline, no replay
+  deviceStatus.status = { button: { button: { value: 'held', timestamp: 't2' } } };
+  await poll();
+  assert.deepEqual(presses, [E.SINGLE_PRESS, E.LONG_PRESS]);
+});
+
 test('polling tolerates missing button status', async () => {
   const { instance, deviceStatus, presses } = makeButton();
   deviceStatus.status = {};

@@ -41,3 +41,20 @@ test('a second consecutive 429 is returned to the caller', async () => {
   await assert.rejects(platform.axInstance.get('devices'), (e: { response?: { status: number } }) => e.response?.status === 429);
   assert.equal(calls.length, 2);
 });
+
+test('a rate-limited command is not retried after a long wait (HomeKit has given up by then)', async () => {
+  const { platform } = makePlatform();
+  const calls = stubAdapter(platform, () => ({ status: 429, headers: { 'retry-after': '20' } }));
+
+  await assert.rejects(platform.axInstance.post('devices/x/commands', {}), (e: { response?: { status: number } }) => e.response?.status === 429);
+  assert.equal(calls.length, 1);
+});
+
+test('a rate-limited command is retried after a short wait', async () => {
+  const { platform } = makePlatform();
+  let n = 0;
+  const calls = stubAdapter(platform, () => (n++ === 0 ? { status: 429, headers: { 'retry-after': '0' } } : { status: 200 }));
+
+  await assert.doesNotReject(platform.axInstance.post('devices/x/commands', {}));
+  assert.equal(calls.length, 2);
+});

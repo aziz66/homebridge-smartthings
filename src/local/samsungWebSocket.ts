@@ -67,7 +67,13 @@ export class SamsungWebSocket {
 
   private saveToken(token: string): void {
     try {
-      fs.writeFileSync(this.tokenFilePath, JSON.stringify({ token, ip: this.ip, savedAt: new Date().toISOString() }));
+      fs.writeFileSync(this.tokenFilePath, JSON.stringify({ token, ip: this.ip, savedAt: new Date().toISOString() }),
+        { mode: 0o600 });
+      try {
+        fs.chmodSync(this.tokenFilePath, 0o600); // mode only applies when the file is created
+      } catch {
+        // best effort (e.g. filesystems without POSIX permissions)
+      }
       this.log.info(`Samsung WebSocket: Token saved for ${this.ip} — future connections will skip TV authorization popup`);
       this.log.info(
         `Samsung WebSocket: Token for ${this.ip} stored at ${this.tokenFilePath}. ` +
@@ -414,7 +420,13 @@ export class SamsungWebSocket {
     const ws = this.token ? await this.connectRemote(4000) : await this.connectRemote();
     this.sendKey(ws, 'Press', key);
     await new Promise<void>(resolve => setTimeout(resolve, durationMs));
-    this.sendKey(ws, 'Release', key);
+    try {
+      this.sendKey(ws, 'Release', key);
+    } catch (error) {
+      // The Press went through; a TV that is powering off often drops the socket before the
+      // Release. Treat the hold as done rather than failing a power-off that worked.
+      this.log.debug(`Samsung WebSocket: Release of ${key} not sent (${(error as Error)?.message || error})`);
+    }
     this.log.debug(`Samsung WebSocket: Held ${key} for ${durationMs}ms`);
   }
 

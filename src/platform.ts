@@ -111,12 +111,18 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
 
         // Rate limited: wait as long as SmartThings asks (capped) and retry once.
         // Not an auth problem, so it never reaches the refresh/auth-flow handling below.
+        // A device command is only retried after a short wait: HomeKit has given up on the write
+        // long before a 30 s wait ends, and a late command could land after a newer one.
         if (error.response?.status === 429 && originalRequest && !originalRequest._retry429) {
           originalRequest._retry429 = true;
           const waitMs = IKHomeBridgeHomebridgePlatform.retryAfterMs(error.response.headers?.['retry-after']);
-          this.log.warn(`SmartThings rate limit hit (429) for ${originalRequest.url}; retrying in ${Math.round(waitMs / 1000)} s`);
-          await this.delay(waitMs);
-          return this.axInstance(originalRequest);
+          const isRead = (originalRequest.method || 'get').toLowerCase() === 'get';
+          if (isRead || waitMs <= 5000) {
+            this.log.warn(`SmartThings rate limit hit (429) for ${originalRequest.url}; retrying in ${Math.round(waitMs / 1000)} s`);
+            await this.delay(waitMs);
+            return this.axInstance(originalRequest);
+          }
+          this.log.warn(`SmartThings rate limit hit (429) for ${originalRequest.url}; not retrying the command`);
         }
 
         // If the error is 401 and we haven't tried to refresh the token yet

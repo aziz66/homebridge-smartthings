@@ -526,6 +526,7 @@ export class TelevisionService extends BaseService {
         await this.samsungWebSocket.holdKey('KEY_POWER', 3500);
         this.log.info(`Frame TV: Full power off successful for ${this.name}`);
         this.multiServiceAccessory.forceNextStatusRefresh();
+        this.multiServiceAccessory.pausePollingAfterCommand?.();
         return;
       } catch (error) {
         this.log.warn(`Frame TV: WebSocket power off failed for ${this.name}: ${error} — falling back to SmartThings API`);

@@ -77,14 +77,14 @@ test('art connect settles when a stale art socket is still set', async () => {
   }
 });
 
-test('holdKey rejects when the socket drops before Release, so power-off falls back to the cloud', async () => {
+test('holdKey still succeeds when the TV drops the socket after the Press (it is powering off)', async () => {
   const tv = await fakeTv(socket => {
     socket.send(JSON.stringify({ event: 'ms.channel.connect', data: {} }));
     socket.on('message', () => socket.close()); // drop right after the Press
   });
   const sws = pointAt(new SamsungWebSocket('127.0.0.1', recordingLog().log, tempStorage(), 'tok1'), tv.port);
   try {
-    await assert.rejects(sws.holdKey('KEY_POWER', 300), /WebSocket not open/);
+    await assert.doesNotReject(sws.holdKey('KEY_POWER', 300));
   } finally {
     sws.destroy();
     await tv.close();
