@@ -41,7 +41,7 @@ These capabilities are mapped one-to-one to a HomeKit service. Order matters —
 | `button` | Stateless Programmable Switch |
 | `battery` | Battery Service *(companion characteristic added to whatever primary service the device has)* |
 | `valve` | Valve |
-| `samsungce.airConditionerLighting` | Switch *(only created when `ExposeACDisplayLight` is enabled)* |
+| `samsungce.airConditionerLighting` | Lightbulb *(AC display light; only created when `ExposeACDisplayLight` is enabled)* |
 
 ---
 
@@ -51,13 +51,13 @@ These rules match a **set** of capabilities to a single compound service. The pl
 
 | Required capabilities | Optional capabilities | HomeKit service |
 |---|---|---|
-| `switch`, `airConditionerMode`, `airConditionerFanMode`, `thermostatCoolingSetpoint`, `temperatureMeasurement` | `fanOscillationMode`, `relativeHumidityMeasurement`, `custom.airConditionerOptionalMode` | Air Conditioner *(Heater Cooler)* |
+| `switch`, `airConditionerMode`, `airConditionerFanMode`, `thermostatCoolingSetpoint`, `temperatureMeasurement` | `fanOscillationMode`, `relativeHumidityMeasurement`, `custom.airConditionerOptionalMode` | Air Conditioner *(Thermostat + Fan)* |
 | `switch`, `airConditionerFanMode` | `custom.filterState`, `custom.hepaFilter`, `airQualitySensor`, `dustSensor`, `veryFineDustSensor`, `odorSensor` | Air Purifier |
 | `switch`, `fanSpeed`, `switchLevel` | — | Fan + Light combo |
 | `switch`, `fanSpeed` | — | Fan |
-| `switch`, `switchLevel` | — | Light (dimmable) |
-| `switch`, `colorControl` | — | Light (color) |
-| `switch`, `colorTemperature` | — | Light (color temperature) |
+| `switch`, `switchLevel` | `switchLevel`, `colorControl`, `colorTemperature` | Light (dimmable) |
+| `switch`, `colorControl` | `switchLevel`, `colorControl`, `colorTemperature` | Light (color) |
+| `switch`, `colorTemperature` | `switchLevel`, `colorControl`, `colorTemperature` | Light (color temperature) |
 | `switch`, `valve` | — | Valve |
 | `temperatureMeasurement`, `thermostatMode`, `thermostatHeatingSetpoint`, `thermostatCoolingSetpoint` | — | Thermostat |
 | `temperatureMeasurement`, `thermostatHeatingSetpoint` | — | Thermostat *(heat-only)* |
@@ -68,6 +68,7 @@ These rules match a **set** of capabilities to a single compound service. The pl
 | `dryerOperatingState` | `dryerMode`, `remoteControlStatus` | Dryer *(Valve with Active/InUse and remaining duration)* |
 | `dishwasherOperatingState` | `dishwasherMode`, `remoteControlStatus` | Dishwasher *(Valve with Active/InUse and remaining duration)* |
 | `securitySystem` | `alarm`, `panicAlarm`, `temperatureAlarm` | Security System |
+| `samsungce.robotCleanerOperatingState`, `switch` | `robotCleanerMovement` | Switch *(Samsung robot vacuum; only when `ExposeRobotVacuum` is enabled)* |
 
 ---
 

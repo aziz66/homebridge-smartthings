@@ -2,7 +2,7 @@
 
 Every setting available in `config.schema.json`, grouped by topic. The Homebridge UI shows the same descriptions inline next to each field — this page is a single-pager for users who configure via JSON or want to see everything at once.
 
-> **Defaults** are what the plugin does when a key is absent from `config.json`. If you saved your config with an older plugin version, the Homebridge UI may have written an explicit value (for example `"registerVolumeSlider": true`), and that saved value keeps applying.
+> **Defaults** are the values the Homebridge UI settings form uses. For on/off options they are also what the plugin does when the key is absent from `config.json`; for polling intervals see the note in that section. If you saved your config with an older plugin version, the Homebridge UI may have written an explicit value (for example `"registerVolumeSlider": true`), and that saved value keeps applying.
 
 > The plugin alias is `HomeBridgeSmartThings` (platform). Configuration lives under the `platforms` array of `~/.homebridge/config.json`.
 
@@ -29,13 +29,15 @@ Every setting available in `config.schema.json`, grouped by topic. The Homebridg
 
 All intervals are in seconds. Set to `0` to disable polling for that device class entirely (only safe if you have webhooks configured). SmartThings real-time subscriptions provide push updates when available; polling is the fallback.
 
+If a polling key is missing from `config.json` altogether (hand-written configs), the plugin falls back to 10 seconds, except TVs and security systems (15) and window shades (20).
+
 | Field | Default (sec) | Description |
 |---|---|---|
 | `PollLocksSeconds` | `10` | Lock state. |
 | `PollDoorsSeconds` | `10` | Garage door state. |
-| `PollSensorsSeconds` | `5` | Motion, contact, leak, smoke, CO, occupancy, temperature, humidity, light. |
+| `PollSensorsSeconds` | `5` | Motion, contact, leak, smoke, CO, occupancy, temperature, humidity, light, battery, thermostats, air conditioners and air purifiers. |
 | `PollSecuritySystemsSeconds` | `15` | SmartThings security panels. |
-| `PollSwitchesAndLightsSeconds` | `10` | Switches, lights, fans. |
+| `PollSwitchesAndLightsSeconds` | `10` | Switches, lights, fans, buttons and the AC display light. |
 | `PollTelevisionsSeconds` | `15` | Samsung TVs (TVs respond more slowly than other devices, so a higher interval is recommended). |
 | `PollWindowShadesSeconds` | `20` | Window shades and blinds. |
 

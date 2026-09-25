@@ -128,7 +128,7 @@
         "default": false
       },
       "ExposeACDisplayLight": {
-        "title": "Expose AC Display Light as a switch if available.",
+        "title": "Expose AC Display Light as a light if available.",
         "type": "boolean",
         "required": false,
         "default": false

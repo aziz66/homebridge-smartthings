@@ -14,6 +14,17 @@ const KNOWN_LIFECYCLES = ['PING', 'CONFIRMATION', 'INSTALL', 'UPDATE', 'UNINSTAL
 // Cap the inbound body on the public webhook endpoint. SmartThings lifecycle payloads are well under 1 KB.
 const MAX_BODY_BYTES = 1024 * 1024;
 
+// url.parse() throws (ERR_INVALID_URL) on some malformed request targets, e.g.
+// "http://[::1". Thrown inside the request handler that would be an uncaughtException
+// and take Homebridge down, so parse defensively and let the caller answer 400.
+export function parseRequestTarget(target: string | undefined): url.UrlWithParsedQuery | null {
+  try {
+    return url.parse(target || '/', true);
+  } catch {
+    return null;
+  }
+}
+
 export class WebhookServer {
   private server: http.Server | null = null;
   private eventHandlers: ((event: ShortEvent) => void)[] = [];
@@ -57,7 +68,12 @@ export class WebhookServer {
     const port = this.platform.config.webhook_port || 3000;
 
     this.server = http.createServer((req, res) => {
-      const parsedUrl = url.parse(req.url!, true);
+      const parsedUrl = parseRequestTarget(req.url);
+      if (!parsedUrl) {
+        res.writeHead(400);
+        res.end();
+        return;
+      }
 
       if (parsedUrl.pathname === '/oauth/callback') {
         if (this.authHandler) {
@@ -74,6 +90,10 @@ export class WebhookServer {
         res.end();
       }
     });
+
+    // Bound slow or stalled clients on this (possibly internet-facing) endpoint.
+    this.server.headersTimeout = 10 * 1000;
+    this.server.requestTimeout = 30 * 1000;
 
     this.server.listen(port, () => {
       this.log.info(`Webhook server listening on port ${port}`);
@@ -190,7 +210,7 @@ export class WebhookServer {
   // Verified path (verifyWebhookSignatures enabled). Rejects anything without a valid
   // SmartThings HTTP signature with 401, and only dispatches known lifecycles.
   private async handleVerifiedPost(rawBody: Buffer, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    const path = url.parse(req.url || '/').pathname || '/';
+    const path = parseRequestTarget(req.url)?.pathname || '/';
     const ok = await this.signatureVerifier!.verify(rawBody, req.method, path, req.headers);
     if (!ok) {
       this.log.warn('Rejected webhook POST on / - HTTP signature verification failed (401)');

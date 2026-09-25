@@ -211,3 +211,14 @@ test('air purifier: availableAcFanModes events are not treated as a fan mode', (
   assert.equal(target.value, 0);
   assert.equal(speed.value, 100);
 });
+
+test('air purifier: every manual fan mode survives the HomeKit round trip', () => {
+  for (const modes of [['low', 'high'], ['low', 'medium', 'high'], ['low', 'mid', 'high', 'max'], ['1', '2', '3', '4', '5']]) {
+    const status = { airConditionerFanMode: { fanMode: { value: modes[0] }, supportedAcFanModes: { value: ['auto', ...modes] } } };
+    const { service } = createClimateService(AirPurifierService, ['switch', 'airConditionerFanMode'], status);
+    for (const mode of modes) {
+      const level = service.fanModeToLevel(mode);
+      assert.equal(service.levelToFanMode(level), mode, `${mode} -> ${level}% in [${modes}]`);
+    }
+  }
+});

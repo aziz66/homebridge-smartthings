@@ -132,14 +132,23 @@ export class MultiServiceAccessory {
     },
     {
       capabilities: ['switch', 'switchLevel'],
+      // Optional so colour / colour-temperature events are subscribed and routed to the
+      // bulb whichever pair matched first (LightService detects features from the device).
+      optionalCapabilities: ['switchLevel', 'colorControl', 'colorTemperature'],
       service: LightService,
     },
     {
       capabilities: ['switch', 'colorControl'],
+      // Optional so colour / colour-temperature events are subscribed and routed to the
+      // bulb whichever pair matched first (LightService detects features from the device).
+      optionalCapabilities: ['switchLevel', 'colorControl', 'colorTemperature'],
       service: LightService,
     },
     {
       capabilities: ['switch', 'colorTemperature'],
+      // Optional so colour / colour-temperature events are subscribed and routed to the
+      // bulb whichever pair matched first (LightService detects features from the device).
+      optionalCapabilities: ['switchLevel', 'colorControl', 'colorTemperature'],
       service: LightService,
     },
     {
@@ -215,7 +224,6 @@ export class MultiServiceAccessory {
   protected axInstance: axios.AxiosInstance;
   protected commandURL: string;
   protected statusURL: string;
-  protected healthURL: string;
   protected api: API;
   protected online = true;
   //protected deviceStatus: DeviceStatus = { timestamp: 0, status: undefined };
@@ -258,7 +266,6 @@ export class MultiServiceAccessory {
 
     this.commandURL = 'devices/' + accessory.context.device.deviceId + '/commands';
     this.statusURL = 'devices/' + accessory.context.device.deviceId + '/status';
-    this.healthURL = 'devices/' + accessory.context.device.deviceId + '/health';
     this.characteristic = platform.Characteristic;
 
     // set accessory information
@@ -294,26 +301,6 @@ export class MultiServiceAccessory {
           infoButtonKey: (matchedFrameTv.infoButtonKey || 'KEY_INFO').trim() || 'KEY_INFO',
         };
       }
-    }
-
-    // Initialize device health check (advisory only — see checkDeviceHealth below)
-    this.checkDeviceHealth().catch(error => {
-      this.log.debug(`Health check error for ${this.name}: ${error?.message || error}`);
-    });
-  }
-
-  // Cloud /health is unreliable for locally-executing Edge drivers (it can report OFFLINE
-  // even when the device is fully reachable via /status). Treat it as advisory: log only,
-  // never flip `online` to false from here. The failureCount mechanism in refreshStatus()
-  // and startPollingState() remains the source of truth for offline state.
-  private async checkDeviceHealth(): Promise<void> {
-    try {
-      const response = await this.axInstance.get(this.healthURL);
-      const reportedOnline = response.data.state === 'ONLINE';
-      this.log.debug(`Device ${this.name} cloud /health reports ${reportedOnline ? 'ONLINE' : response.data.state}`);
-    } catch (error) {
-      // Advisory only: a failed /health call must not count towards crash-loop detection.
-      this.log.debug(`Failed to check device health for ${this.name}: ${(error as Error)?.message || error}`);
     }
   }
 

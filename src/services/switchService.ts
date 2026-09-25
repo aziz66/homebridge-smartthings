@@ -21,9 +21,12 @@ export class SwitchService extends BaseService {
     // keeps a legacy Switch unless removeLegacySwitchForTV is set) would have its tile
     // converted to an Outlet while EnergyService skips it, leaving the breaking
     // presentation change with none of the benefit.
+    // The metering check needs the component's full capability list: this service's own
+    // `capabilities` only ever contains 'switch'.
+    const componentCapabilities: string[] = Array.isArray(deviceStatus?.capabilities) ? deviceStatus.capabilities : capabilities;
     const exposeAsOutlet = platform.config.ExposeEnergyAsOutlet === true
       && EnergyService.isEligible(platform, multiServiceAccessory, componentId, capabilities)
-      && EnergyService.hasMeteringCapability(capabilities);
+      && EnergyService.hasMeteringCapability(componentCapabilities);
     // Prune the opposite cached service so flipping the flag doesn't leave a ghost tile
     // alongside the new one (setServiceType only ever adds, never removes).
     const stale = this.findOwnService(exposeAsOutlet ? platform.Service.Switch : platform.Service.Outlet);

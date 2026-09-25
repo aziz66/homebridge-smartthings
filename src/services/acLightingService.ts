@@ -39,7 +39,7 @@ export class ACLightingService extends BaseService {
 
     // Start polling to keep the state updated
     multiServiceAccessory.startPollingState(
-      this.platform.config.PollSwitchesAndLightsSeconds,
+      (this.platform.config.PollSwitchesAndLightsSeconds ?? 10),
       this.getLightState.bind(this),
       this.service,
       platform.Characteristic.On,

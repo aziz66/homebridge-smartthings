@@ -43,9 +43,14 @@ test('startup discovery that fails on a network error is retried in the backgrou
   const storage = tempStorage();
   writeTokenFile(storage, validTokens());
   const { platform, api } = makePlatform({}, storage);
-  const internals = platform as unknown as { delay: () => Promise<void>; rediscoveryDelayMs: number; rediscoveryTimer: unknown };
+  const internals = platform as unknown as {
+    delay: () => Promise<void>; rediscoveryDelayMs: number; rediscoveryTimer: NodeJS.Timeout | null;
+    scheduleRediscovery: () => void;
+  };
   internals.delay = async () => undefined; // skip withRetry back-off
-  internals.rediscoveryDelayMs = 20;
+  // Long enough that the background retry can't fire while startup is still running (which made
+  // this test flaky under load); the retry is then re-armed with a short delay below.
+  internals.rediscoveryDelayMs = 60 * 1000;
 
   let networkUp = false;
   const calls = stubAdapter(platform, (config) => {
@@ -58,8 +63,12 @@ test('startup discovery that fails on a network error is retried in the backgrou
   await api.handlers.didFinishLaunching();
   assert.equal(calls.length, 3, 'three attempts during startup');
   assert.ok(internals.rediscoveryTimer, 'a background re-discovery must be scheduled');
-  assert.equal(internals.rediscoveryDelayMs, 40, 'next delay doubles');
+  assert.equal(internals.rediscoveryDelayMs, 120 * 1000, 'next delay doubles');
 
+  clearTimeout(internals.rediscoveryTimer!);
+  internals.rediscoveryTimer = null;
+  internals.rediscoveryDelayMs = 1;
+  internals.scheduleRediscovery();
   networkUp = true;
   const deadline = Date.now() + 2000;
   while (calls.length < 4 && Date.now() < deadline) {

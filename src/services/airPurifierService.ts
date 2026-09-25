@@ -106,10 +106,10 @@ export class AirPurifierService extends BaseService {
         .onGet(this.getFilterChangeIndication.bind(this));
     }
 
-    multiServiceAccessory.startPollingState(this.platform.config.PollSensorsSeconds,
+    multiServiceAccessory.startPollingState((this.platform.config.PollSensorsSeconds ?? 10),
       this.getActive.bind(this), this.service, platform.Characteristic.Active);
 
-    multiServiceAccessory.startPollingState(this.platform.config.PollSensorsSeconds,
+    multiServiceAccessory.startPollingState((this.platform.config.PollSensorsSeconds ?? 10),
       this.getRotationSpeed.bind(this), this.service, platform.Characteristic.RotationSpeed);
 
     return this.service;
@@ -124,7 +124,7 @@ export class AirPurifierService extends BaseService {
       this.service.getCharacteristic(platform.Characteristic.AirQuality)
         .onGet(this.getAirQuality.bind(this));
 
-      multiServiceAccessory.startPollingState(this.platform.config.PollSensorsSeconds,
+      multiServiceAccessory.startPollingState((this.platform.config.PollSensorsSeconds ?? 10),
         this.getAirQuality.bind(this), this.service, platform.Characteristic.AirQuality);
     }
 
@@ -381,7 +381,9 @@ export class AirPurifierService extends BaseService {
     if (idx < 0 || modes.length === 0) {
       return 0;
     }
-    return Math.round(((idx + 1) / modes.length) * 100);
+    // floor, not round: levelToFanMode() maps ceil(level/100 * n) back to a mode, so a rounded-up
+    // 67 % for the middle of three modes would select the top mode on the way back.
+    return Math.floor(((idx + 1) / modes.length) * 100);
   }
 
   // HomeKit RotationSpeed (0-100) -> a manual mode the device supports. undefined if none.

@@ -32,6 +32,9 @@ class UiServer extends HomebridgePluginUiServer {
         tokenPath: '/oauth/token',
         authorizePath: '/oauth/authorize',
       },
+      http: {
+        timeout: 15000, // don't let the wizard hang on a stalled token request
+      },
     };
 
     this.client = new AuthorizationCode(params);
@@ -163,7 +166,7 @@ class UiServer extends HomebridgePluginUiServer {
 
     // Step 1: Flush existing subscriptions
     try {
-      await axios.delete(`${baseURL}installedapps/${installedAppId}/subscriptions`, { headers });
+      await axios.delete(`${baseURL}installedapps/${installedAppId}/subscriptions`, { headers, timeout: 15000 });
     } catch (err) {
       throw new RequestError('Failed to flush existing subscriptions: ' + (err.response?.data?.message || err.message));
     }
@@ -188,7 +191,7 @@ class UiServer extends HomebridgePluginUiServer {
       };
 
       try {
-        await axios.post(`${baseURL}installedapps/${installedAppId}/subscriptions`, body, { headers });
+        await axios.post(`${baseURL}installedapps/${installedAppId}/subscriptions`, body, { headers, timeout: 15000 });
         successCount++;
       } catch (err) {
         failCount++;

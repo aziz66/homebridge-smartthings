@@ -207,12 +207,12 @@ export class AirConditionerService extends BaseService {
     this.service.getCharacteristic(platform.Characteristic.TemperatureDisplayUnits)
       .onGet(this.getTemperatureDisplayUnits.bind(this));
 
-    multiServiceAccessory.startPollingState(this.platform.config.PollSensorsSeconds, this.getCurrentHeatingCoolingState.bind(this),
+    multiServiceAccessory.startPollingState((this.platform.config.PollSensorsSeconds ?? 10), this.getCurrentHeatingCoolingState.bind(this),
       this.service,
       platform.Characteristic.CurrentHeatingCoolingState, platform.Characteristic.TargetHeatingCoolingState,
       this.getTargetHeatingCoolingState.bind(this));
 
-    multiServiceAccessory.startPollingState(this.platform.config.PollSensorsSeconds, this.getCurrentTemperature.bind(this), this.service,
+    multiServiceAccessory.startPollingState((this.platform.config.PollSensorsSeconds ?? 10), this.getCurrentTemperature.bind(this), this.service,
       platform.Characteristic.CurrentTemperature, platform.Characteristic.TargetTemperature,
       this.getTargetTemperature.bind(this));
 
@@ -238,10 +238,10 @@ export class AirConditionerService extends BaseService {
       .onSet(this.setFanLevel.bind(this))
       .onGet(this.getFanLevel.bind(this));
 
-    multiServiceAccessory.startPollingState(this.platform.config.PollSensorsSeconds,
+    multiServiceAccessory.startPollingState((this.platform.config.PollSensorsSeconds ?? 10),
       this.getSwitchState.bind(this), this.service, platform.Characteristic.Active);
 
-    multiServiceAccessory.startPollingState(this.platform.config.PollSensorsSeconds,
+    multiServiceAccessory.startPollingState((this.platform.config.PollSensorsSeconds ?? 10),
       this.getFanLevel.bind(this), this.service, platform.Characteristic.RotationSpeed);
 
     return this.service;
@@ -275,7 +275,7 @@ export class AirConditionerService extends BaseService {
     // Polling needs careful consideration - polling the same state for multiple switches is redundant
     // Maybe only poll if it's the *first* optional switch being added, or handle polling centrally?
     // For simplicity here, let's poll each (might cause extra API calls)
-    multiServiceAccessory.startPollingState(this.platform.config.PollSensorsSeconds,
+    multiServiceAccessory.startPollingState((this.platform.config.PollSensorsSeconds ?? 10),
       this.getSpecificOptionalModeSwitchState.bind(this, targetMode), switchService, platform.Characteristic.On);
 
     return switchService;
@@ -287,7 +287,7 @@ export class AirConditionerService extends BaseService {
     this.service.getCharacteristic(platform.Characteristic.CurrentRelativeHumidity)
       .onGet(this.getHumidityLevel.bind(this));
 
-    multiServiceAccessory.startPollingState(this.platform.config.PollSensorsSeconds, this.getHumidityLevel.bind(this), this.service,
+    multiServiceAccessory.startPollingState((this.platform.config.PollSensorsSeconds ?? 10), this.getHumidityLevel.bind(this), this.service,
       platform.Characteristic.CurrentRelativeHumidity);
 
     return this.service;
@@ -306,7 +306,7 @@ export class AirConditionerService extends BaseService {
       .onGet(this.getLightBrightness.bind(this))
       .onSet(this.setLightBrightness.bind(this));
 
-    multiServiceAccessory.startPollingState(this.platform.config.PollSensorsSeconds, this.getLightSwitchState.bind(this), this.service,
+    multiServiceAccessory.startPollingState((this.platform.config.PollSensorsSeconds ?? 10), this.getLightSwitchState.bind(this), this.service,
       platform.Characteristic.On);
 
     return this.service;
@@ -759,7 +759,12 @@ export class AirConditionerService extends BaseService {
         break;
       case 'airConditionerFanMode':
         if (event.attribute === 'supportedAcFanModes' || event.attribute === 'availableAcFanModes') {
-          const resolved = this.resolveFanModes(event.value);
+          // Keep the same precedence as updateFanModeCache(): the currently available set wins over
+          // the full supported set, whichever list the event carried.
+          const cachedFanMode = this.deviceStatus?.status?.airConditionerFanMode;
+          const available = event.attribute === 'availableAcFanModes' ? event.value : cachedFanMode?.availableAcFanModes?.value;
+          const supported = event.attribute === 'supportedAcFanModes' ? event.value : cachedFanMode?.supportedAcFanModes?.value;
+          const resolved = this.resolveFanModes(available, supported);
           this.supportedFanModes = resolved.modes;
           this.hasDeviceFanModes = resolved.fromDevice;
           break;

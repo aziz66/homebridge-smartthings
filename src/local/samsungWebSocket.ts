@@ -34,7 +34,7 @@ export class SamsungWebSocket {
   private get remoteUrl(): string {
     let url = `wss://${this.ip}:8002/api/v2/channels/samsung.remote.control?name=${this.encodedAppName}`;
     if (this.token) {
-      url += `&token=${this.token}`;
+      url += `&token=${encodeURIComponent(this.token)}`;
     }
     return url;
   }
