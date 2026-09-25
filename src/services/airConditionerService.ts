@@ -699,11 +699,6 @@ export class AirConditionerService extends BaseService {
   }
 
   private async sendCommandsOrFail(commands: Command[]) {
-    if (!this.multiServiceAccessory.isOnline) {
-      this.log.error(this.name + ' is offline');
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-    }
-
     if (!await this.multiServiceAccessory.sendCommands(commands)) {
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
