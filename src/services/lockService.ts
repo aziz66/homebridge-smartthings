@@ -36,7 +36,7 @@ export class LockService extends BaseService {
 
     let pollLocksSeconds = 10; // default to 10 seconds
     if (this.platform.config.PollLocksSeconds !== undefined) {
-      pollLocksSeconds = this.platform.config.PollSensorsSeconds;
+      pollLocksSeconds = this.platform.config.PollLocksSeconds;
     }
 
     if (pollLocksSeconds > 0) {
@@ -54,16 +54,16 @@ export class LockService extends BaseService {
     if (Date.now() - this.lockInTransitionStart > 10000) {
       return new Promise((resolve, reject) => {
         this.getStatus().then(success => {
-          if (!success) {
+          const lockState = success ? this.deviceStatus.status?.lock?.lock?.value : undefined;
+          if (lockState === undefined || lockState === null) {
             reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
             return;
           }
-          this.targetState = this.deviceStatus.status.lock.lock.value === 'locked' ?
-            this.platform.Characteristic.LockTargetState.SECURED :
-            this.platform.Characteristic.LockTargetState.UNSECURED;
+          // An unsettled state ('unknown', jammed) keeps the current target.
+          this.targetState = this.mapTargetState(lockState) ?? this.targetState;
           this.log.debug(`Reset ${this.name} to ${this.targetState}`);
           resolve(this.targetState);
-        });
+        }).catch(() => reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE)));
       });
     } else {
       return this.targetState;
@@ -76,21 +76,16 @@ export class LockService extends BaseService {
 
     this.targetState = value as number;
 
-    if (!this.multiServiceAccessory.isOnline) {
-      this.log.error(this.name + ' is offline');
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-    }
     this.lockInTransitionStart = Date.now();
     this.service.updateCharacteristic(this.platform.Characteristic.LockTargetState, value);
-    this.multiServiceAccessory.sendCommand(this.componentId, 'lock', value ? 'lock' : 'unlock').then((success) => {
-      if (success) {
-        this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
-        this.multiServiceAccessory.forceNextStatusRefresh();
-        // this.deviceStatus.timestamp = 0; // Force refresh
-      } else {
-        this.log.error(`Command failed for ${this.name}`);
-      }
-    });
+    if (!(await this.multiServiceAccessory.sendCommand(this.componentId, 'lock', value ? 'lock' : 'unlock'))) {
+      this.log.error(`Command failed for ${this.name}`);
+      // Let the next poll resync the target from the device rather than hold the failed one.
+      this.lockInTransitionStart = 0;
+      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
+    this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
+    this.multiServiceAccessory.forceNextStatusRefresh();
   }
 
 
@@ -102,26 +97,37 @@ export class LockService extends BaseService {
 
     return new Promise((resolve, reject) => {
       this.getStatus().then(success => {
-        if (success) {
-          const lockState = this.deviceStatus.status.lock.lock.value;
+        const lockState = success ? this.deviceStatus.status?.lock?.lock?.value : undefined;
+        if (lockState !== undefined && lockState !== null) {
           this.log.debug(`LockState value from ${this.name}: ${lockState}`);
           resolve(this.mapLockState(lockState));
         } else {
           reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
         }
-      });
+      }).catch(() => reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE)));
     });
   }
 
   public processEvent(event: ShortEvent): void {
     this.log.debug(`Event updating lock capability for ${this.name} to ${event.value}`);
     this.service.updateCharacteristic(this.platform.Characteristic.LockCurrentState, this.mapLockState(event.value));
-    if (event.value === 'locked') {
-      this.targetState = this.platform.Characteristic.LockTargetState.SECURED;
+    // Only a settled locked/unlocked report moves the target; 'unknown' or a jam must not flip it.
+    const targetState = this.mapTargetState(event.value);
+    if (targetState !== undefined) {
+      this.targetState = targetState;
       this.service.updateCharacteristic(this.platform.Characteristic.LockTargetState, this.targetState);
-    } else {
-      this.targetState = this.platform.Characteristic.LockTargetState.UNSECURED;
-      this.service.updateCharacteristic(this.platform.Characteristic.LockTargetState, this.targetState);
+    }
+  }
+
+  private mapTargetState(lockState: string): number | undefined {
+    switch (lockState) {
+      case 'locked':
+        return this.platform.Characteristic.LockTargetState.SECURED;
+      case 'unlocked':
+      case 'unlocked with timeout':
+        return this.platform.Characteristic.LockTargetState.UNSECURED;
+      default:
+        return undefined;
     }
   }
 
@@ -133,6 +139,9 @@ export class LockService extends BaseService {
       case 'unlocked':
       case 'unlocked with timeout': {
         return(this.platform.Characteristic.LockCurrentState.UNSECURED);
+      }
+      case 'not fully locked': {
+        return(this.platform.Characteristic.LockCurrentState.JAMMED);
       }
       default: {
         return(this.platform.Characteristic.LockCurrentState.UNKNOWN);
