@@ -1,5 +1,8 @@
-# blank_issues_enabled: false
-# contact_links:
-#   - name: Homebridge Discord Community
-#     url: https://discord.gg/kqNCe2D
-#     about: Ask your questions in the #YOUR_CHANNEL_HERE channel
+blank_issues_enabled: false
+contact_links:
+  - name: Troubleshooting guide
+    url: https://github.com/aziz66/homebridge-smartthings/wiki/Troubleshooting
+    about: Common problems (OAuth, missing devices, webhooks, Frame TV pairing) and their fixes. Please check here first.
+  - name: Documentation (wiki)
+    url: https://github.com/aziz66/homebridge-smartthings/wiki
+    about: Installation, OAuth setup and a full configuration reference.
