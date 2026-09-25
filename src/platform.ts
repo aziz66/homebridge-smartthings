@@ -110,6 +110,16 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
       async (error) => {
         const originalRequest = error.config;
 
+        // Rate limited: wait as long as SmartThings asks (capped) and retry once.
+        // Not an auth problem, so it never reaches the refresh/auth-flow handling below.
+        if (error.response?.status === 429 && originalRequest && !originalRequest._retry429) {
+          originalRequest._retry429 = true;
+          const waitMs = IKHomeBridgeHomebridgePlatform.retryAfterMs(error.response.headers?.['retry-after']);
+          this.log.warn(`SmartThings rate limit hit (429) for ${originalRequest.url}; retrying in ${Math.round(waitMs / 1000)} s`);
+          await this.delay(waitMs);
+          return this.axInstance(originalRequest);
+        }
+
         // If the error is 401 and we haven't tried to refresh the token yet
         if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
           originalRequest._retry = true;
@@ -805,6 +815,26 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
            message.includes('timeout') ||
            message.includes('network') ||
            message.includes('socket hang up');
+  }
+
+  /**
+   * Milliseconds to wait for a 429 Retry-After header (delta-seconds or HTTP date), capped at
+   * 30 s; 5 s when the header is missing or unparseable.
+   */
+  static retryAfterMs(header: unknown, now = Date.now()): number {
+    const MAX_MS = 30 * 1000;
+    const DEFAULT_MS = 5 * 1000;
+    const value = Array.isArray(header) ? header[0] : header;
+    if (typeof value === 'number' || (typeof value === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(value))) {
+      return Math.min(Math.max(Number(value) * 1000, 0), MAX_MS);
+    }
+    if (typeof value === 'string' && value.trim() !== '') {
+      const date = Date.parse(value);
+      if (!Number.isNaN(date)) {
+        return Math.min(Math.max(date - now, 0), MAX_MS);
+      }
+    }
+    return DEFAULT_MS;
   }
 
   /**
