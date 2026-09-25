@@ -3,7 +3,7 @@ import { API, Characteristic, WithUUID } from 'homebridge';
 // Eve (Elgato) custom HomeKit characteristics for power/energy reporting.
 // UUIDs validated against the fakegato-history reference. These render in the
 // Eve app / Controller for HomeKit / Home+ — Apple's own Home app ignores them
-// (its native Energy view is Matter-only; see src/matter/matterEnergyBridge.ts).
+// (its native Energy view reads Matter, not HAP).
 export const EVE_UUID = {
   CurrentConsumption: 'E863F10D-079E-48FF-8F27-9C2605A29F52', // instantaneous power, Watts
   TotalConsumption: 'E863F10C-079E-48FF-8F27-9C2605A29F52', // accumulated energy, kWh

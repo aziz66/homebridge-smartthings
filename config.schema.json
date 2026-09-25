@@ -191,13 +191,6 @@
         "default": 30,
         "description": "How often to poll power/energy values when Expose Energy Monitoring is on. Webhook subscriptions provide real-time updates when available; this polling is the fallback. Energy changes constantly, so a slower interval than the sensor poll is recommended. Note that energy adds up to 4 capabilities to the 20-subscription budget, so on a large setup enabling this may push a lower-traffic capability over the limit and back to polling (the log says which). Default: 30 seconds."
       },
-      "EnableMatterEnergy": {
-        "title": "Enable Matter ElectricalMeter export (experimental, forward-compatible)",
-        "type": "boolean",
-        "required": false,
-        "default": false,
-        "description": "Requires Expose Energy Monitoring. Attempts to publish energy-reporting devices as a Matter ElectricalMeter so they appear in the Apple Home Energy view (requires iOS 27 or later on your devices). This is a guaranteed no-op on current Homebridge builds — it only activates once Homebridge exposes the Matter energy device types (tracking: homebridge#3942). Safe to enable ahead of platform support. Default: off."
-      },
       "removeLegacySwitchForLaundry": {
         "title": "Remove Legacy Switch Service for Laundry Devices",
         "type": "boolean",

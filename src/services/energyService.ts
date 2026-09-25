@@ -4,7 +4,12 @@ import { BaseService } from './baseService';
 import { MultiServiceAccessory } from '../multiServiceAccessory';
 import { ShortEvent } from '../webhook/subscriptionHandler';
 import { makeEveCharacteristics, EveCharacteristics, EVE_UUID } from '../characteristics/eveCharacteristics';
-import { MatterEnergyBridge, EnergyReadings } from '../matter/matterEnergyBridge';
+
+export interface EnergyReadings {
+  powerW: number | null;
+  energyKwh: number | null;
+  voltageV: number | null;
+}
 
 // Eve characteristic value ceilings (mirror the characteristic definitions).
 const MAX_W = 65535;
@@ -12,10 +17,14 @@ const MAX_KWH = 1_000_000;
 const MAX_V = 380;
 
 /**
- * Exposes SmartThings power/energy as Eve custom characteristics (visible in the
- * Eve app / Controller / Home+ today) and, when Homebridge eventually exposes the
- * Matter energy device types, as a Matter ElectricalMeter (native Apple Home
- * Energy view). A single getReadings() feeds both paths.
+ * Exposes SmartThings power/energy as Eve custom characteristics, which render in
+ * the Eve app, Controller for HomeKit and Home+.
+ *
+ * Apple's own Home app does NOT show these: its Energy view reads Matter, not HAP.
+ * Homebridge 2.4+ does expose a Matter plugin API that would cover that case (an
+ * OnOffOutlet declaring electricalPowerMeasurement / electricalEnergyMeasurement
+ * cluster state, via api.matter.registerPlatformAccessories) - that is tracked as
+ * separate work, deliberately not attempted here.
  *
  * Scope: only attached to plug/switch/outlet accessories that already have a
  * Switch, Outlet or Lightbulb host tile (see MultiServiceAccessory.addComponent).
@@ -32,7 +41,6 @@ export class EnergyService extends BaseService {
   private readonly hasPower: boolean;
   private readonly hasEnergy: boolean;
   private readonly hasVoltage: boolean;
-  private matter?: MatterEnergyBridge;
   private last: EnergyReadings = { powerW: null, energyKwh: null, voltageV: null };
   private lastEnergyUnit: string | undefined;
   private lastEventAt = 0;
@@ -135,14 +143,6 @@ export class EnergyService extends BaseService {
     // energyMeter unit is therefore resolved lazily per event (see energyUnit()) rather
     // than captured here.
     this.refreshFromStatus();
-
-    // Forward-compatible Matter ElectricalMeter shim (no-op until homebridge#3942).
-    if (platform.config.EnableMatterEnergy === true) {
-      this.matter = new MatterEnergyBridge(platform, name);
-      if (this.matter.detect()) {
-        this.matter.register(accessory, this.last);
-      }
-    }
 
     // Poll as a fallback to webhook events, on its own (slower) cadence so energy
     // doesn't ride the fast sensor poll. Reuses the shared polling plumbing (with its
@@ -263,7 +263,7 @@ export class EnergyService extends BaseService {
     return unit === 'Wh' ? value / 1000 : unit === 'mWh' ? value / 1_000_000 : value; // default kWh
   }
 
-  // Push every exposed characteristic from cache, plus the Matter shim (raw values).
+  // Push every exposed characteristic from cache.
   private pushAll(): void {
     if (this.hasPower) {
       this.service.updateCharacteristic(this.eve.CurrentConsumption, this.eveVal(this.last.powerW, MAX_W));
@@ -274,7 +274,6 @@ export class EnergyService extends BaseService {
     if (this.hasVoltage) {
       this.service.updateCharacteristic(this.eve.Voltage, this.eveVal(this.last.voltageV, MAX_V));
     }
-    this.matter?.update(this.last);
   }
 
   public processEvent(event: ShortEvent): void {

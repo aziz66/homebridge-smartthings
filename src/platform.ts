@@ -183,8 +183,8 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
 
       // Warn if the dependent energy flags are set without the parent that activates them.
       if (this.config.ExposeEnergyMonitoring !== true
-        && (this.config.ExposeEnergyAsOutlet === true || this.config.EnableMatterEnergy === true)) {
-        this.log.warn('ExposeEnergyAsOutlet / EnableMatterEnergy have no effect unless ExposeEnergyMonitoring is enabled.');
+        && this.config.ExposeEnergyAsOutlet === true) {
+        this.log.warn('ExposeEnergyAsOutlet has no effect unless ExposeEnergyMonitoring is enabled.');
       }
 
       try {
