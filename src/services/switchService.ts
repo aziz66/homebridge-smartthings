@@ -52,19 +52,12 @@ export class SwitchService extends BaseService {
   async setSwitchState(value: CharacteristicValue) {
     this.log.debug('Received setSwitchState(' + value + ') event for ' + this.name);
 
-    if (!this.multiServiceAccessory.isOnline) {
-      this.log.error(this.name + ' is offline');
+    if (!(await this.multiServiceAccessory.sendCommand(this.componentId, 'switch', value ? 'on' : 'off'))) {
+      this.log.error(`Command failed for ${this.name}`);
       throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
-    this.multiServiceAccessory.sendCommand(this.componentId, 'switch', value ? 'on' : 'off').then((success) => {
-      if (success) {
-        this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
-        this.multiServiceAccessory.forceNextStatusRefresh();
-        // this.deviceStatus.timestamp = 0;  // Force a refresh next query.
-      } else {
-        this.log.error(`Command failed for ${this.name}`);
-      }
-    });
+    this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name);
+    this.multiServiceAccessory.forceNextStatusRefresh();
   }
 
   // Get the current state of the lock
@@ -78,7 +71,7 @@ export class SwitchService extends BaseService {
         if (success) {
           let switchState;
           try {
-            switchState = this.deviceStatus.status.switch.switch.value;
+            switchState = this.deviceStatus.status?.switch?.switch?.value;
           } catch(error) {
             this.log.error(`Missing switch status from ${this.name}`);
           }
@@ -87,7 +80,7 @@ export class SwitchService extends BaseService {
         } else {
           reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
         }
-      });
+      }).catch(() => reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE)));
     });
   }
 

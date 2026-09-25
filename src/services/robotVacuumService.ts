@@ -7,8 +7,9 @@ import { ShortEvent } from '../webhook/subscriptionHandler';
 const ROBOT_COMMAND_CAPABILITY = 'samsungce.robotCleanerOperatingState';
 const ROBOT_MOVEMENT_CAPABILITY = 'robotCleanerMovement';
 const ROBOT_MOVEMENT_ATTRIBUTE = 'robotCleanerMovement';
-// Movement values reported by SmartThings that should map to HomeKit "On".
-const ACTIVE_STATES = ['cleaning', 'homing', 'moving'];
+// Movement values reported by SmartThings that should map to HomeKit "On". 'point' is
+// spot cleaning; 'moving' is not a documented value but is kept as it can only widen matching.
+const ACTIVE_STATES = ['cleaning', 'homing', 'moving', 'point'];
 
 export class RobotVacuumService extends BaseService {
 
@@ -38,14 +39,12 @@ export class RobotVacuumService extends BaseService {
     this.log.debug('Received setSwitchState(' + value + ') event for ' + this.name);
 
     const command = value ? 'start' : 'returnToHome';
-    this.multiServiceAccessory.sendCommand(this.componentId, ROBOT_COMMAND_CAPABILITY, command).then((success) => {
-      if (success) {
-        this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name + ' (command: ' + command + ')');
-        this.multiServiceAccessory.forceNextStatusRefresh();
-      } else {
-        this.log.error(`Command ${command} failed for ${this.name}`);
-      }
-    });
+    if (!(await this.multiServiceAccessory.sendCommand(this.componentId, ROBOT_COMMAND_CAPABILITY, command))) {
+      this.log.error(`Command ${command} failed for ${this.name}`);
+      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
+    this.log.debug('onSet(' + value + ') SUCCESSFUL for ' + this.name + ' (command: ' + command + ')');
+    this.multiServiceAccessory.forceNextStatusRefresh();
   }
 
   async getSwitchState(): Promise<CharacteristicValue> {
@@ -67,7 +66,7 @@ export class RobotVacuumService extends BaseService {
         } else {
           reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
         }
-      });
+      }).catch(() => reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE)));
     });
   }
 

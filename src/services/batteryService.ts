@@ -18,7 +18,7 @@ export class Battery extends BaseService {
     this.service.getCharacteristic(platform.Characteristic.StatusLowBattery)
       .onGet(this.getStatusLowBattery.bind(this));
 
-    let pollSensorSeconds = 5; // default to 10 seconds
+    let pollSensorSeconds = 10; // default to 10 seconds (same as SensorService)
     if (this.platform.config.PollSensorsSeconds !== undefined) {
       pollSensorSeconds = this.platform.config.PollSensorsSeconds;
     }
@@ -37,8 +37,8 @@ export class Battery extends BaseService {
     return new Promise((resolve, reject) => {
       this.getStatus().then(success => {
         if (success) {
-          const batteryLevel = this.deviceStatus.status.battery.battery.value;
-          if (batteryLevel === null) {
+          const batteryLevel = this.deviceStatus.status?.battery?.battery?.value;
+          if (batteryLevel === null || batteryLevel === undefined) {
             return reject (new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
           }
           this.log.debug(`Battery value from ${this.name}: ${batteryLevel}`);
@@ -46,7 +46,7 @@ export class Battery extends BaseService {
         } else {
           reject (new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
         }
-      });
+      }).catch(() => reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE)));
     });
   }
 
@@ -58,8 +58,8 @@ export class Battery extends BaseService {
     return new Promise((resolve, reject) => {
       this.getStatus().then(success => {
         if (success) {
-          const batteryLevel = this.deviceStatus.status.battery.battery.value;
-          if (batteryLevel === null) {
+          const batteryLevel = this.deviceStatus.status?.battery?.battery?.value;
+          if (batteryLevel === null || batteryLevel === undefined) {
             return reject (new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
           }
           if (batteryLevel > 40) {
@@ -73,7 +73,7 @@ export class Battery extends BaseService {
         } else {
           reject (new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
         }
-      });
+      }).catch(() => reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE)));
     });
   }
 }
