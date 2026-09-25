@@ -22,14 +22,14 @@
         "title": "Client ID",
         "type": "string",
         "required": true,
-        "description": "OAuth2 Client ID from SmartThings. Obtained using the SmartThings CLI 'apps:create' command. See [Setup Instructions](https://github.com/aziz66/homebridge-smartthings?tab=readme-ov-file#getting-started) for details."
+        "description": "OAuth2 Client ID from SmartThings. Obtained using the SmartThings CLI 'apps:create' command. See [Setup Instructions](https://github.com/aziz66/homebridge-smartthings?tab=readme-ov-file#quick-start) for details."
       },
       "client_secret": {
         "title": "Client Secret",
         "type": "string",
         "required": true,
         "format": "password",
-        "description": "OAuth2 Client Secret from SmartThings. Obtained using the SmartThings CLI 'apps:create' command. Save this value securely! See [Setup Instructions](https://github.com/aziz66/homebridge-smartthings?tab=readme-ov-file#getting-started) for details."
+        "description": "OAuth2 Client Secret from SmartThings. Obtained using the SmartThings CLI 'apps:create' command. Save this value securely! See [Setup Instructions](https://github.com/aziz66/homebridge-smartthings?tab=readme-ov-file#quick-start) for details."
       },
       "server_url": {
         "title": "Server URL (Optional)",
@@ -68,12 +68,6 @@
         "required": false,
         "default": false,
         "description": "When enabled, every inbound webhook POST must carry a valid SmartThings HTTP signature (and a recent timestamp) or it is rejected with HTTP 401. Only applies when an https Server URL is configured; with a non-https URL it stays disabled. Register/confirm your Server URL with SmartThings BEFORE enabling, then confirm real-time updates still work (polling continues either way). Off (default) preserves existing behavior."
-      },
-      "GarageDoorMaxPoll": {
-        "title": "Garage Door Max Poll",
-        "type": "integer",
-        "required": true,
-        "default": 40
       },
       "PollLocksSeconds": {
         "title": "Poll Locks (zero = don't poll)",
@@ -117,7 +111,7 @@
         "title": "Register Volume Slider for TVs",
         "type": "boolean",
         "required": false,
-        "default": true,
+        "default": false,
         "description": "Creates a separate volume slider accessory for TVs (exposed as a lightbulb) because HomeKit's native TV interface doesn't show volume controls directly. Enable this if you can't see volume controls in the Home app. The TV speaker also still exposes relative volume, so the iPhone's hardware volume buttons (in the Apple TV Remote) keep working alongside the slider."
       },
 
@@ -137,7 +131,7 @@
         "title": "Expose AC Display Light as a switch if available.",
         "type": "boolean",
         "required": false,
-        "default": true
+        "default": false
       },
       "ExposeContactSensorForWashers": {
         "title": "Expose Contact Sensor for Washers (enables Activity Notifications)",
@@ -168,7 +162,7 @@
         "title": "Expose Zigbang Smart Doorlock as a lock if available.",
         "type": "boolean",
         "required": false,
-        "default": true
+        "default": false
       },
       "ExposeEnergyMonitoring": {
         "title": "Expose Energy Monitoring (Eve app)",
