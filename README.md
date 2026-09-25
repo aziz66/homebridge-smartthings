@@ -21,13 +21,18 @@
 <a href="https://ko-fi.com/aziz66"><img src="https://img.shields.io/badge/Ko--fi-Support%20Me-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Ko-fi"></a>
 </p>
 
+> [!IMPORTANT]
+> **This project is no longer actively maintained.** Version **1.0.68** is the final release. It keeps working as-is, but issues and pull requests may not receive a response.
+>
+> Tested with **Node.js 20.19+, 22.12+ and 24** and **Homebridge 1.6+ and 2.x**. You are welcome to fork it and carry it forward under the terms of the [Apache-2.0 license](./LICENSE). Thank you to everyone who used, tested and contributed to this plugin.
+
 # SmartThings Homebridge Plugin with OAuth Support
 
 Connects your SmartThings devices to Apple HomeKit through Homebridge. Works with the modern SmartThings app and API, discovers devices automatically, and uses OAuth with token refresh — no legacy app, no manual token management.
 
 ## Supporters
 
-A heartfelt thank-you to everyone who has supported this project on [Ko-fi](https://ko-fi.com/aziz66) — your generosity keeps the plugin maintained and improving.
+A heartfelt thank-you to everyone who has supported this project on [Ko-fi](https://ko-fi.com/aziz66) — your generosity helped this plugin grow into what it is today.
 
 | Supporter | Contribution |
 |---|---|
@@ -70,7 +75,7 @@ For the full SmartThings-capability → HomeKit-service mapping, see [Supported 
 ## Quick Start
 
 1. **Install the plugin** in the Homebridge UI: search for `Homebridge Smartthings oAuth Plugin` in the Plugins tab and click Install.
-2. **Create a SmartThings OAuth app** with the [SmartThings CLI](https://github.com/SmartThingsCommunity/smartthings-cli#readme) (`smartthings apps:create`). Save the Client ID and Client Secret.
+2. **Create a SmartThings OAuth app** with the [SmartThings CLI](https://github.com/SmartThingsCommunity/smartthings-cli#readme) (`smartthings apps:create`). Save the Client ID and Client Secret. The wizard expects the redirect URI `https://httpbin.org/get` by default — a public third-party echo service that simply displays the authorization code so you can copy it, which avoids needing a tunnel. If httpbin.org is unavailable, register a different redirect URI you control and enter it in the wizard instead.
 3. **Open the OAuth Setup Wizard** from the plugin settings and follow the four wizard steps.
 4. **Restart Homebridge** — your SmartThings devices appear in HomeKit.
 
@@ -91,7 +96,7 @@ All configuration is done through the Homebridge UI form, which has inline descr
 ## Troubleshooting & Help
 
 - **Common problems** (OAuth, missing devices, webhook setup, Frame TV pairing): [Troubleshooting](https://github.com/aziz66/homebridge-smartthings/wiki/Troubleshooting)
-- **Bug reports and feature requests**: [GitHub Issues](https://github.com/aziz66/homebridge-smartthings/issues)
+- **Bug reports**: [GitHub Issues](https://github.com/aziz66/homebridge-smartthings/issues) remain open, but since the project is no longer maintained, responses are not guaranteed and new features will not be added. Please redact secrets and tokens before pasting any config or logs.
 
 ## Changelog
 
