@@ -6,6 +6,8 @@ import { SmartThingsAuth } from '../auth/auth';
 import { ShortEvent } from './subscriptionHandler';
 import { SignatureVerifier } from './signatureVerifier';
 import axios from 'axios';
+import { describeError } from '../auth/sanitizeError';
+import { isSmartThingsId } from './smartThingsIds';
 
 // Lifecycles we process when signature verification is enabled. Anything else is dropped (400).
 const KNOWN_LIFECYCLES = ['PING', 'CONFIRMATION', 'INSTALL', 'UPDATE', 'UNINSTALL', 'CONFIGURATION', 'EVENT'];
@@ -94,7 +96,7 @@ export class WebhookServer {
       }
       await this.authHandler.handleOAuthCallback(query, res);
     } catch (error) {
-      this.log.error('OAuth callback error:', error);
+      this.log.error(`OAuth callback error: ${describeError(error)}`);
       res.writeHead(500, { 'Content-Type': 'text/html' });
       res.end('<h1>Authentication failed</h1><p>Please try again.</p>');
     }
@@ -165,15 +167,12 @@ export class WebhookServer {
 
       // Detect SmartThings lifecycle format
       // SmartApps use "lifecycle", API_ONLY/Connected Service apps use "messageType"
-      const lifecycleType = parsed.lifecycle || parsed.messageType;
+      // SmartThings always wraps device events in an EVENT lifecycle envelope; bare
+      // { deviceId, capability, ... } bodies are not accepted (they would let anyone forge events).
+      const lifecycleType = parsed?.lifecycle || parsed?.messageType;
       if (lifecycleType) {
         parsed.lifecycle = lifecycleType; // Normalize to "lifecycle" for handler
-        this.handleSmartThingsLifecycle(parsed, res);
-      } else if (parsed.deviceId && parsed.capability) {
-        // Legacy direct ShortEvent format (for compatibility)
-        this.notifyEventHandlers(parsed as ShortEvent);
-        res.writeHead(200);
-        res.end();
+        this.handleSmartThingsLifecycle(parsed, res, false);
       } else {
         this.log.debug('Received unknown POST format on /, ignoring');
         res.writeHead(200);
@@ -214,7 +213,7 @@ export class WebhookServer {
     const lifecycleType = parsed.lifecycle || parsed.messageType;
     if (lifecycleType && KNOWN_LIFECYCLES.includes(lifecycleType)) {
       parsed.lifecycle = lifecycleType; // Normalize to "lifecycle" for handler
-      this.handleSmartThingsLifecycle(parsed, res);
+      this.handleSmartThingsLifecycle(parsed, res, true);
     } else {
       this.log.warn(`Dropping webhook POST with non-allowlisted lifecycle (lifecycle=${lifecycleType ?? 'none'}) (400)`);
       res.writeHead(400);
@@ -222,7 +221,8 @@ export class WebhookServer {
     }
   }
 
-  private handleSmartThingsLifecycle(body: any, res: http.ServerResponse): void {
+  // `verified`: the request carried a valid SmartThings HTTP signature.
+  private handleSmartThingsLifecycle(body: any, res: http.ServerResponse, verified: boolean): void {
     const lifecycle = body.lifecycle;
     this.log.debug(`Received SmartThings lifecycle event: ${lifecycle}`);
 
@@ -234,10 +234,10 @@ export class WebhookServer {
         this.handleConfirmation(body, res);
         break;
       case 'EVENT':
-        this.handleEventLifecycle(body, res);
+        this.handleEventLifecycle(body, res, verified);
         break;
       case 'INSTALL':
-        this.handleInstall(body, res);
+        this.handleInstall(body, res, verified);
         break;
       case 'CONFIGURATION':
       case 'UPDATE':
@@ -272,18 +272,18 @@ export class WebhookServer {
     const confirmationUrl = body.confirmationData?.confirmationUrl;
     if (confirmationUrl) {
       this.log.info('Received SmartThings CONFIRMATION - hitting confirmation URL');
-      // Only call https URLs, never follow redirects, and time out — limits SSRF if a forged
-      // CONFIRMATION reaches this handler (always possible when verification is disabled).
-      if (typeof confirmationUrl === 'string' && /^https:\/\//i.test(confirmationUrl)) {
+      // Only call https URLs on SmartThings hosts, never follow redirects, and time out — limits
+      // SSRF if a forged CONFIRMATION reaches this handler (always possible when verification is disabled).
+      if (WebhookServer.isSmartThingsConfirmationUrl(confirmationUrl)) {
         axios.get(confirmationUrl, { timeout: 5000, maxRedirects: 0 })
           .then(() => {
             this.log.info('Successfully confirmed SmartThings app registration');
           })
           .catch((error) => {
-            this.log.error('Failed to confirm SmartThings app registration:', error);
+            this.log.error(`Failed to confirm SmartThings app registration: ${describeError(error)}`);
           });
       } else {
-        this.log.error('Refusing to call non-https confirmation URL from CONFIRMATION lifecycle');
+        this.log.error('Refusing to call a confirmation URL that is not https on a smartthings.com host');
       }
       const serverUrl = this.platform.config.server_url || '';
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -296,14 +296,14 @@ export class WebhookServer {
     }
   }
 
-  private handleEventLifecycle(body: any, res: http.ServerResponse): void {
+  private handleEventLifecycle(body: any, res: http.ServerResponse, verified: boolean): void {
     const eventData = body.eventData;
 
     // Capture installedAppId and locationId from event envelope if available
     if (eventData?.installedApp) {
       const { installedAppId, locationId } = eventData.installedApp;
       if (installedAppId || locationId) {
-        this.persistSmartThingsIds(installedAppId, locationId);
+        this.persistSmartThingsIds(installedAppId, locationId, verified);
       }
     }
 
@@ -333,41 +333,68 @@ export class WebhookServer {
     res.end(JSON.stringify({ eventData: {} }));
   }
 
-  private handleInstall(body: any, res: http.ServerResponse): void {
+  private handleInstall(body: any, res: http.ServerResponse, verified: boolean): void {
     this.log.info('Received SmartThings INSTALL lifecycle event');
 
     // Capture installedAppId from INSTALL event
     const installedAppId = body.installData?.installedApp?.installedAppId;
     const locationId = body.installData?.installedApp?.locationId;
     if (installedAppId || locationId) {
-      this.persistSmartThingsIds(installedAppId, locationId);
+      this.persistSmartThingsIds(installedAppId, locationId, verified);
     }
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({}));
   }
 
-  private persistSmartThingsIds(installedAppId?: string, locationId?: string): void {
+  // Lifecycle bodies are unauthenticated unless signature verification is on, and the IDs end
+  // up in API URL paths. Only UUIDs are stored, and an already stored ID is only replaced by a
+  // signature-verified request.
+  private persistSmartThingsIds(installedAppId: unknown, locationId: unknown, verified: boolean): void {
     const tokenManager = this.platform.auth?.tokenManager;
     if (!tokenManager) {
       return;
     }
 
-    const currentAppId = tokenManager.getInstalledAppId();
-    const currentLocationId = tokenManager.getLocationId();
-
-    const updates: any = {};
-    if (installedAppId && installedAppId !== currentAppId) {
-      updates.installed_app_id = installedAppId;
-      this.log.info(`Captured installedAppId from lifecycle event: ${installedAppId}`);
-    }
-    if (locationId && locationId !== currentLocationId) {
-      updates.location_id = locationId;
-      this.log.info(`Captured locationId from lifecycle event: ${locationId}`);
+    const updates: { installed_app_id?: string; location_id?: string } = {};
+    const candidates: [keyof typeof updates, string, unknown, string | null][] = [
+      ['installed_app_id', 'installedAppId', installedAppId, tokenManager.getInstalledAppId()],
+      ['location_id', 'locationId', locationId, tokenManager.getLocationId()],
+    ];
+    for (const [key, label, value, current] of candidates) {
+      if (value === undefined || value === null || value === current) {
+        continue;
+      }
+      if (!isSmartThingsId(value)) {
+        this.log.warn(`Ignoring invalid ${label} in lifecycle event`);
+        continue;
+      }
+      if (current && !verified) {
+        this.log.warn(`Ignoring ${label} ${value} from an unverified lifecycle event; keeping stored ${current}`);
+        continue;
+      }
+      updates[key] = value;
+      this.log.info(`Captured ${label} from lifecycle event: ${value}`);
     }
 
     if (Object.keys(updates).length > 0) {
       tokenManager.updateTokens(updates);
+    }
+  }
+
+  // SmartThings CONFIRMATION URLs point at api.smartthings.com (or another smartthings.com host).
+  // Checked on the parsed hostname, so tricks like https://api.smartthings.com@evil.example fail.
+  static isSmartThingsConfirmationUrl(value: unknown): boolean {
+    if (typeof value !== 'string') {
+      return false;
+    }
+    try {
+      const parsed = new URL(value);
+      const host = parsed.hostname.toLowerCase();
+      return parsed.protocol === 'https:'
+        && (host === 'api.smartthings.com' || host.endsWith('.smartthings.com'));
+    } catch {
+      return false;
     }
   }
 
@@ -380,7 +407,7 @@ export class WebhookServer {
       try {
         handler(event);
       } catch (error) {
-        this.log.error('Error in event handler:', error);
+        this.log.error(`Error in event handler: ${describeError(error)}`);
       }
     });
   }

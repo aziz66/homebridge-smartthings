@@ -2,7 +2,6 @@ import { PlatformAccessory, Characteristic, CharacteristicValue, Service, WithUU
 import axios = require('axios');
 import { IKHomeBridgeHomebridgePlatform } from './platform';
 import { BaseService } from './services/baseService';
-// import { BasePlatformAccessory } from './basePlatformAccessory';
 import { MotionService } from './services/motionService';
 import { Battery } from './services/batteryService';
 import { TemperatureService } from './services/temperatureService';
@@ -39,8 +38,8 @@ import { ZigbangSmartDoorlockService } from './services/zigbangSmartDoorlockServ
 import { EnergyService } from './services/energyService';
 import { extractDisabledComponents } from './util/samsungRefrigerator';
 import { Command } from './services/smartThingsCommand';
-import { CrashLoopManager, CrashErrorType } from './auth/CrashLoopManager';
 import { SamsungWebSocket } from './local/samsungWebSocket';
+import { describeError } from './auth/sanitizeError';
 // type DeviceStatus = {
 //   timestamp: number;
 //   //status: Record<string, unknown>;
@@ -52,7 +51,6 @@ import { SamsungWebSocket } from './local/samsungWebSocket';
  * An instance of this class is created for each accessory your platform registers
  * Each accessory may expose multiple services of different service types.
  */
-// export class MultiServiceAccessory extends BasePlatformAccessory {
 export class MultiServiceAccessory {
   //  service: Service;
   //capabilities;
@@ -226,13 +224,12 @@ export class MultiServiceAccessory {
   protected giveUpTime = 0;
   protected commandInProgress = false;
   protected lastCommandCompleted = 0;
+  private static readonly MAX_CONSECUTIVE_FAILURES = 5;
+  private static readonly OFFLINE_RETRY_INTERVAL_MS = 60 * 1000;
 
   protected statusQueryInProgress = false;
   protected lastStatusResult = true;
   protected hasInitialStatus = false;
-
-  // Add a field for CrashLoopManager
-  private crashLoopManager: CrashLoopManager;
 
   // Frame TV: optional local WebSocket for full power off and art mode
   public samsungWebSocket: SamsungWebSocket | null = null;
@@ -254,9 +251,6 @@ export class MultiServiceAccessory {
     this.key = platform.config.AccessToken;
     this.api = platform.api;
 
-    // Get CrashLoopManager instance from platform
-    this.crashLoopManager = platform.getCrashLoopManagerInstance();
-
     this.commandURL = 'devices/' + accessory.context.device.deviceId + '/commands';
     this.statusURL = 'devices/' + accessory.context.device.deviceId + '/status';
     this.healthURL = 'devices/' + accessory.context.device.deviceId + '/health';
@@ -264,7 +258,7 @@ export class MultiServiceAccessory {
 
     // set accessory information
     accessory.getService(platform.Service.AccessoryInformation)!
-      .setCharacteristic(platform.Characteristic.Manufacturer, accessory.context.device.manufacturerName)
+      .setCharacteristic(platform.Characteristic.Manufacturer, accessory.context.device.manufacturerName || 'SmartThings')
       .setCharacteristic(platform.Characteristic.Model, 'Default-Model')
       .setCharacteristic(platform.Characteristic.SerialNumber, 'Default-Serial');
 
@@ -313,9 +307,8 @@ export class MultiServiceAccessory {
       const reportedOnline = response.data.state === 'ONLINE';
       this.log.debug(`Device ${this.name} cloud /health reports ${reportedOnline ? 'ONLINE' : response.data.state}`);
     } catch (error) {
+      // Advisory only: a failed /health call must not count towards crash-loop detection.
       this.log.debug(`Failed to check device health for ${this.name}: ${(error as Error)?.message || error}`);
-      await this.crashLoopManager.recordPotentialCrash(CrashErrorType.DEVICE_HEALTH_FAILURE);
-      throw error;
     }
   }
 
@@ -418,7 +411,7 @@ export class MultiServiceAccessory {
           try {
             await serviceInstance.registerInputSourceCapability();
           } catch (error) {
-            this.log.error(`Failed to register input sources for ${this.name}:`, error);
+            this.log.error(`Failed to register input sources for ${this.name}: ${describeError(error)}`);
           }
         }
 
@@ -607,7 +600,6 @@ export class MultiServiceAccessory {
         }
         this.log.debug(`Calling Smartthings to get an update for ${this.name}`);
         this.statusQueryInProgress = true;
-        this.failureCount = 0;
         this.waitFor(() => this.commandInProgress === false).then(() => {
           this.lastStatusResult = true;
           this.axInstance.get(this.statusURL).then((res) => {
@@ -629,6 +621,7 @@ export class MultiServiceAccessory {
             this.notifyTelevisionServiceOfStatusUpdate();
 
             this.hasInitialStatus = true;
+            this.markOnline();
             this.statusQueryInProgress = false;
             resolve(true);
             // if (res.data.components.main !== undefined) {
@@ -643,13 +636,13 @@ export class MultiServiceAccessory {
             //   resolve(this.lastStatusResult = false);
             // }
           }).catch(async error => {
+            // Count consecutive failed status refreshes; any successful refresh resets the count.
             this.failureCount++;
             this.log.error(`Failed to request status from ${this.name}: ${error}.  This is failure number ${this.failureCount}`);
-            // If consistent polling failures for a device cause broader instability/crashes,
-            // we might record it. For now, focusing on init-time crashes.
-            // Example: await this.crashLoopManager.recordPotentialCrash(CrashErrorType.UNKNOWN_API_FAILURE);
-            if (this.failureCount >= 5) {
-              this.log.error(`Exceeded allowed failures for ${this.name}.  Device is offline`);
+            if (this.failureCount >= MultiServiceAccessory.MAX_CONSECUTIVE_FAILURES) {
+              if (this.online) {
+                this.log.error(`Exceeded allowed failures for ${this.name}.  Device is offline`);
+              }
               this.giveUpTime = Date.now();
               this.online = false;
             }
@@ -660,6 +653,39 @@ export class MultiServiceAccessory {
       } else {
         resolve(true);
       }
+    });
+  }
+
+  // The device answered (status, command or webhook event): clear any offline state.
+  protected markOnline(): void {
+    if (!this.online) {
+      this.log.info(`${this.name} is responding again - marking it online`);
+    }
+    this.online = true;
+    this.failureCount = 0;
+    this.giveUpTime = 0;
+  }
+
+  /**
+   * While offline, periodically try a real status refresh; success brings the device back online
+   * (see refreshStatus). Throttled via giveUpTime so an offline device costs one request per
+   * OFFLINE_RETRY_INTERVAL_MS. Called from the poll loop and from reads (so it also works with
+   * polling disabled). Cloud /health is not used: it is unreliable for Edge drivers.
+   */
+  public attemptOfflineRecovery(): void {
+    if (this.online || this.statusQueryInProgress) {
+      return;
+    }
+    if (this.giveUpTime > 0 && Date.now() - this.giveUpTime < MultiServiceAccessory.OFFLINE_RETRY_INTERVAL_MS) {
+      return;
+    }
+    this.giveUpTime = Date.now();
+    this.log.debug(`Trying to reach offline device ${this.name}`);
+    this.forceNextStatusRefresh();
+    this.refreshStatus().catch((error) => {
+      // Must not reject unhandled: Node turns that into an uncaughtException and
+      // Homebridge shuts down. Stay offline and retry later.
+      this.log.debug(`Offline recovery failed for ${this.name}: ${error?.message || error}`);
     });
   }
 
@@ -714,7 +740,7 @@ export class MultiServiceAccessory {
 
     if (pollSeconds > 0) {
       return setInterval(() => {
-        // If we are in the middle of a commmand call, or it hasn't been at least 10 seconds, we don't want to poll.
+        // If we are in the middle of a command call, or it hasn't been at least 20 seconds, we don't want to poll.
         if (this.commandInProgress || Date.now() - this.lastCommandCompleted < 20 * 1000) {
           // Skip polling until command is complete
           this.log.debug(`Command in progress, skipping polling for ${this.name}`);
@@ -726,21 +752,11 @@ export class MultiServiceAccessory {
           getValue().then((v) => {
             service.updateCharacteristic(chracteristic, v);
             this.log.debug(`${this.name} value updated.`);
-            // Reset failure count on successful poll
-            this.failureCount = 0;
           }).catch((error) => {
-            // Track polling failures but don't crash
-            this.failureCount++;
-            this.log.warn(`Poll failure on ${this.name} (attempt ${this.failureCount}): ${error?.message || error}`);
-
-            // If we've had too many consecutive failures, mark device offline
-            if (this.failureCount >= 5) {
-              this.log.error(`${this.name} marked offline after ${this.failureCount} consecutive poll failures`);
-              this.online = false;
-              this.giveUpTime = Date.now();
-            }
-            // Don't update characteristic with error during polling -
-            // this prevents crashing and allows recovery on next successful poll
+            // Don't crash and don't update the characteristic with an error. Offline state is
+            // driven by consecutive failed status refreshes (refreshStatus), which the getter
+            // behind a failed poll already counted - counting here too would double it.
+            this.log.warn(`Poll failure on ${this.name}: ${error?.message || error}`);
           });
           // Update target if we have to
           if (targetStateCharacteristic && getTargetState) {
@@ -751,22 +767,7 @@ export class MultiServiceAccessory {
               });
           }
         } else {
-          // If we failed this accessory due to errors. Reset the failure count and online status after 10 minutes.
-          if (this.giveUpTime > 0 && (Date.now() - this.giveUpTime > (10 * 60 * 1000))) {
-            this.axInstance.get(this.healthURL)
-              .then(res => {
-                if (res.data.state === 'ONLINE') {
-                  this.online = true;
-                  this.giveUpTime = 0;
-                  this.failureCount = 0;
-                }
-              })
-              .catch((error) => {
-                // Must not reject unhandled: Node turns that into an uncaughtException and
-                // Homebridge shuts down. Stay offline and retry on the next poll.
-                this.log.debug(`Offline recovery health check failed for ${this.name}: ${error?.message || error}`);
-              });
-          }
+          this.attemptOfflineRecovery();
         }
       }, pollSeconds * 1000 + Math.floor(Math.random() * 1000));  // Add a random delay to avoid collisions
     }
@@ -785,7 +786,9 @@ export class MultiServiceAccessory {
         this.axInstance.post(this.commandURL, commandBody).then(() => {
           this.log.debug(`${JSON.stringify(commands)} successful for ${this.name}`);
           this.deviceStatusTimestamp = 0; // Force a refresh on next poll after a state change
+          this.lastCommandCompleted = Date.now(); // Pause polling briefly so the cloud catches up
           this.commandInProgress = false;
+          this.markOnline();
           resolve(true);
           // Force a small delay so that status fetch is correct
           // setTimeout(() => {
@@ -794,6 +797,7 @@ export class MultiServiceAccessory {
           //   resolve(true);
           // }, 1500);
         }).catch((error) => {
+          this.lastCommandCompleted = Date.now();
           this.commandInProgress = false;
           this.log.error(`${JSON.stringify(commands)} failed for ${this.name}: ${error}`);
           resolve(false);
@@ -802,19 +806,33 @@ export class MultiServiceAccessory {
     });
   }
 
-  // Wait for the condition to be true.  Will check every 500 ms
-  private async waitFor(condition: () => boolean): Promise<void> {
+  // Upper bound for waitFor(). Requests time out after 15 s, so this only trips if something
+  // is wedged; proceeding beats blocking every later command/refresh for this device forever.
+  protected waitForTimeoutMs = 30 * 1000;
+
+  // Wait for the condition to be true (checked every 250 ms), for at most waitForTimeoutMs.
+  // Resolves true if the condition was met, false if the wait timed out.
+  private async waitFor(condition: () => boolean): Promise<boolean> {
     if (condition()) {
-      return;
+      return true;
     }
 
     this.log.debug(`${this.name} command or request is waiting...`);
+    const deadline = Date.now() + this.waitForTimeoutMs;
     return new Promise(resolve => {
       const interval = setInterval(() => {
         if (condition()) {
           this.log.debug(`${this.name} command or request is proceeding.`);
           clearInterval(interval);
-          resolve();
+          resolve(true);
+          return;
+        }
+        if (Date.now() >= deadline) {
+          this.log.warn(`${this.name}: gave up waiting for a previous command or status request after `
+            + `${Math.round(this.waitForTimeoutMs / 1000)} s - proceeding`);
+          clearInterval(interval);
+          resolve(false);
+          return;
         }
         this.log.debug(`${this.name} still waiting...`);
       }, 250);
@@ -833,6 +851,7 @@ export class MultiServiceAccessory {
 
   public processEvent(event: ShortEvent): void {
     this.log.debug(`Received events for ${this.name}`);
+    this.markOnline(); // SmartThings only sends events for a device it can reach
 
     const service = this.services.find(s => s.componentId === event.componentId && s.capabilities.find(c => c === event.capability));
 

@@ -5,13 +5,14 @@ import * as path from 'path';
 
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import axios = require('axios');
-//import { BasePlatformAccessory } from './basePlatformAccessory';
 import { MultiServiceAccessory } from './multiServiceAccessory';
 import { SubscriptionHandler } from './webhook/subscriptionHandler';
 import { SmartThingsAuth } from './auth/auth';
 import { WebhookServer } from './webhook/webhookServer';
 import { SmartThingsSubscriptionManager } from './webhook/smartthingsSubscriptionManager';
 import { CrashLoopManager, CrashErrorType, defaultCrashLoopConfig } from './auth/CrashLoopManager';
+import { describeError, redactAxiosError } from './auth/sanitizeError';
+import { isAuthRejection } from './auth/tokenManager';
 import { ArtModeSwitchService } from './services/artModeSwitchService';
 import { TelevisionService } from './services/televisionService';
 import {
@@ -37,16 +38,12 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
   public auth: SmartThingsAuth;
   private crashLoopManager: CrashLoopManager;
 
-  private headerDict = {
-    'Authorization': 'Bearer: ' + this.config.AccessToken,
-  };
-
+  // The Authorization header is set per request by the interceptor below from the managed OAuth token.
   public readonly axInstance = axios.default.create({
-    baseURL: this.config.BaseURL,
-    headers: this.headerDict,
+    baseURL: this.config.BaseURL || 'https://api.smartthings.com/v1/',
+    timeout: 15000,
   });
 
-  private refreshTokenPromise: Promise<void> | null = null;
   private authFlowRetries = 0;
   private lastAuthFlowTime = 0;
 
@@ -58,6 +55,16 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
   // Used by unregisterDevices() to skip TVs whose bridged cache entries were just
   // unregistered as part of the bridged → external migration (issue #31).
   private externalTvUuids: Set<string> = new Set();
+
+  private webhookServer: WebhookServer;
+
+  // Background re-discovery after startup discovery failed on a transient (network) error.
+  private rediscoveryTimer: NodeJS.Timeout | null = null;
+  private rediscoveryDelayMs = IKHomeBridgeHomebridgePlatform.REDISCOVERY_INITIAL_DELAY_MS;
+  private discoveryCompleted = false;
+  private shuttingDown = false;
+  private static readonly REDISCOVERY_INITIAL_DELAY_MS = 60 * 1000;
+  private static readonly REDISCOVERY_MAX_DELAY_MS = 10 * 60 * 1000;
 
   constructor(
     public readonly log: Logger,
@@ -72,6 +79,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
 
     // Initialize webhook server first
     const webhookServer = new WebhookServer(this, this.log);
+    this.webhookServer = webhookServer;
 
     // Initialize OAuth2 authentication
     this.auth = new SmartThingsAuth(
@@ -101,64 +109,57 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
       async (error) => {
         const originalRequest = error.config;
 
+        // Rate limited: wait as long as SmartThings asks (capped) and retry once.
+        // Not an auth problem, so it never reaches the refresh/auth-flow handling below.
+        if (error.response?.status === 429 && originalRequest && !originalRequest._retry429) {
+          originalRequest._retry429 = true;
+          const waitMs = IKHomeBridgeHomebridgePlatform.retryAfterMs(error.response.headers?.['retry-after']);
+          this.log.warn(`SmartThings rate limit hit (429) for ${originalRequest.url}; retrying in ${Math.round(waitMs / 1000)} s`);
+          await this.delay(waitMs);
+          return this.axInstance(originalRequest);
+        }
+
         // If the error is 401 and we haven't tried to refresh the token yet
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
           originalRequest._retry = true;
 
-          // If a refresh is already in progress, wait for it instead of starting another
-          if (this.refreshTokenPromise) {
-            try {
-              await this.refreshTokenPromise;
-            } catch {
-              return Promise.reject(error);
-            }
-            // Retry with the new token from the completed refresh
-            const newToken = this.auth.getAccessToken();
-            if (newToken) {
-              if (!originalRequest.headers) {
-                originalRequest.headers = new AxiosHeaders();
-              }
-              originalRequest.headers.Authorization = `Bearer ${newToken}`;
-              return this.axInstance(originalRequest);
-            }
-            return Promise.reject(error);
+          if (!this.auth.tokenManager.getRefreshToken()) {
+            this.log.error('Cannot refresh token: No refresh token available.');
+            this.triggerAuthFlow();
+            return Promise.reject(redactAxiosError(error));
           }
 
-          // First 401 — initiate the refresh
-          this.refreshTokenPromise = (async () => {
-            const refreshToken = this.auth.tokenManager.getRefreshToken();
-            if (!refreshToken) {
-              this.log.error('Cannot refresh token: No refresh token available.');
-              this.triggerAuthFlow();
-              throw new Error('No refresh token available for automatic refresh.');
-            }
-            const newTokenData = await this.auth.refreshTokens(refreshToken);
-            await this.auth.tokenManager.updateTokens(newTokenData);
-          })();
-
+          // Shared with the token expiry monitor: never two refreshes of the same refresh token.
+          // If the token was already replaced after this request was sent, just retry with it.
+          const sentAuthorization = originalRequest.headers?.Authorization;
+          const currentToken = this.auth.getAccessToken();
           try {
-            await this.refreshTokenPromise;
-            this.refreshTokenPromise = null;
+            if (!currentToken || sentAuthorization === `Bearer ${currentToken}`) {
+              await this.auth.tokenManager.refreshAccessToken();
+            }
             // Reset auth retry counter on successful refresh
             this.authFlowRetries = 0;
-
-            const newToken = this.auth.getAccessToken();
-            if (newToken) {
-              if (!originalRequest.headers) {
-                originalRequest.headers = new AxiosHeaders();
-              }
-              originalRequest.headers.Authorization = `Bearer ${newToken}`;
-              return this.axInstance(originalRequest);
-            }
           } catch (refreshError) {
-            this.refreshTokenPromise = null;
-            this.log.error('Token refresh failed:', refreshError);
-            this.triggerAuthFlow();
-            return Promise.reject(refreshError);
+            this.log.error(`Token refresh failed: ${describeError(refreshError)}`);
+            if (isAuthRejection(refreshError)) {
+              this.triggerAuthFlow();
+            }
+            return Promise.reject(redactAxiosError(refreshError));
+          }
+
+          // Retry with the new token
+          const newToken = this.auth.getAccessToken();
+          if (newToken) {
+            if (!originalRequest.headers) {
+              originalRequest.headers = new AxiosHeaders();
+            }
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            return this.axInstance(originalRequest);
           }
         }
 
-        return Promise.reject(error);
+        // Callers (including services) may log the whole error: never let it carry the token.
+        return Promise.reject(redactAxiosError(error));
       },
     );
 
@@ -168,6 +169,11 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
     // to start discovery of new accessories.
     this.api.on('shutdown', () => {
       this.log.debug('Shutdown event received — cleaning up resources');
+      this.shuttingDown = true;
+      if (this.rediscoveryTimer) {
+        clearTimeout(this.rediscoveryTimer);
+        this.rediscoveryTimer = null;
+      }
       for (const artService of this.artModeServices) {
         artService.stopPolling();
       }
@@ -190,18 +196,9 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
       try {
         // Check for crash loop BEFORE attempting any auth or API calls
         if (await this.crashLoopManager.isCrashLoopDetected(defaultCrashLoopConfig)) {
-          this.log.warn('[CRASH LOOP DETECTED] Attempting to recover by clearing tokens and re-authenticating.');
-          // Assuming auth is already initialized enough to call this method
-          // Or SmartThingsAuth constructor needs to be robust enough if called before full init
+          this.log.warn('[CRASH LOOP DETECTED] Several recent startups failed. Continuing startup without clearing tokens.');
           await this.auth.handleCrashLoopRecovery();
-          // After attempting recovery, it's best to let Homebridge restart the plugin cleanly.
-          // Or, if handleCrashLoopRecovery sets a state for re-auth, allow it to proceed.
-          // For now, we'll log and let the user know. A manual restart of Homebridge might be needed
-          // if the auth flow doesn't auto-trigger UI.
-          this.log.warn('[CRASH LOOP RECOVERY] Token clearing initiated. Monitor logs for re-authentication steps.' +
-            ' A Homebridge restart may be required.');
-          // We might want to return here to prevent further execution in a potentially unstable state until re-auth completes.
-          return;
+          await this.crashLoopManager.resetCrashState();
         }
 
         // Initialize OAuth2 flow if needed and wait for it to complete
@@ -209,38 +206,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
 
         // Only proceed with device discovery if auth flow wasn't started and we have a valid token
         if (!authFlowStarted && this.auth.getAccessToken()) {
-          // If locations or rooms to ignore are configured, then
-          // load request those from Smartthings to build the id lists.
-          if (this.config.IgnoreLocations) {
-            await this.getLocationsToIgnore();
-          }
-
-          const devices = await this.withRetry(
-            () => this.getOnlineDevices(),
-            3,    // maxRetries
-            3000, // baseDelayMs (3 seconds)
-            'SmartThings device discovery',
-          );
-          if (this.config.UnregisterAll) {
-            this.unregisterDevices(devices, true);
-          }
-          await this.discoverDevices(devices);
-          this.unregisterDevices(devices);
-
-          // Register Art Mode accessories for configured Frame TVs
-          this.registerArtModeAccessories();
-
-          // Warn about any frameTvDevices entry that matched no device (name mismatch)
-          this.warnUnmatchedFrameTvDevices();
-
-          // Set up real-time event handling if server_url is configured
-          if (config.server_url && config.server_url.trim() !== '') {
-            // Always create the event router so webhook-delivered events are handled
-            this.subscriptionHandler = new SubscriptionHandler(this, this.accessoryObjects, webhookServer);
-
-            // Attempt to set up SmartThings direct subscriptions (best-effort)
-            await this.setupSmartThingsSubscriptions(devices, webhookServer);
-          }
+          await this.discoverAndRegister();
         } else if (authFlowStarted) {
           // If auth flow was started, log the waiting message
           this.log.info('Waiting for SmartThings authentication to complete...');
@@ -249,7 +215,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
           this.log.error('Authentication failed or token invalid after initialization.');
         }
       } catch (error) {
-        this.log.error('Error during platform initialization in didFinishLaunching:', error);
+        this.log.error(`Error during platform initialization in didFinishLaunching: ${describeError(error)}`);
         // Record that an initialization error occurred.
         // If this error is one that leads to a crash and restart, it will be logged by CrashLoopManager.
         await this.crashLoopManager.recordPotentialCrash(CrashErrorType.API_INIT_FAILURE);
@@ -257,6 +223,84 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
           ' If this persists, a crash loop recovery might be attempted.');
       }
     });
+  }
+
+  /**
+   * Discover SmartThings devices and register/restore their accessories. On a transient failure
+   * (network down, SmartThings 5xx/429) a background re-discovery is scheduled so the plugin
+   * recovers without a Homebridge restart.
+   */
+  private async discoverAndRegister(): Promise<void> {
+    // If locations or rooms to ignore are configured, then
+    // load request those from Smartthings to build the id lists.
+    if (this.config.IgnoreLocations) {
+      this.locationIDsToIgnore = [];
+      await this.getLocationsToIgnore();
+    }
+
+    let devices: Array<object>;
+    try {
+      devices = await this.withRetry(
+        () => this.getOnlineDevices(),
+        3,    // maxRetries
+        3000, // baseDelayMs (3 seconds)
+        'SmartThings device discovery',
+      );
+    } catch (error) {
+      if (this.isNetworkError(error)) {
+        this.scheduleRediscovery();
+      }
+      throw error;
+    }
+
+    this.discoveryCompleted = true;
+    if (this.config.UnregisterAll) {
+      this.unregisterDevices(devices, true);
+    }
+    await this.discoverDevices(devices);
+    this.unregisterDevices(devices);
+
+    // Discovery worked, so earlier failures were transient - forget them.
+    await this.crashLoopManager.resetCrashState();
+
+    // Register Art Mode accessories for configured Frame TVs
+    this.registerArtModeAccessories();
+
+    // Warn about any frameTvDevices entry that matched no device (name mismatch)
+    this.warnUnmatchedFrameTvDevices();
+
+    // Set up real-time event handling if server_url is configured
+    if (this.config.server_url && this.config.server_url.trim() !== '') {
+      // Always create the event router so webhook-delivered events are handled
+      this.subscriptionHandler = new SubscriptionHandler(this, this.accessoryObjects, this.webhookServer);
+
+      // Attempt to set up SmartThings direct subscriptions (best-effort)
+      await this.setupSmartThingsSubscriptions(devices, this.webhookServer);
+    }
+  }
+
+  // Retry discovery in the background with backoff (60 s doubling up to 10 min) until it succeeds.
+  private scheduleRediscovery(): void {
+    if (this.shuttingDown || this.discoveryCompleted || this.rediscoveryTimer) {
+      return;
+    }
+    const delayMs = this.rediscoveryDelayMs;
+    this.rediscoveryDelayMs = Math.min(delayMs * 2, IKHomeBridgeHomebridgePlatform.REDISCOVERY_MAX_DELAY_MS);
+    this.log.warn(`SmartThings device discovery will be retried in ${Math.round(delayMs / 1000)} seconds.`);
+    this.rediscoveryTimer = setTimeout(async () => {
+      this.rediscoveryTimer = null;
+      if (this.shuttingDown || this.discoveryCompleted) {
+        return;
+      }
+      try {
+        await this.discoverAndRegister();
+        this.log.info('SmartThings device discovery succeeded after retrying.');
+      } catch (error) {
+        // discoverAndRegister() already re-scheduled itself if the failure was transient.
+        this.log.error(`Background SmartThings device discovery failed: ${describeError(error)}`);
+      }
+    }, delayMs);
+    this.rediscoveryTimer.unref?.();
   }
 
   /**
@@ -412,8 +456,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
       return devices;
     } catch (error) {
       this.log.error('Error getting devices from Smartthings: ' + error);
-      // Record this critical failure as it prevents device discovery
-      await this.crashLoopManager.recordPotentialCrash(CrashErrorType.API_INIT_FAILURE);
+      // The caller (didFinishLaunching) records the failure once for crash-loop detection.
       throw error;
     }
   }
@@ -421,22 +464,28 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
   unregisterDevices(devices, all = false) {
     const accessoriesToRemove: PlatformAccessory[] = [];
 
+    if (all) {
+      this.log.info('Unregistering all devices');
+    }
+
     //
     // Loop through each accessory.  If they are not present in the list
     // of current devices, then unregister them.
     //
     this.accessories.forEach(accessory => {
       if (all) {
-        this.log.info('Unregistering all devices');
-        this.log.info('Will unregister ' + accessory.context.device.label);
+        this.log.info('Will unregister ' + accessory.context.device?.label);
         accessoriesToRemove.push(accessory);
+        return;
       }
       if (!devices.find(device => {
         return device.deviceId === accessory.UUID;
       })) {
-        // Don't unregister Art Mode accessories — they use a derived UUID (deviceId + '-artmode')
-        // and will be managed by registerArtModeAccessories()
-        if (accessory.context.device?.deviceId?.endsWith('-artmode')) {
+        // Art Mode accessories use a derived UUID (deviceId + '-artmode'). Keep the ones
+        // registerArtModeAccessories() will restore; drop orphans whose TV is gone or whose
+        // Art Mode switch was turned off.
+        const deviceId: string | undefined = accessory.context.device?.deviceId;
+        if (deviceId?.endsWith('-artmode') && this.isArtModeAccessoryWanted(deviceId)) {
           return;
         }
         // Don't re-unregister TVs that were just migrated to external accessories
@@ -444,14 +493,35 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
         if (this.externalTvUuids.has(accessory.UUID)) {
           return;
         }
-        this.log.info('Will unregister ' + accessory.context.device.label);
+        this.log.info('Will unregister ' + accessory.context.device?.label);
         accessoriesToRemove.push(accessory);
       }
     });
 
-    if (accessoriesToRemove.length > 0) {
-      this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, accessoriesToRemove);
+    this.removeAccessories(accessoriesToRemove);
+  }
+
+  // Unregister accessories from Homebridge and drop them from the restored-accessory cache, so
+  // later lookups (discoverDevices, registerArtModeAccessories) don't treat them as existing.
+  private removeAccessories(accessories: PlatformAccessory[]): void {
+    const unique = [...new Set(accessories)];
+    if (unique.length === 0) {
+      return;
     }
+    this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, unique);
+    for (const accessory of unique) {
+      const index = this.accessories.indexOf(accessory);
+      if (index !== -1) {
+        this.accessories.splice(index, 1);
+      }
+    }
+  }
+
+  // True when a discovered Frame TV will (re)register the Art Mode accessory with this derived id.
+  private isArtModeAccessoryWanted(artModeDeviceId: string): boolean {
+    return this.accessoryObjects.some(accObj =>
+      accObj.samsungWebSocket && accObj.frameTvConfig?.enableArtModeSwitch
+      && accObj['accessory'].context.device.deviceId + '-artmode' === artModeDeviceId);
   }
 
   /**
@@ -461,6 +531,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
    */
   async discoverDevices(devices) {
     const externalAccessories: PlatformAccessory[] = [];
+    const restoredAccessories: PlatformAccessory[] = [];
     this.externalTvUuids = new Set();
 
     for (const device of devices) {
@@ -492,7 +563,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
             'select the TV from nearby accessories → enter your bridge PIN ' +
             '(or child-bridge PIN if the plugin runs in a child bridge).',
           );
-          this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
+          this.removeAccessories([existingAccessory]);
         } else {
           this.log.info('Registering new external TV accessory: ' + device.label);
           this.log.info(
@@ -511,7 +582,10 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
 
       if (existingAccessory) {
         this.log.info('Restoring existing accessory from cache:', existingAccessory.displayName);
+        // Refresh the cached device record (label, capabilities, components) before building services.
+        existingAccessory.context.device = device;
         this.accessoryObjects.push(await this.createAccessoryObject(device, existingAccessory));
+        restoredAccessories.push(existingAccessory);
       } else {
         this.log.info('Registering new accessory: ' + device.label);
 
@@ -521,6 +595,12 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
         this.accessoryObjects.push(await this.createAccessoryObject(device, accessory));
         this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
       }
+    }
+
+    // Persist the refreshed context of restored bridged accessories. (Never for external TVs:
+    // updatePlatformAccessories() corrupts the bridge cache for them, issue #31.)
+    if (restoredAccessories.length > 0) {
+      this.api.updatePlatformAccessories(restoredAccessories);
     }
 
     if (externalAccessories.length > 0) {
@@ -712,15 +792,49 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
    * Check if an error is a network-related error that should be retried
    */
   private isNetworkError(error: unknown): boolean {
-    if (error instanceof Error) {
-      const networkErrorCodes = ['ENOTFOUND', 'ETIMEDOUT', 'ECONNREFUSED', 'ECONNRESET', 'EAI_AGAIN'];
-      const errorCode = (error as NodeJS.ErrnoException).code;
-      return networkErrorCodes.includes(errorCode ?? '') ||
-             error.message.includes('getaddrinfo') ||
-             error.message.includes('timeout') ||
-             error.message.includes('network');
+    if (!error || typeof error !== 'object') {
+      return false;
     }
-    return false;
+    const e = error as { response?: { status?: number }; request?: unknown; isAxiosError?: boolean; code?: string; message?: string };
+    const status = e.response?.status;
+    if (typeof status === 'number') {
+      // The server answered: only overload / server-side failures are worth retrying.
+      return status >= 500 || status === 429;
+    }
+    // An axios request that got no response at all (DNS, refused, reset, timeout, offline...).
+    if (e.isAxiosError && e.request) {
+      return true;
+    }
+    const networkErrorCodes = ['ENOTFOUND', 'ETIMEDOUT', 'ECONNREFUSED', 'ECONNRESET', 'EAI_AGAIN',
+      'ENETUNREACH', 'EHOSTUNREACH', 'ENETDOWN', 'EPIPE', 'ECONNABORTED', 'ERR_NETWORK'];
+    if (networkErrorCodes.includes(e.code ?? '')) {
+      return true;
+    }
+    const message = (e.message ?? '').toLowerCase();
+    return message.includes('getaddrinfo') ||
+           message.includes('timeout') ||
+           message.includes('network') ||
+           message.includes('socket hang up');
+  }
+
+  /**
+   * Milliseconds to wait for a 429 Retry-After header (delta-seconds or HTTP date), capped at
+   * 30 s; 5 s when the header is missing or unparseable.
+   */
+  static retryAfterMs(header: unknown, now = Date.now()): number {
+    const MAX_MS = 30 * 1000;
+    const DEFAULT_MS = 5 * 1000;
+    const value = Array.isArray(header) ? header[0] : header;
+    if (typeof value === 'number' || (typeof value === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(value))) {
+      return Math.min(Math.max(Number(value) * 1000, 0), MAX_MS);
+    }
+    if (typeof value === 'string' && value.trim() !== '') {
+      const date = Date.parse(value);
+      if (!Number.isNaN(date)) {
+        return Math.min(Math.max(date - now, 0), MAX_MS);
+      }
+    }
+    return DEFAULT_MS;
   }
 
   /**

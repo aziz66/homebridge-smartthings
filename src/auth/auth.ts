@@ -3,7 +3,8 @@ import * as crypto from 'crypto';
 import axios from 'axios';
 import * as http from 'http';
 import { IKHomeBridgeHomebridgePlatform } from '../platform';
-import { TokenManager, TokenData } from './tokenManager';
+import { TokenManager, TokenData, isAuthRejection } from './tokenManager';
+import { describeError, redactAxiosError } from './sanitizeError';
 import { WebhookServer } from '../webhook/webhookServer';
 
 const SMARTTHINGS_AUTH_URL = 'https://api.smartthings.com/oauth/authorize';
@@ -43,13 +44,14 @@ export class SmartThingsAuth {
 
       const tokens = await this.exchangeCodeForTokens(query.code);
       await this.tokenManager.updateTokens(tokens);
+      this.state = null; // used - the next auth flow gets a fresh one
 
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end('<h1>Authentication successful!</h1><p>You can close this window and restart Homebridge.</p>');
 
       this.log.info('Successfully authenticated with SmartThings');
     } catch (error) {
-      this.log.error('OAuth callback error:', error);
+      this.log.error(`OAuth callback error: ${describeError(error)}`);
       res.writeHead(500, { 'Content-Type': 'text/html' });
       res.end('<h1>Authentication failed</h1><p>Please try again.</p>');
     }
@@ -71,14 +73,19 @@ export class SmartThingsAuth {
     params.append('code', code);
     params.append('redirect_uri', redirectUri);
 
-    const response = await axios.post(SMARTTHINGS_TOKEN_URL, params, {
-      headers: {
-        'Authorization': `Basic ${basicAuth}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-    });
-
-    return response.data;
+    try {
+      const response = await axios.post(SMARTTHINGS_TOKEN_URL, params, {
+        headers: {
+          'Authorization': `Basic ${basicAuth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        timeout: 15000,
+      });
+      return response.data;
+    } catch (error) {
+      // Carries the Basic client credentials and the authorization code.
+      throw redactAxiosError(error, true);
+    }
   }
 
   // Accepts refreshToken, performs API call, returns new token data
@@ -102,21 +109,27 @@ export class SmartThingsAuth {
           'Authorization': `Basic ${basicAuth}`,
           'Content-Type': 'application/x-www-form-urlencoded',
         },
+        timeout: 15000,
       });
 
       this.log.info('Successfully obtained new tokens from API.');
       return response.data;
 
     } catch (error) {
-      this.log.error('Error during token refresh API call:', error);
-      throw error;
+      this.log.error(`Error during token refresh API call: ${describeError(error)}`);
+      // Carries the Basic client credentials and the refresh token.
+      throw redactAxiosError(error, true);
     }
   }
 
   public startAuthFlow(): void {
     // Check if server_url is configured (traditional flow with tunnel)
     if (this.platform.config.server_url && this.platform.config.server_url.trim() !== '') {
-      this.state = crypto.randomBytes(32).toString('hex');
+      // Keep the state stable until it is used, so an auth URL copied from the log keeps
+      // working even if the flow is started again (e.g. by a later refresh failure).
+      if (!this.state) {
+        this.state = crypto.randomBytes(32).toString('hex');
+      }
 
       const authUrl = new URL(SMARTTHINGS_AUTH_URL);
       authUrl.searchParams.append('client_id', this.clientId);
@@ -159,23 +172,23 @@ export class SmartThingsAuth {
     let authFlowStarted = false;
 
     if (!accessToken || !this.tokenManager.isTokenValid()) {
-      if (this.tokenManager.isRefreshTokenValid()) {
+      if (this.tokenManager.isRefreshTokenValid() && this.tokenManager.getRefreshToken()) {
         try {
-          const currentRefreshToken = this.tokenManager.getRefreshToken();
-          if (currentRefreshToken) {
-            const newTokenData = await this.refreshTokens(currentRefreshToken);
-            await this.tokenManager.updateTokens(newTokenData);
-          } else {
-            this.log.warn('No refresh token found during initialization.');
+          await this.tokenManager.refreshAccessToken();
+        } catch (error) {
+          if (isAuthRejection(error) || !accessToken) {
+            this.log.warn(`Token refresh failed during initialization (${describeError(error)}), starting auth flow.`);
             this.startAuthFlow();
             authFlowStarted = true;
+          } else {
+            // Transient (network, 5xx): keep the tokens; discovery retries and refreshes again on 401.
+            this.log.warn(`Token refresh failed during initialization (${describeError(error)}); will retry.`);
           }
-        } catch (error) {
-          this.log.warn('Token refresh failed during initialization, starting auth flow.');
-          this.startAuthFlow();
-          authFlowStarted = true;
         }
       } else {
+        if (this.tokenManager.isRefreshTokenValid()) {
+          this.log.warn('No refresh token found during initialization.');
+        }
         this.startAuthFlow();
         authFlowStarted = true;
       }
@@ -187,20 +200,11 @@ export class SmartThingsAuth {
     return this.tokenManager.getAccessToken();
   }
 
+  // Crash-loop recovery must never discard credentials: the recorded "crashes" are usually just
+  // network trouble at startup, and wiping a valid refresh token forces a full re-authorization.
+  // Genuine auth failures already start the auth flow from the refresh path.
   public async handleCrashLoopRecovery(): Promise<void> {
-    this.log.warn('Handling crash loop recovery by clearing tokens and starting new auth flow.');
-    try {
-      // Clear existing tokens
-      await this.tokenManager.clearTokens();
-      this.log.info('Successfully cleared tokens during crash loop recovery.');
-
-      // Start new auth flow
-      this.startAuthFlow();
-      this.log.info('Started new authentication flow for crash loop recovery.');
-    } catch (error) {
-      this.log.error('Error during crash loop recovery:', error);
-      // Even if clearing fails, try to start auth flow
-      this.startAuthFlow();
-    }
+    this.log.warn('Repeated startup failures detected. Stored SmartThings tokens are kept; ' +
+      'if authentication is really broken, re-authorization instructions will be logged.');
   }
 }

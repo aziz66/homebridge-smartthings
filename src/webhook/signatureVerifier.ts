@@ -23,6 +23,7 @@ const DATE_SKEW_TOLERANCE_MS = 15 * 60 * 1000;
 // can't drive unbounded outbound requests to key.smartthings.com.
 const MAX_CERT_CACHE_ENTRIES = 32;
 const NEGATIVE_CACHE_TTL_MS = 60 * 1000;
+const MAX_NEGATIVE_CACHE_ENTRIES = 256;
 // SmartThings always signs these; require them in the signed set so the digest/date checks
 // are actually bound to the RSA signature rather than self-referential.
 const REQUIRED_SIGNED_HEADERS = ['(request-target)', 'digest', 'date'];
@@ -243,6 +244,14 @@ export class SignatureVerifier {
           this.evictIfFull();
           this.certCache.set(keyId, { pem, expiresAt: this.computeExpiry(pem) });
         } else {
+          // Bounded: a flood of distinct bogus keyIds must not grow this map without limit.
+          while (this.negativeCache.size >= MAX_NEGATIVE_CACHE_ENTRIES) {
+            const oldest = this.negativeCache.keys().next().value;
+            if (oldest === undefined) {
+              break;
+            }
+            this.negativeCache.delete(oldest);
+          }
           this.negativeCache.set(keyId, Date.now() + NEGATIVE_CACHE_TTL_MS);
         }
         return pem;

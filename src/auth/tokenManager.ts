@@ -1,7 +1,10 @@
 import { Logger, PlatformConfig } from 'homebridge';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import fsExtra from 'fs-extra';
+import { describeError } from './sanitizeError';
+import { isSmartThingsId } from '../webhook/smartThingsIds';
 
 export interface TokenData {
   access_token: string;
@@ -11,6 +14,25 @@ export interface TokenData {
   refresh_token_expires_at: number;
   installed_app_id?: string;
   location_id?: string;
+  // SHA-256 of the config (OAuth wizard) refresh token this file was seeded from, if any.
+  seeded_from_config_refresh_token_sha256?: string;
+}
+
+/**
+ * True when the token endpoint rejected the refresh itself (e.g. invalid_grant / invalid_client),
+ * i.e. re-authorization is needed. Network failures, timeouts, 5xx and 429 are transient.
+ */
+export function isAuthRejection(error: unknown): boolean {
+  const e = error as { response?: { status?: unknown }; noRefreshToken?: boolean } | null | undefined;
+  if (e?.noRefreshToken === true) {
+    return true;
+  }
+  const status = e?.response?.status;
+  return typeof status === 'number' && status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
+
+function sha256(value: string): string {
+  return crypto.createHash('sha256').update(value).digest('hex');
 }
 
 export class TokenManager {
@@ -21,6 +43,11 @@ export class TokenManager {
   private readonly REFRESH_CHECK_INTERVAL = 60 * 1000; // Check every minute
   private startAuthFlowCallback: () => void;
   private refreshTokenApiCallback: (refreshToken: string) => Promise<Partial<TokenData>>;
+  // The single in-flight refresh shared by every caller: with rotating refresh tokens, two
+  // concurrent refreshes would burn the token (the second one gets invalid_grant).
+  private refreshPromise: Promise<void> | null = null;
+  private lastAuthPromptTime = 0;
+  private readonly AUTH_PROMPT_INTERVAL = 10 * 60 * 1000;
 
   constructor(
     private readonly log: Logger,
@@ -46,6 +73,8 @@ export class TokenManager {
     this.refreshTimer = setInterval(() => {
       this.checkAndRefreshTokens();
     }, this.REFRESH_CHECK_INTERVAL);
+    // Homebridge keeps the process alive; this timer alone should not.
+    this.refreshTimer.unref?.();
   }
 
   private async checkAndRefreshTokens(): Promise<void> {
@@ -62,70 +91,123 @@ export class TokenManager {
     if (timeUntilExpiry <= this.REFRESH_BEFORE_EXPIRY) {
       this.log.debug('Access token is about to expire, refreshing tokens');
       try {
-        const currentRefreshToken = this.getRefreshToken();
-        // Call the API callback with the current refresh token
-        const newTokenData = await this.refreshTokenApiCallback(currentRefreshToken!);
-        // Update internal tokens with the result from the API call
-        await this.updateTokens(newTokenData);
+        await this.refreshAccessToken();
         this.log.info('Successfully refreshed access token using API callback.');
       } catch (error) {
-        // If the API callback fails (e.g., invalid refresh token), trigger full auth flow
-        this.log.error('API token refresh failed:', error);
-        this.log.warn('Starting new auth flow due to refresh failure.');
-        this.startAuthFlowCallback();
+        this.log.error(`API token refresh failed: ${describeError(error)}`);
+        if (isAuthRejection(error)) {
+          // The refresh token itself was rejected: ask for re-authorization, but not every minute.
+          if (now - this.lastAuthPromptTime >= this.AUTH_PROMPT_INTERVAL) {
+            this.lastAuthPromptTime = now;
+            this.log.warn('Starting new auth flow due to refresh failure.');
+            this.startAuthFlowCallback();
+          }
+        } else {
+          this.log.warn('Token refresh will be retried in a minute.');
+        }
       }
     }
   }
 
+  /**
+   * Refresh the access token with the stored refresh token and persist the result. Concurrent
+   * callers (the expiry monitor, the 401 interceptor, startup) share one in-flight request.
+   */
+  public refreshAccessToken(): Promise<void> {
+    if (!this.refreshPromise) {
+      this.refreshPromise = (async () => {
+        const refreshToken = this.getRefreshToken();
+        if (!refreshToken) {
+          throw Object.assign(new Error('No refresh token available'), { noRefreshToken: true });
+        }
+        const newTokenData = await this.refreshTokenApiCallback(refreshToken);
+        await this.updateTokens(newTokenData);
+      })().finally(() => {
+        this.refreshPromise = null;
+      });
+    }
+    return this.refreshPromise;
+  }
+
   private loadTokens(): void {
     try {
-      // First try to load from token file (existing flow)
+      const configRefreshToken = this.config?.oauth_refresh_token;
+      const hasConfigTokens = !!(this.config?.oauth_access_token && configRefreshToken);
+
+      // The token file normally wins: it holds the latest (rotated) tokens, which are never
+      // written back to the config. The exception is a file seeded from an older wizard run:
+      // if the wizard has since saved a different refresh token, the config is newer.
       if (fs.existsSync(this.tokenPath)) {
-        const data = fs.readFileSync(this.tokenPath, 'utf8');
-        this.tokenData = JSON.parse(data);
+        const fileData = JSON.parse(fs.readFileSync(this.tokenPath, 'utf8'));
+        const seed = fileData?.seeded_from_config_refresh_token_sha256;
+        if (hasConfigTokens && typeof seed === 'string' && seed !== sha256(configRefreshToken)) {
+          this.log.info('The OAuth wizard saved new tokens since the token file was created - using the tokens from the config');
+          this.loadConfigTokens();
+          return;
+        }
+        this.tokenData = fileData;
         this.log.debug('Loaded existing tokens from storage file');
         return;
       }
 
       // If no token file, check for tokens in config (OAuth wizard flow)
-      if (this.config?.oauth_access_token && this.config?.oauth_refresh_token) {
-        this.log.info('Loading tokens from config (OAuth wizard setup)');
-        const expiresIn = this.config.oauth_expires_in || 86400; // Use saved value or default to 24 hours
-        this.tokenData = {
-          access_token: this.config.oauth_access_token,
-          refresh_token: this.config.oauth_refresh_token,
-          expires_in: expiresIn,
-          expires_at: Date.now() + expiresIn * 1000,
-          refresh_token_expires_at: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days
-        };
-        // Save to token file for future use
-        this.saveTokens();
-        this.log.info('Tokens from OAuth wizard saved to storage file');
+      if (hasConfigTokens) {
+        this.loadConfigTokens();
       }
     } catch (error) {
-      this.log.error('Error loading tokens:', error);
+      this.log.error(`Error loading tokens: ${describeError(error)}`);
     }
+  }
+
+  private loadConfigTokens(): void {
+    this.log.info('Loading tokens from config (OAuth wizard setup)');
+    const expiresIn = this.config!.oauth_expires_in || 86400; // Use saved value or default to 24 hours
+    this.tokenData = {
+      access_token: this.config!.oauth_access_token,
+      refresh_token: this.config!.oauth_refresh_token,
+      expires_in: expiresIn,
+      expires_at: Date.now() + expiresIn * 1000,
+      refresh_token_expires_at: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days
+      seeded_from_config_refresh_token_sha256: sha256(this.config!.oauth_refresh_token),
+    };
+    // Save to token file for future use
+    this.saveTokens();
+    this.log.info('Tokens from OAuth wizard saved to storage file');
   }
 
   private saveTokens(): void {
     try {
       if (this.tokenData) {
-        fs.writeFileSync(this.tokenPath, JSON.stringify(this.tokenData, null, 2));
+        // Owner-only: the file holds the refresh token.
+        fs.writeFileSync(this.tokenPath, JSON.stringify(this.tokenData, null, 2), { mode: 0o600 });
+        try {
+          fs.chmodSync(this.tokenPath, 0o600); // also tighten files created by older versions
+        } catch {
+          // Best effort (e.g. filesystems without POSIX permissions).
+        }
         this.log.debug('Saved tokens to storage');
       }
     } catch (error) {
-      this.log.error('Error saving tokens:', error);
+      this.log.error(`Error saving tokens: ${describeError(error)}`);
     }
   }
 
   public async updateTokens(tokenData: Partial<TokenData>): Promise<void> {
     const oldAccessToken = this.tokenData?.access_token;
-    this.tokenData = {
+    const updated = {
       ...this.tokenData,
       ...tokenData,
-      expires_at: Date.now() + (tokenData.expires_in || 0) * 1000,
-      refresh_token_expires_at: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days
     } as TokenData;
+    // Only a new access token (or expiry) moves the access expiry, and only a new refresh token
+    // moves the refresh expiry. Partial records such as { location_id } or { installed_app_id }
+    // must not reset them, or the next check forces an unnecessary refresh.
+    if (tokenData.access_token !== undefined || tokenData.expires_in !== undefined) {
+      updated.expires_at = Date.now() + (tokenData.expires_in || 0) * 1000;
+    }
+    if (tokenData.refresh_token !== undefined) {
+      updated.refresh_token_expires_at = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days
+    }
+    this.tokenData = updated;
 
     // Save tokens first
     this.saveTokens();
@@ -167,12 +249,16 @@ export class TokenManager {
     return this.tokenData?.refresh_token || null;
   }
 
+  // IDs are used as URL path segments; ignore anything that is not a UUID (e.g. a value
+  // written by an older version from an unauthenticated webhook body).
   public getInstalledAppId(): string | null {
-    return this.tokenData?.installed_app_id || null;
+    const id = this.tokenData?.installed_app_id;
+    return isSmartThingsId(id) ? id : null;
   }
 
   public getLocationId(): string | null {
-    return this.tokenData?.location_id || null;
+    const id = this.tokenData?.location_id;
+    return isSmartThingsId(id) ? id : null;
   }
 
   public isTokenValid(): boolean {
@@ -203,7 +289,7 @@ return false;
         this.log.info('No stored tokens file found to clear.');
       }
     } catch (error) {
-      this.log.error('Error clearing tokens:', error);
+      this.log.error(`Error clearing tokens: ${describeError(error)}`);
       // Optionally re-throw or handle as appropriate for your plugin's error strategy
       throw error;
     }
