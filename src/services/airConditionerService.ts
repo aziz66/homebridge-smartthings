@@ -711,7 +711,6 @@ export class AirConditionerService extends BaseService {
   }
 
   private async getDeviceStatus(): Promise<any> {
-    this.multiServiceAccessory.forceNextStatusRefresh();
     if (!await this.getStatus()) {
       // If we have cached status, return it instead of throwing an error
       // This provides graceful degradation during temporary network failures

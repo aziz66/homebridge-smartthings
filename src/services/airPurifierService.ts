@@ -503,7 +503,6 @@ export class AirPurifierService extends BaseService {
   }
 
   private async getDeviceStatus(): Promise<any> {
-    this.multiServiceAccessory.forceNextStatusRefresh();
     if (!await this.getStatus()) {
       if (this.deviceStatus?.status) {
         this.log.warn(`[${this.name}] Using cached status due to communication failure`);
