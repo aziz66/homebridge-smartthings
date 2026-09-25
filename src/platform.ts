@@ -12,6 +12,7 @@ import { SmartThingsAuth } from './auth/auth';
 import { WebhookServer } from './webhook/webhookServer';
 import { SmartThingsSubscriptionManager } from './webhook/smartthingsSubscriptionManager';
 import { CrashLoopManager, CrashErrorType, defaultCrashLoopConfig } from './auth/CrashLoopManager';
+import { describeError } from './auth/sanitizeError';
 import { ArtModeSwitchService } from './services/artModeSwitchService';
 import { TelevisionService } from './services/televisionService';
 import {
@@ -56,6 +57,16 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
   // unregistered as part of the bridged → external migration (issue #31).
   private externalTvUuids: Set<string> = new Set();
 
+  private webhookServer: WebhookServer;
+
+  // Background re-discovery after startup discovery failed on a transient (network) error.
+  private rediscoveryTimer: NodeJS.Timeout | null = null;
+  private rediscoveryDelayMs = IKHomeBridgeHomebridgePlatform.REDISCOVERY_INITIAL_DELAY_MS;
+  private discoveryCompleted = false;
+  private shuttingDown = false;
+  private static readonly REDISCOVERY_INITIAL_DELAY_MS = 60 * 1000;
+  private static readonly REDISCOVERY_MAX_DELAY_MS = 10 * 60 * 1000;
+
   constructor(
     public readonly log: Logger,
     public readonly config: PlatformConfig,
@@ -69,6 +80,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
 
     // Initialize webhook server first
     const webhookServer = new WebhookServer(this, this.log);
+    this.webhookServer = webhookServer;
 
     // Initialize OAuth2 authentication
     this.auth = new SmartThingsAuth(
@@ -165,6 +177,11 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
     // to start discovery of new accessories.
     this.api.on('shutdown', () => {
       this.log.debug('Shutdown event received — cleaning up resources');
+      this.shuttingDown = true;
+      if (this.rediscoveryTimer) {
+        clearTimeout(this.rediscoveryTimer);
+        this.rediscoveryTimer = null;
+      }
       for (const artService of this.artModeServices) {
         artService.stopPolling();
       }
@@ -197,41 +214,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
 
         // Only proceed with device discovery if auth flow wasn't started and we have a valid token
         if (!authFlowStarted && this.auth.getAccessToken()) {
-          // If locations or rooms to ignore are configured, then
-          // load request those from Smartthings to build the id lists.
-          if (this.config.IgnoreLocations) {
-            await this.getLocationsToIgnore();
-          }
-
-          const devices = await this.withRetry(
-            () => this.getOnlineDevices(),
-            3,    // maxRetries
-            3000, // baseDelayMs (3 seconds)
-            'SmartThings device discovery',
-          );
-          if (this.config.UnregisterAll) {
-            this.unregisterDevices(devices, true);
-          }
-          await this.discoverDevices(devices);
-          this.unregisterDevices(devices);
-
-          // Discovery worked, so earlier failures were transient - forget them.
-          await this.crashLoopManager.resetCrashState();
-
-          // Register Art Mode accessories for configured Frame TVs
-          this.registerArtModeAccessories();
-
-          // Warn about any frameTvDevices entry that matched no device (name mismatch)
-          this.warnUnmatchedFrameTvDevices();
-
-          // Set up real-time event handling if server_url is configured
-          if (config.server_url && config.server_url.trim() !== '') {
-            // Always create the event router so webhook-delivered events are handled
-            this.subscriptionHandler = new SubscriptionHandler(this, this.accessoryObjects, webhookServer);
-
-            // Attempt to set up SmartThings direct subscriptions (best-effort)
-            await this.setupSmartThingsSubscriptions(devices, webhookServer);
-          }
+          await this.discoverAndRegister();
         } else if (authFlowStarted) {
           // If auth flow was started, log the waiting message
           this.log.info('Waiting for SmartThings authentication to complete...');
@@ -248,6 +231,84 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
           ' If this persists, a crash loop recovery might be attempted.');
       }
     });
+  }
+
+  /**
+   * Discover SmartThings devices and register/restore their accessories. On a transient failure
+   * (network down, SmartThings 5xx/429) a background re-discovery is scheduled so the plugin
+   * recovers without a Homebridge restart.
+   */
+  private async discoverAndRegister(): Promise<void> {
+    // If locations or rooms to ignore are configured, then
+    // load request those from Smartthings to build the id lists.
+    if (this.config.IgnoreLocations) {
+      this.locationIDsToIgnore = [];
+      await this.getLocationsToIgnore();
+    }
+
+    let devices: Array<object>;
+    try {
+      devices = await this.withRetry(
+        () => this.getOnlineDevices(),
+        3,    // maxRetries
+        3000, // baseDelayMs (3 seconds)
+        'SmartThings device discovery',
+      );
+    } catch (error) {
+      if (this.isNetworkError(error)) {
+        this.scheduleRediscovery();
+      }
+      throw error;
+    }
+
+    this.discoveryCompleted = true;
+    if (this.config.UnregisterAll) {
+      this.unregisterDevices(devices, true);
+    }
+    await this.discoverDevices(devices);
+    this.unregisterDevices(devices);
+
+    // Discovery worked, so earlier failures were transient - forget them.
+    await this.crashLoopManager.resetCrashState();
+
+    // Register Art Mode accessories for configured Frame TVs
+    this.registerArtModeAccessories();
+
+    // Warn about any frameTvDevices entry that matched no device (name mismatch)
+    this.warnUnmatchedFrameTvDevices();
+
+    // Set up real-time event handling if server_url is configured
+    if (this.config.server_url && this.config.server_url.trim() !== '') {
+      // Always create the event router so webhook-delivered events are handled
+      this.subscriptionHandler = new SubscriptionHandler(this, this.accessoryObjects, this.webhookServer);
+
+      // Attempt to set up SmartThings direct subscriptions (best-effort)
+      await this.setupSmartThingsSubscriptions(devices, this.webhookServer);
+    }
+  }
+
+  // Retry discovery in the background with backoff (60 s doubling up to 10 min) until it succeeds.
+  private scheduleRediscovery(): void {
+    if (this.shuttingDown || this.discoveryCompleted || this.rediscoveryTimer) {
+      return;
+    }
+    const delayMs = this.rediscoveryDelayMs;
+    this.rediscoveryDelayMs = Math.min(delayMs * 2, IKHomeBridgeHomebridgePlatform.REDISCOVERY_MAX_DELAY_MS);
+    this.log.warn(`SmartThings device discovery will be retried in ${Math.round(delayMs / 1000)} seconds.`);
+    this.rediscoveryTimer = setTimeout(async () => {
+      this.rediscoveryTimer = null;
+      if (this.shuttingDown || this.discoveryCompleted) {
+        return;
+      }
+      try {
+        await this.discoverAndRegister();
+        this.log.info('SmartThings device discovery succeeded after retrying.');
+      } catch (error) {
+        // discoverAndRegister() already re-scheduled itself if the failure was transient.
+        this.log.error(`Background SmartThings device discovery failed: ${describeError(error)}`);
+      }
+    }, delayMs);
+    this.rediscoveryTimer.unref?.();
   }
 
   /**
@@ -702,15 +763,29 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
    * Check if an error is a network-related error that should be retried
    */
   private isNetworkError(error: unknown): boolean {
-    if (error instanceof Error) {
-      const networkErrorCodes = ['ENOTFOUND', 'ETIMEDOUT', 'ECONNREFUSED', 'ECONNRESET', 'EAI_AGAIN'];
-      const errorCode = (error as NodeJS.ErrnoException).code;
-      return networkErrorCodes.includes(errorCode ?? '') ||
-             error.message.includes('getaddrinfo') ||
-             error.message.includes('timeout') ||
-             error.message.includes('network');
+    if (!error || typeof error !== 'object') {
+      return false;
     }
-    return false;
+    const e = error as { response?: { status?: number }; request?: unknown; isAxiosError?: boolean; code?: string; message?: string };
+    const status = e.response?.status;
+    if (typeof status === 'number') {
+      // The server answered: only overload / server-side failures are worth retrying.
+      return status >= 500 || status === 429;
+    }
+    // An axios request that got no response at all (DNS, refused, reset, timeout, offline...).
+    if (e.isAxiosError && e.request) {
+      return true;
+    }
+    const networkErrorCodes = ['ENOTFOUND', 'ETIMEDOUT', 'ECONNREFUSED', 'ECONNRESET', 'EAI_AGAIN',
+      'ENETUNREACH', 'EHOSTUNREACH', 'ENETDOWN', 'EPIPE', 'ECONNABORTED', 'ERR_NETWORK'];
+    if (networkErrorCodes.includes(e.code ?? '')) {
+      return true;
+    }
+    const message = (e.message ?? '').toLowerCase();
+    return message.includes('getaddrinfo') ||
+           message.includes('timeout') ||
+           message.includes('network') ||
+           message.includes('socket hang up');
   }
 
   /**
