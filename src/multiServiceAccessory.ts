@@ -465,6 +465,12 @@ export class MultiServiceAccessory {
     MultiServiceAccessory.comboCapabilityMap
       .sort((a, b) => a.capabilities.length > b.capabilities.length ? -1 : 1) // services with larger capability set first
       .forEach(entry => {
+        // Skip Robot Vacuum service if not enabled in config
+        if (entry.service === RobotVacuumService && !this.platform.config.ExposeRobotVacuum) {
+          this.log.debug(`Skipping Robot Vacuum service for ${this.name} - not enabled in config`);
+          return;
+        }
+
         capabilitiesToCover = this.registerServiceIfMatchesCapabilities(
           componentId,
           component,

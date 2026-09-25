@@ -58,6 +58,7 @@ All intervals are in seconds. Set to `0` to disable polling for that device clas
 | `ExposeContactSensorForDryers` | boolean | `false` | Add a contact sensor to dryers (Activity Notifications). |
 | `ExposeContactSensorForDishwashers` | boolean | `false` | Add a contact sensor to dishwashers (Activity Notifications). |
 | `removeLegacySwitchForLaundry` | boolean | `false` | Suppress the auto-generated Switch tile on washers, dryers, and dishwashers. The Valve tile (Active/InUse and remaining duration) and any optional Contact Sensor are unaffected. |
+| `ExposeRobotVacuum` | boolean | `false` | Expose Samsung robot vacuums (devices with `samsungce.robotCleanerOperatingState` + `switch`) as a HomeKit Switch — On = start cleaning, Off = return to dock. Off by default so the existing Switch tile on these devices keeps its current meaning; enable to control the vacuum from HomeKit. |
 
 ### Refrigerators
 

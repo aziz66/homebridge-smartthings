@@ -61,7 +61,7 @@ The plugin automatically maps SmartThings capabilities to HomeKit accessories. A
 | **Sensors** | Motion, occupancy, contact, water leak, smoke, CO, illuminance, buttons |
 | **Security Systems** | Arm/disarm panels with live alarm reporting |
 | **Televisions** | Samsung TVs with input picker, volume, app launcher; full Frame TV control |
-| **Appliances** | Washers, dryers, dishwashers, Samsung robot vacuums (auto-detected, exposed as a Switch — On = start, Off = return-to-home), multi-zone Samsung Family Hub refrigerators |
+| **Appliances** | Washers, dryers, dishwashers, Samsung robot vacuums (opt-in via `ExposeRobotVacuum`, exposed as a Switch — On = start cleaning, Off = return to dock), multi-zone Samsung Family Hub refrigerators |
 | **Valves** | Smart water valves |
 | **Battery** | Reported as a companion characteristic on supported devices |
 

@@ -37,11 +37,6 @@ export class RobotVacuumService extends BaseService {
   async setSwitchState(value: CharacteristicValue) {
     this.log.debug('Received setSwitchState(' + value + ') event for ' + this.name);
 
-    if (!this.multiServiceAccessory.isOnline) {
-      this.log.error(this.name + ' is offline');
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-    }
-
     const command = value ? 'start' : 'returnToHome';
     this.multiServiceAccessory.sendCommand(this.componentId, ROBOT_COMMAND_CAPABILITY, command).then((success) => {
       if (success) {

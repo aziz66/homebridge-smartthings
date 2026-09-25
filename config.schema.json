@@ -170,6 +170,13 @@
         "required": false,
         "default": true
       },
+      "ExposeRobotVacuum": {
+        "title": "Expose Samsung robot vacuums as a Switch if available.",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "Expose Samsung robot vacuums as a Switch (On = start cleaning, Off = return to dock). Off by default so existing Switch tiles on these devices keep their current meaning; enable to control the vacuum from HomeKit."
+      },
       "removeLegacySwitchForLaundry": {
         "title": "Remove Legacy Switch Service for Laundry Devices",
         "type": "boolean",
