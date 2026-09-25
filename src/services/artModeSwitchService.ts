@@ -49,18 +49,11 @@ export class ArtModeSwitchService {
     this.startPolling();
   }
 
-  private async getOn(): Promise<CharacteristicValue> {
-    this.platform.log.debug(`Getting art mode state for ${this.name}`);
-    try {
-      const status = await this.samsungWs.getArtModeStatus();
-      this.artModeOn = status === 'on';
-      this.consecutiveFailures = 0;
-      this.platform.log.debug(`Art mode state for ${this.name}: ${this.artModeOn}`);
-      return this.artModeOn;
-    } catch (error) {
-      this.platform.log.debug(`Could not get art mode status for ${this.name}, using cached: ${this.artModeOn}`);
-      return this.artModeOn;
-    }
+  // Answer from cache: a live art-channel round-trip can take ~10s when the TV is
+  // off, well past HomeKit's read budget. The poll keeps artModeOn current.
+  private getOn(): CharacteristicValue {
+    this.platform.log.debug(`Art mode state for ${this.name} (cached): ${this.artModeOn}`);
+    return this.artModeOn;
   }
 
   private async setOn(value: CharacteristicValue): Promise<void> {
@@ -80,7 +73,9 @@ export class ArtModeSwitchService {
   }
 
   private startPolling(): void {
-    this.pollTimer = setInterval(async () => {
+    // Seed the cached state now instead of reporting "off" until the first tick.
+    void this.pollOnce();
+    this.pollTimer = setInterval(() => {
       this.pollCount++;
 
       // Backoff when TV seems unreachable: after 3 consecutive failures,
@@ -92,25 +87,29 @@ export class ArtModeSwitchService {
         return;
       }
 
-      try {
-        const status = await this.samsungWs.getArtModeStatus();
-        const newState = status === 'on';
-        if (this.consecutiveFailures > 0) {
-          this.platform.log.debug(`Art mode polling recovered for ${this.name} after ${this.consecutiveFailures} failures`);
-        }
-        this.consecutiveFailures = 0;
-        if (newState !== this.artModeOn) {
-          this.artModeOn = newState;
-          this.service.updateCharacteristic(this.platform.Characteristic.On, this.artModeOn);
-          this.platform.log.debug(`Art mode state updated for ${this.name}: ${this.artModeOn}`);
-        }
-      } catch {
-        this.consecutiveFailures++;
-        if (this.consecutiveFailures === 3) {
-          this.platform.log.debug(`Art mode polling for ${this.name}: TV unreachable, reducing poll frequency`);
-        }
-      }
+      void this.pollOnce();
     }, 30000);
+  }
+
+  private async pollOnce(): Promise<void> {
+    try {
+      const status = await this.samsungWs.getArtModeStatus();
+      const newState = status === 'on';
+      if (this.consecutiveFailures > 0) {
+        this.platform.log.debug(`Art mode polling recovered for ${this.name} after ${this.consecutiveFailures} failures`);
+      }
+      this.consecutiveFailures = 0;
+      if (newState !== this.artModeOn) {
+        this.artModeOn = newState;
+        this.service.updateCharacteristic(this.platform.Characteristic.On, this.artModeOn);
+        this.platform.log.debug(`Art mode state updated for ${this.name}: ${this.artModeOn}`);
+      }
+    } catch {
+      this.consecutiveFailures++;
+      if (this.consecutiveFailures === 3) {
+        this.platform.log.debug(`Art mode polling for ${this.name}: TV unreachable, reducing poll frequency`);
+      }
+    }
   }
 
   public stopPolling(): void {
