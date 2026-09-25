@@ -190,18 +190,9 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
       try {
         // Check for crash loop BEFORE attempting any auth or API calls
         if (await this.crashLoopManager.isCrashLoopDetected(defaultCrashLoopConfig)) {
-          this.log.warn('[CRASH LOOP DETECTED] Attempting to recover by clearing tokens and re-authenticating.');
-          // Assuming auth is already initialized enough to call this method
-          // Or SmartThingsAuth constructor needs to be robust enough if called before full init
+          this.log.warn('[CRASH LOOP DETECTED] Several recent startups failed. Continuing startup without clearing tokens.');
           await this.auth.handleCrashLoopRecovery();
-          // After attempting recovery, it's best to let Homebridge restart the plugin cleanly.
-          // Or, if handleCrashLoopRecovery sets a state for re-auth, allow it to proceed.
-          // For now, we'll log and let the user know. A manual restart of Homebridge might be needed
-          // if the auth flow doesn't auto-trigger UI.
-          this.log.warn('[CRASH LOOP RECOVERY] Token clearing initiated. Monitor logs for re-authentication steps.' +
-            ' A Homebridge restart may be required.');
-          // We might want to return here to prevent further execution in a potentially unstable state until re-auth completes.
-          return;
+          await this.crashLoopManager.resetCrashState();
         }
 
         // Initialize OAuth2 flow if needed and wait for it to complete
@@ -226,6 +217,9 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
           }
           await this.discoverDevices(devices);
           this.unregisterDevices(devices);
+
+          // Discovery worked, so earlier failures were transient - forget them.
+          await this.crashLoopManager.resetCrashState();
 
           // Register Art Mode accessories for configured Frame TVs
           this.registerArtModeAccessories();
@@ -412,8 +406,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
       return devices;
     } catch (error) {
       this.log.error('Error getting devices from Smartthings: ' + error);
-      // Record this critical failure as it prevents device discovery
-      await this.crashLoopManager.recordPotentialCrash(CrashErrorType.API_INIT_FAILURE);
+      // The caller (didFinishLaunching) records the failure once for crash-loop detection.
       throw error;
     }
   }

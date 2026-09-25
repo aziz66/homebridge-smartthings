@@ -39,7 +39,6 @@ import { ZigbangSmartDoorlockService } from './services/zigbangSmartDoorlockServ
 import { EnergyService } from './services/energyService';
 import { extractDisabledComponents } from './util/samsungRefrigerator';
 import { Command } from './services/smartThingsCommand';
-import { CrashLoopManager, CrashErrorType } from './auth/CrashLoopManager';
 import { SamsungWebSocket } from './local/samsungWebSocket';
 // type DeviceStatus = {
 //   timestamp: number;
@@ -231,9 +230,6 @@ export class MultiServiceAccessory {
   protected lastStatusResult = true;
   protected hasInitialStatus = false;
 
-  // Add a field for CrashLoopManager
-  private crashLoopManager: CrashLoopManager;
-
   // Frame TV: optional local WebSocket for full power off and art mode
   public samsungWebSocket: SamsungWebSocket | null = null;
   public frameTvConfig: { enableFullPowerOff: boolean; enableArtModeSwitch: boolean; infoButtonKey: string } | null = null;
@@ -253,9 +249,6 @@ export class MultiServiceAccessory {
     this.baseURL = platform.config.BaseURL;
     this.key = platform.config.AccessToken;
     this.api = platform.api;
-
-    // Get CrashLoopManager instance from platform
-    this.crashLoopManager = platform.getCrashLoopManagerInstance();
 
     this.commandURL = 'devices/' + accessory.context.device.deviceId + '/commands';
     this.statusURL = 'devices/' + accessory.context.device.deviceId + '/status';
@@ -313,9 +306,8 @@ export class MultiServiceAccessory {
       const reportedOnline = response.data.state === 'ONLINE';
       this.log.debug(`Device ${this.name} cloud /health reports ${reportedOnline ? 'ONLINE' : response.data.state}`);
     } catch (error) {
+      // Advisory only: a failed /health call must not count towards crash-loop detection.
       this.log.debug(`Failed to check device health for ${this.name}: ${(error as Error)?.message || error}`);
-      await this.crashLoopManager.recordPotentialCrash(CrashErrorType.DEVICE_HEALTH_FAILURE);
-      throw error;
     }
   }
 

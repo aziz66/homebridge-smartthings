@@ -46,6 +46,8 @@ export class TokenManager {
     this.refreshTimer = setInterval(() => {
       this.checkAndRefreshTokens();
     }, this.REFRESH_CHECK_INTERVAL);
+    // Homebridge keeps the process alive; this timer alone should not.
+    this.refreshTimer.unref?.();
   }
 
   private async checkAndRefreshTokens(): Promise<void> {

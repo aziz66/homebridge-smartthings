@@ -187,20 +187,11 @@ export class SmartThingsAuth {
     return this.tokenManager.getAccessToken();
   }
 
+  // Crash-loop recovery must never discard credentials: the recorded "crashes" are usually just
+  // network trouble at startup, and wiping a valid refresh token forces a full re-authorization.
+  // Genuine auth failures already start the auth flow from the refresh path.
   public async handleCrashLoopRecovery(): Promise<void> {
-    this.log.warn('Handling crash loop recovery by clearing tokens and starting new auth flow.');
-    try {
-      // Clear existing tokens
-      await this.tokenManager.clearTokens();
-      this.log.info('Successfully cleared tokens during crash loop recovery.');
-
-      // Start new auth flow
-      this.startAuthFlow();
-      this.log.info('Started new authentication flow for crash loop recovery.');
-    } catch (error) {
-      this.log.error('Error during crash loop recovery:', error);
-      // Even if clearing fails, try to start auth flow
-      this.startAuthFlow();
-    }
+    this.log.warn('Repeated startup failures detected. Stored SmartThings tokens are kept; ' +
+      'if authentication is really broken, re-authorization instructions will be logged.');
   }
 }
