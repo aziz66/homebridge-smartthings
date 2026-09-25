@@ -273,6 +273,7 @@ export class DryerService extends BaseService {
     case 'wrinklePrevent':
     case 'dehumidifying':
     case 'aiDrying':
+    case 'aIDrying':  // SmartThings capability spelling; keep 'aiDrying' for devices already seen reporting it
     case 'sanitizing':
     case 'internalCare':
       return this.platform.Characteristic.InUse.IN_USE;
@@ -326,6 +327,7 @@ export class DryerService extends BaseService {
           this.cachedCompletionTime = null;
           this.lastInUse = this.platform.Characteristic.InUse.NOT_IN_USE;
           this.remainingSeeded = false;
+          this.service.updateCharacteristic(this.platform.Characteristic.InUse, this.platform.Characteristic.InUse.NOT_IN_USE);
           this.service.updateCharacteristic(this.platform.Characteristic.RemainingDuration, 0);
           this.contactSensorService?.updateCharacteristic(
             this.platform.Characteristic.ContactSensorState,

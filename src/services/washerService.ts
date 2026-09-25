@@ -269,6 +269,11 @@ export class WasherService extends BaseService {
     case 'wash':
     case 'rinse':
     case 'spin':
+    case 'preWash':
+    case 'airWash':
+    case 'aIWash':
+    case 'aIRinse':
+    case 'aISpin':
     case 'weightSensing':
     case 'wrinklePrevent':
     case 'drying':
@@ -323,6 +328,7 @@ export class WasherService extends BaseService {
           this.cachedCompletionTime = null;
           this.lastInUse = this.platform.Characteristic.InUse.NOT_IN_USE;
           this.remainingSeeded = false;
+          this.service.updateCharacteristic(this.platform.Characteristic.InUse, this.platform.Characteristic.InUse.NOT_IN_USE);
           this.service.updateCharacteristic(this.platform.Characteristic.RemainingDuration, 0);
           this.contactSensorService?.updateCharacteristic(
             this.platform.Characteristic.ContactSensorState,
