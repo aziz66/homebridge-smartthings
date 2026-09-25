@@ -55,7 +55,7 @@ async function runPollLoop(accessory: MultiServiceAccessory, done: () => boolean
 }
 
 test('a failed recovery attempt while offline does not cause an unhandled rejection', async () => {
-  const get = mock.fn((_url: string) => Promise.reject(new Error('getaddrinfo ENOTFOUND api.smartthings.com')));
+  const get = mock.fn<(url: string) => Promise<unknown>>(() => Promise.reject(new Error('getaddrinfo ENOTFOUND api.smartthings.com')));
   const accessory = offlineAccessory(get);
 
   const unhandled = await runPollLoop(accessory, () => get.mock.callCount() >= 1, 2000);
@@ -66,7 +66,7 @@ test('a failed recovery attempt while offline does not cause an unhandled reject
 });
 
 test('a failed recovery attempt throttles the next one', async () => {
-  const get = mock.fn((_url: string) => Promise.reject(new Error('Network Error')));
+  const get = mock.fn<(url: string) => Promise<unknown>>(() => Promise.reject(new Error('Network Error')));
   const accessory = offlineAccessory(get);
 
   await runPollLoop(accessory, () => false, 150);
@@ -76,7 +76,8 @@ test('a failed recovery attempt throttles the next one', async () => {
 });
 
 test('a successful status refresh brings the device back online (no /health call)', async () => {
-  const get = mock.fn((_url: string) => Promise.resolve({ data: { components: { main: { switch: { switch: { value: 'on' } } } } } }));
+  const status = { data: { components: { main: { switch: { switch: { value: 'on' } } } } } };
+  const get = mock.fn<(url: string) => Promise<unknown>>(() => Promise.resolve(status));
   const accessory = offlineAccessory(get);
 
   await runPollLoop(accessory, () => accessory.isOnline(), 2000);
@@ -88,7 +89,7 @@ test('a successful status refresh brings the device back online (no /health call
 });
 
 test('no recovery attempt within a minute of going offline', async () => {
-  const get = mock.fn((_url: string) => Promise.resolve({ data: { components: { main: {} } } }));
+  const get = mock.fn<(url: string) => Promise<unknown>>(() => Promise.resolve({ data: { components: { main: {} } } }));
   const accessory = offlineAccessory(get, 5 * 1000);
 
   await runPollLoop(accessory);

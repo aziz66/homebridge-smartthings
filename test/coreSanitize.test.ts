@@ -65,8 +65,10 @@ test('API errors reaching services carry no bearer token', async () => {
 });
 
 test('describeError keeps the useful parts', () => {
-  const err = new AxiosError('Request failed with status code 403', 'ERR_BAD_REQUEST', { headers: { Authorization: 'Bearer x' } } as never, {},
-    { status: 403, statusText: '', headers: {}, config: {} as never, data: { requestId: '1', error: { code: 'Forbidden', message: 'nope' } } });
+  const data = { requestId: '1', error: { code: 'Forbidden', message: 'nope' } };
+  const err = new AxiosError('Request failed with status code 403', 'ERR_BAD_REQUEST',
+    { headers: { Authorization: 'Bearer x' } } as never, {},
+    { status: 403, statusText: '', headers: {}, config: {} as never, data });
   const text = describeError(err);
   assert.match(text, /status code 403/);
   assert.match(text, /HTTP 403/);

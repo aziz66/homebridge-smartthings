@@ -54,7 +54,8 @@ afterEach(() => {
 test('a bare device event outside a lifecycle envelope is not dispatched', () => {
   const { internals, events } = server();
   const res = fakeRes();
-  internals.handleLegacyPost(JSON.stringify({ deviceId: 'd', componentId: 'main', capability: 'lock', attribute: 'lock', value: 'unlocked' }), res);
+  const bare = { deviceId: 'd', componentId: 'main', capability: 'lock', attribute: 'lock', value: 'unlocked' };
+  internals.handleLegacyPost(JSON.stringify(bare), res);
   assert.deepEqual(events, []);
   assert.equal(res.status, 200);
 });
@@ -62,9 +63,10 @@ test('a bare device event outside a lifecycle envelope is not dispatched', () =>
 test('device events inside an EVENT lifecycle are still dispatched', () => {
   const { internals, events } = server();
   const res = fakeRes();
+  const deviceEvent = { deviceId: 'd', componentId: 'main', capability: 'switch', attribute: 'switch', value: 'on' };
   internals.handleLegacyPost(JSON.stringify({
     lifecycle: 'EVENT',
-    eventData: { events: [{ eventType: 'DEVICE_EVENT', deviceEvent: { deviceId: 'd', componentId: 'main', capability: 'switch', attribute: 'switch', value: 'on' } }] },
+    eventData: { events: [{ eventType: 'DEVICE_EVENT', deviceEvent }] },
   }), res);
   assert.equal(events.length, 1);
   assert.equal(res.status, 200);
@@ -129,7 +131,8 @@ test('a CONFIRMATION pointing elsewhere makes no outbound request', async () => 
   };
   const { internals } = server();
   const res = fakeRes();
-  internals.handleSmartThingsLifecycle({ lifecycle: 'CONFIRMATION', confirmationData: { confirmationUrl: 'https://evil.example/hook' } }, res, false);
+  internals.handleSmartThingsLifecycle({ lifecycle: 'CONFIRMATION',
+    confirmationData: { confirmationUrl: 'https://evil.example/hook' } }, res, false);
   internals.handleSmartThingsLifecycle({ lifecycle: 'CONFIRMATION',
     confirmationData: { confirmationUrl: 'https://api.smartthings.com/apps/1/confirm' } }, fakeRes(), false);
   await sleep(10);

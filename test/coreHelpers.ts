@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as util from 'util';
 import * as hap from 'hap-nodejs';
 import { PlatformAccessory } from 'homebridge/lib/platformAccessory';
 import { AxiosAdapter, InternalAxiosRequestConfig } from 'axios';
@@ -11,7 +12,7 @@ import { CrashLoopManager } from '../src/auth/CrashLoopManager';
 export function recordingLog() {
   const lines: string[] = [];
   const record = (...args: unknown[]) => {
-    lines.push(args.map(a => typeof a === 'string' ? a : require('util').inspect(a)).join(' '));
+    lines.push(args.map(a => typeof a === 'string' ? a : util.inspect(a)).join(' '));
   };
   return { lines, debug: record, info: record, warn: record, error: record, success: record, log: record };
 }
