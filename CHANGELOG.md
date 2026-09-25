@@ -1,16 +1,15 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
-## [1.0.68-beta.1] - Power / energy monitoring for plugs and switches
+## [1.0.68-beta.2] - Power / energy monitoring for plugs and switches
 
-> Adds the energy work (#53) on top of the air-purifier and AC fan-mode fixes already in `1.0.68-beta.0` (below). Opt-in and off by default, so existing setups are unaffected until they enable it. **Read the note below on where the values actually appear before testing:** the readings render in the Eve app, not in Apple Home. Please report any issues before the stable release.
+> Adds the energy work (#53) on top of the air-purifier and AC fan-mode fixes already in `1.0.68-beta.0` (below). Opt-in and off by default, so existing setups are unaffected until they enable it. Supersedes `1.0.68-beta.1`, which was tagged but never published to npm.
 
 ### Added
 - **Power / energy monitoring for smart plugs and switches** (#53) — opt-in via the new **`ExposeEnergyMonitoring`** flag (default `false`). SmartThings `powerMeter`, `energyMeter`, `powerConsumptionReport`, and `voltageMeasurement` are mapped onto the accessory's existing on/off tile as Eve custom characteristics (live watts, accumulated kWh, volts). Values update from webhook events where subscriptions are available and fall back to polling on their own slower cadence (**`PollEnergySeconds`**, default 30; `0` disables). Only devices that already have a Switch, Outlet, or Lightbulb tile on `main` are eligible — the plugin never synthesizes a tile — and TVs and air conditioners are excluded because their power reports have no plain on/off host to attach to.
 - **`ExposeEnergyAsOutlet`** (default `false`) — republishes energy-reporting switches as an Outlet service, which the Eve app expects for its energy UI. **Breaking presentation change**: existing Switch tiles become Outlets in Apple Home and may need their scenes and automations re-added; turning it back off reverts them (and requires re-adding again). Requires `ExposeEnergyMonitoring`.
-- **`EnableMatterEnergy`** (default `false`) — forward-compatible Matter `ElectricalMeter` export, a deliberate no-op on current Homebridge builds. It activates only once Homebridge exposes the Matter energy device types (tracking homebridge#3942), at which point these devices would appear in Apple Home's native Energy view. Safe to enable ahead of platform support.
 
-> **Where the values show up:** the Eve app, Controller for HomeKit, and Home+. Apple's own Home app does **not** render Eve characteristics — its Energy view is Matter-only, which is what `EnableMatterEnergy` is staged for. If you enabled this expecting power under the tile in Apple Home, that arrives with the Matter path, not this release.
+> **Where the values show up:** the Eve app, Controller for HomeKit, and Home+. Apple's own Home app does **not** render Eve characteristics — its Energy view reads Matter, not HAP. Native Apple Home energy display would need the plugin to register Matter accessories through the `api.matter` plugin API added in Homebridge 2.4; that is tracked as separate work and is **not** part of this release.
 
 ## [1.0.68-beta.0] - Air purifier support + AC numeric fan-mode mapping
 
