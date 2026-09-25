@@ -1,6 +1,5 @@
 import { Logger } from 'homebridge';
 import * as http from 'http';
-import * as url from 'url';
 import { IKHomeBridgeHomebridgePlatform } from '../platform';
 import { SmartThingsAuth } from '../auth/auth';
 import { ShortEvent } from './subscriptionHandler';
@@ -14,12 +13,19 @@ const KNOWN_LIFECYCLES = ['PING', 'CONFIRMATION', 'INSTALL', 'UPDATE', 'UNINSTAL
 // Cap the inbound body on the public webhook endpoint. SmartThings lifecycle payloads are well under 1 KB.
 const MAX_BODY_BYTES = 1024 * 1024;
 
-// url.parse() throws (ERR_INVALID_URL) on some malformed request targets, e.g.
-// "http://[::1". Thrown inside the request handler that would be an uncaughtException
-// and take Homebridge down, so parse defensively and let the caller answer 400.
-export function parseRequestTarget(target: string | undefined): url.UrlWithParsedQuery | null {
+export interface RequestTarget {
+  pathname: string;
+  query: Record<string, string>;
+}
+
+// Parse the request target with the WHATWG URL API (url.parse() is deprecated and warns on
+// Node 24). Malformed targets such as "http://[::1" throw here; thrown inside the request
+// handler that would be an uncaughtException that stops Homebridge, so return null and let
+// the caller answer 400.
+export function parseRequestTarget(target: string | undefined): RequestTarget | null {
   try {
-    return url.parse(target || '/', true);
+    const parsed = new URL(target || '/', 'http://localhost');
+    return { pathname: parsed.pathname, query: Object.fromEntries(parsed.searchParams) };
   } catch {
     return null;
   }

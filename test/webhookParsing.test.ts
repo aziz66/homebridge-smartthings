@@ -7,9 +7,12 @@ import { recordingLog, tempStorage, validTokens, writeTokenFile } from './coreHe
 
 test('malformed request targets are rejected instead of throwing', () => {
   assert.equal(parseRequestTarget('http://[::1'), null);
-  assert.equal(parseRequestTarget('http://xn--/'), null);
-  assert.equal(parseRequestTarget('/oauth/callback?code=x')?.pathname, '/oauth/callback');
+  assert.doesNotThrow(() => parseRequestTarget('http://xn--/')); // rejected or parsed depending on the Node version
+  const callback = parseRequestTarget('/oauth/callback?code=x&state=y');
+  assert.equal(callback?.pathname, '/oauth/callback');
+  assert.deepEqual(callback?.query, { code: 'x', state: 'y' });
   assert.equal(parseRequestTarget(undefined)?.pathname, '/');
+  assert.equal(parseRequestTarget('/?lifecycle=x')?.pathname, '/');
 });
 
 // A single malformed request line used to throw inside the request handler: an
