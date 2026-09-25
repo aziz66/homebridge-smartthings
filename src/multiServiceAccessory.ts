@@ -748,6 +748,11 @@ export class MultiServiceAccessory {
                   this.giveUpTime = 0;
                   this.failureCount = 0;
                 }
+              })
+              .catch((error) => {
+                // Must not reject unhandled: Node turns that into an uncaughtException and
+                // Homebridge shuts down. Stay offline and retry on the next poll.
+                this.log.debug(`Offline recovery health check failed for ${this.name}: ${error?.message || error}`);
               });
           }
         }

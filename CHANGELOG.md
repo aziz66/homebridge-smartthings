@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - **Sensors not updating in polling mode** (#57) — contact, leak, smoke, carbon monoxide, occupancy, temperature, humidity, and light sensors now push their polled state to HomeKit. Polling wrote every sensor's value into a `MotionDetected` characteristic instead of the sensor's own, so without webhooks Home only saw changes when it re-read the tile, and automations on these sensors could not fire. The stray `MotionDetected` this left on cached sensor tiles is removed on startup. Motion sensors were unaffected.
+- **Homebridge could shut down during a long outage** — after a device had been marked offline for 10 minutes, the plugin's recovery health check had no error handling, so a failed check (e.g. no internet) became an unhandled promise rejection, which Node escalates to a fatal error and Homebridge shuts down. The failure is now caught; the device stays offline and the check is retried on the next poll.
 
 ### Changed
 - **Automated tests in CI** — the build workflow now runs a unit-test suite (`npm test`, Node's built-in test runner) after lint and build, so regressions like the ones fixed below are caught on every push and pull request.
