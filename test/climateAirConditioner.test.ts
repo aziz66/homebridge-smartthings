@@ -240,3 +240,13 @@ test('air purifier: filter life is on a linked FilterMaintenance service, not th
   assert.ok(purifier.linkedServices.includes(filter));
   assert.ok(filter.testCharacteristic(hap.Characteristic.FilterLifeLevel));
 });
+
+test('air purifier: a humidity sensor link cached by 1.0.67 is removed', () => {
+  const accessory = fakeAccessory('Purifier', ['switch', 'airConditionerFanMode']);
+  const cachedPurifier = accessory.addService(hap.Service.AirPurifier);
+  const humidity = accessory.addService(hap.Service.HumiditySensor);
+  cachedPurifier.addLinkedService(humidity);
+  new AirPurifierService(fakePlatform({ PollSensorsSeconds: 0 }), accessory, 'main', ['switch', 'airConditionerFanMode'],
+    fakeMultiServiceAccessory(['switch', 'airConditionerFanMode']) as never, 'Purifier', { status: {} });
+  assert.equal(accessory.getService(hap.Service.AirPurifier)!.linkedServices.includes(humidity), false);
+});

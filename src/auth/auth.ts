@@ -33,14 +33,15 @@ export class SmartThingsAuth {
   }
 
   public async handleOAuthCallback(query: any, res: http.ServerResponse): Promise<void> {
+    // A malformed or stale callback is the caller's fault (400), not a server error.
+    if (!query.code || !query.state || query.state !== this.state) {
+      const reason = !query.code || !query.state ? 'missing code or state parameter' : 'invalid state parameter';
+      this.log.warn(`OAuth callback rejected: ${reason}`);
+      res.writeHead(400, { 'Content-Type': 'text/html' });
+      res.end('<h1>Authentication failed</h1><p>This link is incomplete or has expired. Please start the authorization again.</p>');
+      return;
+    }
     try {
-      if (!query.code || !query.state) {
-        throw new Error('Missing code or state parameter');
-      }
-
-      if (query.state !== this.state) {
-        throw new Error('Invalid state parameter');
-      }
 
       const tokens = await this.exchangeCodeForTokens(query.code);
       await this.tokenManager.updateTokens(tokens);

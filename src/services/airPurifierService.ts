@@ -108,6 +108,11 @@ export class AirPurifierService extends BaseService {
         this.service.removeCharacteristic(stray);
       }
     }
+    // 1.0.67 linked a HumiditySensor to the purifier; humidity is now a standalone sensor, but the
+    // link is persisted in cachedAccessories, so drop it on upgraded installs.
+    this.service.linkedServices
+      .filter(linked => linked.UUID === platform.Service.HumiditySensor.UUID)
+      .forEach(linked => this.service.removeLinkedService(linked));
     const filterSubtype = `filter-${this.componentId}`;
     const cachedFilterService = this.accessory.getServiceById(platform.Service.FilterMaintenance, filterSubtype);
     if (this.isCapabilitySupported('custom.filterState') || this.isCapabilitySupported('custom.hepaFilter')) {

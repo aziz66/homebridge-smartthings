@@ -96,3 +96,18 @@ test('the OAuth state stays stable until it is used', () => {
   assert.equal(urls.length, 2);
   assert.equal(urls[0], urls[1]);
 });
+
+test('an incomplete or stale OAuth callback gets 400, not 500', async () => {
+  const log = recordingLog();
+  const platform = { config: { server_url: 'https://hb.example.test' } };
+  const auth = new SmartThingsAuth('client', 'secret', log as never, platform as never, tempStorage(),
+    { setAuthHandler: () => undefined } as never);
+  auth.startAuthFlow();
+  for (const query of [{}, { code: 'abc' }, { code: 'abc', state: 'not-the-state' }]) {
+    const res = { status: 0, writeHead(status: number) {
+      res.status = status; return res;
+    }, end: () => undefined };
+    await auth.handleOAuthCallback(query, res as never);
+    assert.equal(res.status, 400, JSON.stringify(query));
+  }
+});
