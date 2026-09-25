@@ -60,6 +60,7 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
 
   // Background re-discovery after startup discovery failed on a transient (network) error.
   private rediscoveryTimer: NodeJS.Timeout | null = null;
+  private rateLimitedUntil = 0;
   private rediscoveryDelayMs = IKHomeBridgeHomebridgePlatform.REDISCOVERY_INITIAL_DELAY_MS;
   private discoveryCompleted = false;
   private shuttingDown = false;
@@ -116,6 +117,8 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
         if (error.response?.status === 429 && originalRequest && !originalRequest._retry429) {
           originalRequest._retry429 = true;
           const waitMs = IKHomeBridgeHomebridgePlatform.retryAfterMs(error.response.headers?.['retry-after']);
+          // Back off plugin-wide: status refreshes serve the cache until this passes.
+          this.rateLimitedUntil = Math.max(this.rateLimitedUntil, Date.now() + waitMs);
           const isRead = (originalRequest.method || 'get').toLowerCase() === 'get';
           if (isRead || waitMs <= 5000) {
             this.log.warn(`SmartThings rate limit hit (429) for ${originalRequest.url}; retrying in ${Math.round(waitMs / 1000)} s`);
@@ -225,8 +228,11 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
         // Record that an initialization error occurred.
         // If this error is one that leads to a crash and restart, it will be logged by CrashLoopManager.
         await this.crashLoopManager.recordPotentialCrash(CrashErrorType.API_INIT_FAILURE);
-        this.log.error('Platform initialization failed. This might lead to a restart.' +
-          ' If this persists, a crash loop recovery might be attempted.');
+        if (this.rediscoveryTimer) {
+          this.log.warn('SmartThings could not be reached at startup; device discovery will keep retrying in the background.');
+        } else {
+          this.log.error('Platform initialization failed. Check the errors above; a Homebridge restart may be needed.');
+        }
       }
     });
   }
@@ -821,6 +827,11 @@ export class IKHomeBridgeHomebridgePlatform implements DynamicPlatformPlugin {
            message.includes('timeout') ||
            message.includes('network') ||
            message.includes('socket hang up');
+  }
+
+  // True while SmartThings has asked us (HTTP 429) to back off.
+  public isRateLimited(): boolean {
+    return Date.now() < this.rateLimitedUntil;
   }
 
   /**

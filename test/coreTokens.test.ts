@@ -100,3 +100,11 @@ test('the token file is written owner-only', { skip: process.platform === 'win32
   await tm.updateTokens({ location_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' });
   assert.equal(fs.statSync(file).mode & 0o777, 0o600);
 });
+
+test('a token file written by an older version (0644) is tightened to owner-only on load', { skip: process.platform === 'win32' }, () => {
+  const storage = tempStorage();
+  const file = writeTokenFile(storage, validTokens());
+  fs.chmodSync(file, 0o644);
+  manager(storage);
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+});

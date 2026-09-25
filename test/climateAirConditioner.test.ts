@@ -222,3 +222,21 @@ test('air purifier: every manual fan mode survives the HomeKit round trip', () =
     }
   }
 });
+
+test('air purifier: filter life is on a linked FilterMaintenance service, not the purifier tile', () => {
+  const status = { 'custom.filterState': { filterLifeRemaining: { value: 80 } } };
+  const accessory = fakeAccessory('Purifier', ['switch', 'airConditionerFanMode', 'custom.filterState']);
+  // Simulate a cache from an older version that put the filter characteristics on the purifier.
+  const cachedPurifier = accessory.addService(hap.Service.AirPurifier);
+  cachedPurifier.addCharacteristic(hap.Characteristic.FilterLifeLevel);
+  const msa = fakeMultiServiceAccessory(['switch', 'airConditionerFanMode', 'custom.filterState']);
+  new AirPurifierService(fakePlatform({ PollSensorsSeconds: 0 }), accessory, 'main',
+    ['switch', 'airConditionerFanMode', 'custom.filterState'], msa as never, 'Purifier', { status });
+
+  const purifier = accessory.getService(hap.Service.AirPurifier)!;
+  const filter = accessory.getService(hap.Service.FilterMaintenance)!;
+  assert.ok(filter, 'a FilterMaintenance service is added');
+  assert.equal(purifier.testCharacteristic(hap.Characteristic.FilterLifeLevel), false, 'stray cached copy removed');
+  assert.ok(purifier.linkedServices.includes(filter));
+  assert.ok(filter.testCharacteristic(hap.Characteristic.FilterLifeLevel));
+});

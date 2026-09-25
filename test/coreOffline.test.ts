@@ -125,3 +125,28 @@ test('recovery attempts are throttled', async () => {
   assert.equal(gets, 1);
   assert.equal(acc.isOnline(), false);
 });
+
+test('a failed status request is not retried by every poller within 5 seconds', async () => {
+  let calls = 0;
+  const acc = accessory({ axInstance: { get: () => {
+    calls++; return Promise.reject(new Error('Network Error'));
+  } } });
+  assert.equal(await acc.refreshStatus(), false);
+  assert.equal(await acc.refreshStatus(), false);   // another poller, same tick
+  assert.equal(await acc.refreshStatus(), false);
+  assert.equal(calls, 1);
+  assert.equal(acc.failureCount, 1, 'only real requests count as failures');
+});
+
+test('while SmartThings is rate limiting, status refreshes serve the cache without a request', async () => {
+  let calls = 0;
+  const acc = accessory({
+    hasInitialStatus: true,
+    platform: { isRateLimited: () => true },
+    axInstance: { get: () => {
+      calls++; return Promise.resolve(STATUS);
+    } },
+  });
+  assert.equal(await acc.refreshStatus(), true);
+  assert.equal(calls, 0);
+});

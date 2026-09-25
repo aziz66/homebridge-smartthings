@@ -13,6 +13,7 @@ enum SwitchState {
 export class AirPurifierService extends BaseService {
 
   private airPurifierService: Service;
+  private filterService?: Service;
   private airQualitySensorService?: Service;
 
   private static readonly DEFAULT_FAN_MODES = ['auto', 'low', 'medium', 'high'];
@@ -98,12 +99,29 @@ export class AirPurifierService extends BaseService {
       .onGet(this.getRotationSpeed.bind(this))
       .onSet(this.setRotationSpeed.bind(this));
 
+    // Filter life lives on a linked FilterMaintenance service: HAP doesn't define the filter
+    // characteristics on AirPurifier, so Apple Home only shows filter status that way. Earlier
+    // versions put them on the purifier service itself - drop those cached copies.
+    for (const characteristic of [platform.Characteristic.FilterLifeLevel, platform.Characteristic.FilterChangeIndication]) {
+      const stray = this.service.characteristics.find(c => c.UUID === characteristic.UUID);
+      if (stray) {
+        this.service.removeCharacteristic(stray);
+      }
+    }
+    const filterSubtype = `filter-${this.componentId}`;
+    const cachedFilterService = this.accessory.getServiceById(platform.Service.FilterMaintenance, filterSubtype);
     if (this.isCapabilitySupported('custom.filterState') || this.isCapabilitySupported('custom.hepaFilter')) {
-      this.service.getCharacteristic(platform.Characteristic.FilterLifeLevel)
+      this.filterService = cachedFilterService ||
+        this.accessory.addService(platform.Service.FilterMaintenance, `${this.accessory.context.device.label} Filter`, filterSubtype);
+      this.service.addLinkedService(this.filterService);
+
+      this.filterService.getCharacteristic(platform.Characteristic.FilterLifeLevel)
         .onGet(this.getFilterLifeLevel.bind(this));
 
-      this.service.getCharacteristic(platform.Characteristic.FilterChangeIndication)
+      this.filterService.getCharacteristic(platform.Characteristic.FilterChangeIndication)
         .onGet(this.getFilterChangeIndication.bind(this));
+    } else if (cachedFilterService) {
+      this.accessory.removeService(cachedFilterService);
     }
 
     multiServiceAccessory.startPollingState((this.platform.config.PollSensorsSeconds ?? 10),
@@ -422,9 +440,9 @@ export class AirPurifierService extends BaseService {
   }
 
   private updateFilterCharacteristics(deviceStatus): void {
-    this.airPurifierService.updateCharacteristic(this.platform.Characteristic.FilterLifeLevel,
+    this.filterService?.updateCharacteristic(this.platform.Characteristic.FilterLifeLevel,
       this.filterLifeLevelFromStatus(deviceStatus));
-    this.airPurifierService.updateCharacteristic(this.platform.Characteristic.FilterChangeIndication,
+    this.filterService?.updateCharacteristic(this.platform.Characteristic.FilterChangeIndication,
       this.filterChangeIndicationFromStatus(deviceStatus));
   }
 
@@ -552,8 +570,8 @@ export class AirPurifierService extends BaseService {
       case 'custom.filterState':
         if (this.isCapabilitySupported('custom.filterState')) {
           const remaining = this.clampPercent(event.value, 100);
-          this.airPurifierService.updateCharacteristic(this.platform.Characteristic.FilterLifeLevel, remaining);
-          this.airPurifierService.updateCharacteristic(this.platform.Characteristic.FilterChangeIndication,
+          this.filterService?.updateCharacteristic(this.platform.Characteristic.FilterLifeLevel, remaining);
+          this.filterService?.updateCharacteristic(this.platform.Characteristic.FilterChangeIndication,
             remaining < 10 ? 1 : 0);
         }
         break;

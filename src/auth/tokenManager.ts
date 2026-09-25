@@ -147,6 +147,11 @@ export class TokenManager {
         }
         this.tokenData = fileData;
         this.log.debug('Loaded existing tokens from storage file');
+        try {
+          fs.chmodSync(this.tokenPath, 0o600); // tighten files written by older versions (were 0644)
+        } catch {
+          // best effort (e.g. filesystems without POSIX permissions)
+        }
         return;
       }
 

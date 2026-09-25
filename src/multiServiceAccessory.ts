@@ -239,6 +239,9 @@ export class MultiServiceAccessory {
   private static readonly MIN_FAILURE_SPAN_MS = 60 * 1000;
   private static readonly ON_DEMAND_RETRY_INTERVAL_MS = 10 * 1000;
   private firstFailureAt = 0;
+  // A failed status request is not retried for STATUS_CACHE_MS, like a successful one: otherwise
+  // every characteristic's poller issues its own failing request during an outage.
+  private lastFailedRefreshAt = 0;
 
   protected statusQueryInProgress = false;
   protected lastStatusResult = true;
@@ -594,6 +597,15 @@ export class MultiServiceAccessory {
   async refreshStatus(): Promise<boolean> {
     return new Promise((resolve) => {
       this.log.debug(`Refreshing status for ${this.name} - current timestamp is ${this.deviceStatusTimestamp}`);
+      if (this.platform?.isRateLimited?.()) {
+        // SmartThings asked us to back off (429): serve the cache instead of adding requests.
+        resolve(this.hasInitialStatus);
+        return;
+      }
+      if (Date.now() - this.lastFailedRefreshAt < 5000) {
+        resolve(this.lastStatusResult = false);
+        return;
+      }
       if (Date.now() - this.deviceStatusTimestamp > 5000) {
         // If there is already a call to smartthings to update status for this device, don't issue another one until
         // we return from that.
@@ -640,6 +652,7 @@ export class MultiServiceAccessory {
             //   resolve(this.lastStatusResult = false);
             // }
           }).catch(async error => {
+            this.lastFailedRefreshAt = Date.now();
             // Count consecutive failed status refreshes; any successful refresh resets the count.
             if (this.failureCount === 0) {
               this.firstFailureAt = Date.now();
@@ -672,6 +685,7 @@ export class MultiServiceAccessory {
     this.online = true;
     this.failureCount = 0;
     this.firstFailureAt = 0;
+    this.lastFailedRefreshAt = 0;
     this.giveUpTime = 0;
   }
 
@@ -700,6 +714,7 @@ export class MultiServiceAccessory {
 
   public forceNextStatusRefresh() {
     this.deviceStatusTimestamp = 0;
+    this.lastFailedRefreshAt = 0;
   }
 
   public hasCachedStatus(): boolean {
