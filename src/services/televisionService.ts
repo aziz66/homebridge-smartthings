@@ -44,6 +44,7 @@ export class TelevisionService extends BaseService {
   private currentVolume = 0;
   private isMuted = false;
   private lastKnownInputSourcesHash = ''; // Track changes to input sources
+  private pollTimer: NodeJS.Timer | void = undefined; // guards against starting a second TV poller
 
   constructor(
     platform: IKHomeBridgeHomebridgePlatform,
@@ -83,6 +84,14 @@ export class TelevisionService extends BaseService {
 
     // Setup characteristic polling (will be started when capabilities are registered)
     this.setupCharacteristicPolling();
+
+    // Push power state on the PollTelevisionsSeconds interval so HomeKit stays in sync
+    // without webhooks. Only the TV's Active is pushed here (a kept legacy Switch polls its
+    // own On); both read the same cached status, whose SmartThings fetch is shared and
+    // throttled by MultiServiceAccessory.refreshStatus() (at most one request per 5s).
+    if (this.isCapabilitySupported('switch')) {
+      this.startPolling();
+    }
   }
 
   /**
@@ -422,8 +431,8 @@ export class TelevisionService extends BaseService {
       pollSeconds = this.platform.config.PollSwitchesAndLightsSeconds;
     }
 
-    if (pollSeconds > 0) {
-      this.multiServiceAccessory.startPollingState(
+    if (pollSeconds > 0 && !this.pollTimer) {
+      this.pollTimer = this.multiServiceAccessory.startPollingState(
         pollSeconds,
         this.getTelevisionActive.bind(this),
         this.televisionService,
