@@ -390,13 +390,13 @@ export class AirConditionerService extends BaseService {
   }
 
   private fanOscillationModeToSwingMode(fanOscillationMode: FanOscillationMode): CharacteristicValue {
-    switch (fanOscillationMode) {
-      case FanOscillationMode.All:
-      case FanOscillationMode.Vertical:
-        return this.platform.Characteristic.SwingMode.SWING_ENABLED;
-      case FanOscillationMode.Fixed:
-        return this.platform.Characteristic.SwingMode.SWING_DISABLED;
+    // 'fixed' and the fixed vane positions (fixedCenter/fixedLeft/fixedRight), or no reading, are
+    // "not swinging"; every other mode (all, vertical, horizontal, ...) is. Unknown modes used to
+    // return undefined, which HAP rejects.
+    if (typeof fanOscillationMode !== 'string' || fanOscillationMode.startsWith(FanOscillationMode.Fixed)) {
+      return this.platform.Characteristic.SwingMode.SWING_DISABLED;
     }
+    return this.platform.Characteristic.SwingMode.SWING_ENABLED;
   }
 
   private async getLightSwitchState(): Promise<CharacteristicValue> {
