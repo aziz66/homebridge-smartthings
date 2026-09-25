@@ -132,6 +132,36 @@ test('an unchanged input list with duplicate IDs does not trigger a rebuild on t
   assert.deepEqual(msa.component.status['samsungvd.mediaInputSource'].supportedInputSourcesMap.value, inputs);
 });
 
+test('stale cached InputSource services are removed from a restored (bridged) TV', async () => {
+  const accessory = fakeAccessory('Living Room TV', TV_CAPABILITIES);
+  const cachedTv = accessory.addService(hap.Service.Television, 'Living Room TV', 'Television');
+  const cached = (name: string, subtype: string, identifier: number) => {
+    const service = accessory.addService(hap.Service.InputSource, name, subtype);
+    service.setCharacteristic(hap.Characteristic.Identifier, identifier);
+    cachedTv.addLinkedService(service);
+    return service;
+  };
+  const keptHdmi = cached('HDMI 1', 'Input-HDMI1', 1);
+  const removedApp = cached('Old App', 'App-3201601007625', 2);
+  const fallbackInput = cached('HDMI 4', 'Input-HDMI4', 3);
+
+  const { tv } = createTv({
+    accessory,
+    config: { tvApps: [NETFLIX] },
+    status: inputStatus([{ id: 'HDMI1', name: 'Apple TV' }, { id: 'dtv', name: 'Live TV' }]),
+  });
+  await tv.registerInputSourceCapability();
+
+  const remaining = inputSources(accessory);
+  assert.equal(remaining.length, 3);
+  assert.ok(remaining.includes(keptHdmi), 'a still-current cached input is reused');
+  assert.equal(remaining.includes(removedApp), false);
+  assert.equal(remaining.includes(fallbackInput), false);
+  assert.equal(cachedTv.linkedServices.includes(removedApp), false);
+  assert.equal(cachedTv.linkedServices.includes(fallbackInput), false);
+  assert.deepEqual(remaining.map(identifierOf).sort(), [1, 2, 3]);
+});
+
 test('a TV app listed twice in tvApps is registered once', async () => {
   const { tv, accessory } = createTv({
     config: { tvApps: [NETFLIX, YOUTUBE, NETFLIX] },

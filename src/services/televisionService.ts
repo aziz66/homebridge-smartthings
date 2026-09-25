@@ -333,8 +333,24 @@ export class TelevisionService extends BaseService {
     if (this.inputServices.length === 0) {
       this.log.info(`🔄 Input source capability available - registering input sources for ${this.name}`);
       await this.setupInputSources();
+      this.removeStaleInputSources();
     } else {
       this.log.debug(`Input sources already registered for ${this.name}`);
+    }
+  }
+
+  /**
+   * A bridged TV is restored from the accessory cache with the InputSource services of
+   * earlier runs: removed apps, fallback HDMI inputs, inputs the TV no longer reports.
+   * Their cached Identifiers collide with the current ones, so drop every InputSource
+   * this run did not register (removeService also unlinks it from the TV service).
+   */
+  private removeStaleInputSources(): void {
+    const stale = this.accessory.services.filter(service =>
+      service.UUID === this.platform.Service.InputSource.UUID && !this.inputServices.includes(service));
+    for (const service of stale) {
+      this.accessory.removeService(service);
+      this.log.info(`➖ Removed stale cached input source "${service.displayName}" (${service.subtype}) from ${this.name}`);
     }
   }
 
