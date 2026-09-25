@@ -157,11 +157,14 @@ export class AirPurifierService extends BaseService {
   private async setActive(value: CharacteristicValue): Promise<void> {
     const switchState = value ? SwitchState.On : SwitchState.Off;
 
-    // Skip redundant "switch on" if device is already on (cached status).
+    // Skip redundant "switch on" if the tile already shows Active.
     // HomeKit sends setActive(1) alongside mode changes even when already on,
-    // causing a double-beep on Samsung air purifiers.
+    // causing a double-beep on Samsung air purifiers. Use the characteristic's current HAP value
+    // (still the previous value while this handler runs), not the status cache: the cache is only
+    // refreshed in the background, so after a quick off -> on it still says 'on' and the on was lost.
     if (switchState === SwitchState.On
-      && this.deviceStatus?.status?.switch?.switch?.value === SwitchState.On) {
+      && this.airPurifierService.getCharacteristic(this.platform.Characteristic.Active).value
+        === this.platform.Characteristic.Active.ACTIVE) {
       this.log.info(`[${this.name}] skipping redundant switch on (already on)`);
       return;
     }
