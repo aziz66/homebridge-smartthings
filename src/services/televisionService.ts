@@ -44,6 +44,7 @@ export class TelevisionService extends BaseService {
   private currentVolume = 0;
   private isMuted = false;
   private lastKnownInputSourcesHash = ''; // Track changes to input sources
+  private pollTimer: NodeJS.Timer | void = undefined; // guards against starting a second TV poller
 
   constructor(
     platform: IKHomeBridgeHomebridgePlatform,
@@ -83,6 +84,14 @@ export class TelevisionService extends BaseService {
 
     // Setup characteristic polling (will be started when capabilities are registered)
     this.setupCharacteristicPolling();
+
+    // Push power state on the PollTelevisionsSeconds interval so HomeKit stays in sync
+    // without webhooks. Only the TV's Active is pushed here (a kept legacy Switch polls its
+    // own On); both read the same cached status, whose SmartThings fetch is shared and
+    // throttled by MultiServiceAccessory.refreshStatus() (at most one request per 5s).
+    if (this.isCapabilitySupported('switch')) {
+      this.startPolling();
+    }
   }
 
   /**
@@ -246,12 +255,14 @@ export class TelevisionService extends BaseService {
   }
 
   private registerAppInputSources(): void {
-    const tvApps: string[] = this.platform.config.tvApps ?? [];
+    const configuredApps: string[] = this.platform.config.tvApps ?? [];
 
-    if (!Array.isArray(tvApps) || tvApps.length === 0) {
+    if (!Array.isArray(configuredApps) || configuredApps.length === 0) {
       this.log.debug(`No TV apps configured for ${this.name}`);
       return;
     }
+    // A repeated app ID would reuse the same service and push it twice, colliding identifiers.
+    const tvApps = [...new Set(configuredApps)];
 
     this.log.info(`📱 Registering ${tvApps.length} app input sources for ${this.name}`);
 
@@ -322,8 +333,24 @@ export class TelevisionService extends BaseService {
     if (this.inputServices.length === 0) {
       this.log.info(`🔄 Input source capability available - registering input sources for ${this.name}`);
       await this.setupInputSources();
+      this.removeStaleInputSources();
     } else {
       this.log.debug(`Input sources already registered for ${this.name}`);
+    }
+  }
+
+  /**
+   * A bridged TV is restored from the accessory cache with the InputSource services of
+   * earlier runs: removed apps, fallback HDMI inputs, inputs the TV no longer reports.
+   * Their cached Identifiers collide with the current ones, so drop every InputSource
+   * this run did not register (removeService also unlinks it from the TV service).
+   */
+  private removeStaleInputSources(): void {
+    const stale = this.accessory.services.filter(service =>
+      service.UUID === this.platform.Service.InputSource.UUID && !this.inputServices.includes(service));
+    for (const service of stale) {
+      this.accessory.removeService(service);
+      this.log.info(`➖ Removed stale cached input source "${service.displayName}" (${service.subtype}) from ${this.name}`);
     }
   }
 
@@ -342,19 +369,7 @@ export class TelevisionService extends BaseService {
         const supportedInputSources = inputSourceData.supportedInputSourcesMap.value as { id: string; name: string }[];
 
         // Remove duplicates and ensure unique input source IDs
-        const uniqueInputSources = supportedInputSources.reduce((acc: { id: string; name: string }[], current) => {
-          const existingIndex = acc.findIndex(item => item.id === current.id);
-          if (existingIndex >= 0) {
-            // If duplicate ID found, use the one with more descriptive name (longer name usually)
-            if (current.name.length > acc[existingIndex].name.length) {
-              acc[existingIndex] = current;
-            }
-            this.log.debug(`⚠️  Duplicate input ID "${current.id}" found - keeping "${acc[existingIndex].name}"`);
-          } else {
-            acc.push(current);
-          }
-          return acc;
-        }, []);
+        const uniqueInputSources = this.dedupeInputSources(supportedInputSources, true);
 
         this.inputSourcesMap = uniqueInputSources.map((source: any) => ({
           id: source.id,        // SmartThings ID (e.g., "HDMI1")
@@ -367,8 +382,7 @@ export class TelevisionService extends BaseService {
         });
 
         // Initialize the hash for future change detection
-        const sortedSources = uniqueInputSources.sort((a, b) => a.id.localeCompare(b.id));
-        this.lastKnownInputSourcesHash = JSON.stringify(sortedSources);
+        this.lastKnownInputSourcesHash = this.inputSourcesFingerprint(supportedInputSources);
 
         return;
       } else {
@@ -389,8 +403,38 @@ export class TelevisionService extends BaseService {
     this.log.warn(`⚠️  Using fallback input sources for ${this.name} - fresh data not available`);
 
     // Initialize hash for fallback sources too
-    const sortedSources = [...this.inputSourcesMap].sort((a, b) => a.id.localeCompare(b.id));
-    this.lastKnownInputSourcesHash = JSON.stringify(sortedSources);
+    this.lastKnownInputSourcesHash = this.inputSourcesFingerprint(this.inputSourcesMap);
+  }
+
+  /**
+   * Remove duplicate input IDs, keeping the more descriptive (longer) name. Keeps the
+   * TV's order and never mutates the status array it is given.
+   */
+  private dedupeInputSources(sources: { id: string; name: string }[], logDuplicates = false): { id: string; name: string }[] {
+    return sources.reduce((acc: { id: string; name: string }[], current) => {
+      const existingIndex = acc.findIndex(item => item.id === current.id);
+      if (existingIndex >= 0) {
+        if (current.name.length > acc[existingIndex].name.length) {
+          acc[existingIndex] = current;
+        }
+        if (logDuplicates) {
+          this.log.debug(`⚠️  Duplicate input ID "${current.id}" found - keeping "${acc[existingIndex].name}"`);
+        }
+      } else {
+        acc.push(current);
+      }
+      return acc;
+    }, []);
+  }
+
+  /**
+   * Change-detection fingerprint of a supportedInputSourcesMap. Startup and polling must
+   * normalize identically, or the first poll sees a spurious change and rebuilds inputs.
+   */
+  private inputSourcesFingerprint(sources: { id: string; name: string }[]): string {
+    return JSON.stringify(this.dedupeInputSources(sources)
+      .map(source => ({ id: source.id, name: source.name }))
+      .sort((a, b) => a.id.localeCompare(b.id)));
   }
 
   private getInputSourceType(inputId: string): number {
@@ -422,8 +466,8 @@ export class TelevisionService extends BaseService {
       pollSeconds = this.platform.config.PollSwitchesAndLightsSeconds;
     }
 
-    if (pollSeconds > 0) {
-      this.multiServiceAccessory.startPollingState(
+    if (pollSeconds > 0 && !this.pollTimer) {
+      this.pollTimer = this.multiServiceAccessory.startPollingState(
         pollSeconds,
         this.getTelevisionActive.bind(this),
         this.televisionService,
@@ -453,7 +497,7 @@ export class TelevisionService extends BaseService {
         } else {
           reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE));
         }
-      });
+      }).catch(() => reject(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE)));
     });
   }
 
@@ -526,7 +570,7 @@ export class TelevisionService extends BaseService {
         } else {
           resolve(this.currentInputSource);
         }
-      });
+      }).catch(() => resolve(this.currentInputSource));
     });
   }
 
@@ -760,7 +804,7 @@ export class TelevisionService extends BaseService {
         } else {
           resolve(this.platform.Characteristic.PictureMode.STANDARD);
         }
-      });
+      }).catch(() => resolve(this.platform.Characteristic.PictureMode.STANDARD));
     });
   }
 
@@ -811,7 +855,7 @@ export class TelevisionService extends BaseService {
         } else {
           resolve(this.isMuted);
         }
-      });
+      }).catch(() => resolve(this.isMuted));
     });
   }
 
@@ -875,7 +919,7 @@ export class TelevisionService extends BaseService {
         } else {
           resolve(this.currentVolume);
         }
-      });
+      }).catch(() => resolve(this.currentVolume));
     });
   }
 
@@ -1040,7 +1084,7 @@ export class TelevisionService extends BaseService {
           // Update picture mode if the service supports it
           this.getPictureMode().then(mode => {
             this.televisionService.updateCharacteristic(this.platform.Characteristic.PictureMode, mode);
-          });
+          }).catch(error => this.log.debug(`Could not update picture mode for ${this.name}: ${error}`));
         }
         break;
 
@@ -1137,25 +1181,14 @@ export class TelevisionService extends BaseService {
         const supportedInputSources = inputSourceData.supportedInputSourcesMap.value as { id: string; name: string }[];
 
         // Create a hash of the current input sources to detect changes
-        const currentInputSourcesHash = JSON.stringify(supportedInputSources.sort((a, b) => a.id.localeCompare(b.id)));
+        const currentInputSourcesHash = this.inputSourcesFingerprint(supportedInputSources);
 
         // Check if input sources have changed
         if (this.lastKnownInputSourcesHash !== '' && this.lastKnownInputSourcesHash !== currentInputSourcesHash) {
           this.log.info(`📺 Input source changes detected for ${this.name} - updating HomeKit services`);
 
           // Parse the new input sources
-          const uniqueInputSources = supportedInputSources.reduce((acc: { id: string; name: string }[], current) => {
-            const existingIndex = acc.findIndex(item => item.id === current.id);
-            if (existingIndex >= 0) {
-              if (current.name.length > acc[existingIndex].name.length) {
-                acc[existingIndex] = current;
-              }
-              this.log.debug(`⚠️  Duplicate input ID "${current.id}" found - keeping "${acc[existingIndex].name}"`);
-            } else {
-              acc.push(current);
-            }
-            return acc;
-          }, []);
+          const uniqueInputSources = this.dedupeInputSources(supportedInputSources, true);
 
           // Update the input sources map (exclude app entries from old list to avoid false "obsolete" detection)
           const oldPhysicalInputSources = this.inputSourcesMap.filter(s => !this.appIds.has(s.id));
@@ -1178,6 +1211,15 @@ export class TelevisionService extends BaseService {
 
           // Re-append app input sources (they're config-based, not from SmartThings)
           this.reappendAppInputSources();
+
+          // New inputs were appended to inputServices, not inserted in the TV's order, so
+          // re-align inputSourcesMap with the HomeKit identifiers (inputServices index + 1)
+          // that getActiveIdentifier/setActiveIdentifier/processEvent resolve through it.
+          const sourcesById = new Map(this.inputSourcesMap.map(source => [source.id, source]));
+          this.inputSourcesMap = this.inputServices.map(service => {
+            const id = service.name ?? '';
+            return sourcesById.get(id) ?? { id, name: service.displayName };
+          });
 
           this.log.info(`📺 Input source update completed for ${this.name}`);
         }
