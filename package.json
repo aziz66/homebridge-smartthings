@@ -19,9 +19,10 @@
   },
   "main": "dist/index.js",
   "scripts": {
-    "lint": "eslint \"src/**/*.ts\"",
+    "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
     "watch": "npm run build && npm link && nodemon",
     "build": "rimraf ./dist && tsc",
+    "test": "node --require ts-node/register/transpile-only --test test/*.test.ts",
     "prepublishOnly": "npm run lint && npm run build"
   },
   "keywords": [

@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+- **Automated tests in CI** — the build workflow now runs a unit-test suite (`npm test`, Node's built-in test runner) after lint and build, so regressions like the ones fixed below are caught on every push and pull request.
+
 ## [1.0.68-beta.2] - Power / energy monitoring for plugs and switches
 
 > Adds the energy work (#53) on top of the air-purifier and AC fan-mode fixes already in `1.0.68-beta.0` (below). Opt-in and off by default, so existing setups are unaffected until they enable it. Supersedes `1.0.68-beta.1`, which was tagged but never published to npm.
