@@ -159,6 +159,10 @@ export class FanSpeedService extends BaseService {
 
       case 'fanSpeed': {
         this.log.debug(`Event updating fanSpeed capability for ${this.name} to ${event.value}`);
+        if (typeof event.value !== 'number') {
+          // mapLevelToPercent would turn a null/unknown speed into 100%
+          return;
+        }
         this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, this.mapLevelToPercent(event.value));
       }
     }
