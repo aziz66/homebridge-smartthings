@@ -6,43 +6,42 @@
 </p>
 
 <p align="center">
-<a href="https://github.com/homebridge/homebridge/wiki/Verified-Plugins"><img src="https://img.shields.io/badge/homebridge-verified-blueviolet?color=%23491F59&style=for-the-badge&logoColor=%23FFFFFF&logo=homebridge" alt="verified-by-homebridge"></a>
-<br>
-<a href="https://www.npmjs.com/package/homebridge-smartthings-oauth"><img src="https://img.shields.io/npm/v/homebridge-smartthings-oauth?style=for-the-badge" alt="npm version"></a>
-<a href="https://www.npmjs.com/package/homebridge-smartthings-oauth"><img src="https://img.shields.io/npm/dt/homebridge-smartthings-oauth?style=for-the-badge" alt="npm downloads"></a>
-<a href="https://github.com/aziz66/homebridge-smartthings/stargazers"><img src="https://img.shields.io/github/stars/aziz66/homebridge-smartthings?style=for-the-badge" alt="GitHub stars"></a>
-<br>
-<a href="https://github.com/aziz66/homebridge-smartthings/issues"><img src="https://img.shields.io/github/issues/aziz66/homebridge-smartthings?style=for-the-badge" alt="GitHub issues"></a>
-<a href="https://github.com/aziz66/homebridge-smartthings"><img src="https://img.shields.io/github/last-commit/aziz66/homebridge-smartthings?style=for-the-badge" alt="GitHub last commit"></a>
-<a href="https://github.com/aziz66/homebridge-smartthings/releases"><img src="https://img.shields.io/github/v/release/aziz66/homebridge-smartthings?style=for-the-badge" alt="GitHub release"></a>
-<br>
-<a href="https://www.npmjs.com/package/homebridge-smartthings-oauth"><img src="https://img.shields.io/node/v/homebridge-smartthings-oauth?style=for-the-badge" alt="Node.js version"></a>
-<a href="https://www.npmjs.com/package/homebridge-smartthings-oauth"><img src="https://img.shields.io/npm/l/homebridge-smartthings-oauth?style=for-the-badge" alt="license"></a>
-<a href="https://ko-fi.com/aziz66"><img src="https://img.shields.io/badge/Ko--fi-Support%20Me-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Ko-fi"></a>
+<a href="https://github.com/TasleG/homebridge-smartthings/issues"><img src="https://img.shields.io/github/issues/TasleG/homebridge-smartthings?style=for-the-badge" alt="GitHub issues"></a>
+<a href="https://github.com/TasleG/homebridge-smartthings"><img src="https://img.shields.io/github/last-commit/TasleG/homebridge-smartthings?style=for-the-badge" alt="GitHub last commit"></a>
+<a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=for-the-badge" alt="license"></a>
 </p>
 
-> [!IMPORTANT]
-> **This project is no longer actively maintained.** Version **1.0.68** is the final release. It keeps working as-is, but issues and pull requests may not receive a response.
+> [!NOTE]
+> **This is a community fork** of [aziz66/homebridge-smartthings](https://github.com/aziz66/homebridge-smartthings) (published on npm as `homebridge-smartthings-oauth`), which stopped being maintained after version **1.0.68**. This fork carries it forward with extra fixes and features, starting with control of the **Samsung air conditioner display light (LED)**.
 >
-> Tested with **Node.js 20.19+, 22.12+ and 24** and **Homebridge 1.6+ and 2.x**. You are welcome to fork it and carry it forward under the terms of the [Apache-2.0 license](./LICENSE). Thank you to everyone who used, tested and contributed to this plugin.
+> The fork is **not published on npm**. Installing the plugin from the Homebridge UI gets the original 1.0.68, not this fork. See [Installing this fork](#installing-this-fork).
+>
+> Tested with **Node.js 20.19+, 22.12+ and 24** and **Homebridge 1.6+ and 2.x**.
 
 # SmartThings Homebridge Plugin with OAuth Support
 
 Connects your SmartThings devices to Apple HomeKit through Homebridge. Works with the modern SmartThings app and API, discovers devices automatically, and uses OAuth with token refresh — no legacy app, no manual token management.
 
-## Supporters
+## What's new in this fork
 
-A heartfelt thank-you to everyone who has supported this project on [Ko-fi](https://ko-fi.com/aziz66) — your generosity helped this plugin grow into what it is today.
+### Samsung AC display light (LED) control
 
-| Supporter | Contribution |
-|---|---|
-| [@mikegraben](https://github.com/mikegraben) | $25 |
-| [@Jayip](https://github.com/Jayip) | $15 |
-| phil | $10 |
-| Samuel | $7 |
-| [@joannadal](https://github.com/joannadal) | $5 |
+The original plugin showed the AC's display light as a HomeKit light but could not switch it: it sent `samsungce.airConditionerLighting` on/off, which many Samsung air conditioners accept and then ignore.
 
-Special thanks to each of you for believing in this project.
+In this fork, tapping the **Display Light** tile switches the LED on the AC. When the AC supports the `execute` capability, the plugin sends the same command as the SmartThings API:
+
+```json
+{
+  "component": "main",
+  "capability": "execute",
+  "command": "execute",
+  "arguments": ["mode/vs/0", { "x.com.samsung.da.options": ["Light_Off"] }]
+}
+```
+
+Samsung's option names are inverted: `Light_Off` turns the display **on** and `Light_On` turns it **off**. ACs without `execute` still get the original command.
+
+**To use it:** tick **Expose AC Display Light as a light if available** (`ExposeACDisplayLight`) in the plugin settings and restart Homebridge. A *&lt;AC name&gt; Display Light* tile appears in the Home app. No URL, token or device ID is needed: the plugin uses your existing SmartThings login and finds the AC itself. If you used an HTTP webhook switch for the LED before, you can remove it.
 
 ## Features
 
@@ -60,7 +59,7 @@ The plugin automatically maps SmartThings capabilities to HomeKit accessories. A
 |---|---|
 | **Lights & Switches** | On/off, dimming, color, color temperature |
 | **Fans** | Speed control, fan + light combos |
-| **Climate** | Thermostats, A/C units, air purifiers, temperature & humidity sensors |
+| **Climate** | Thermostats, A/C units (including the display light, opt-in via `ExposeACDisplayLight`), air purifiers, temperature & humidity sensors |
 | **Locks & Doors** | Smart locks, garage doors |
 | **Window Coverings** | Shades and blinds (open/close + level) |
 | **Sensors** | Motion, occupancy, contact, water leak, smoke, CO, illuminance, buttons |
@@ -70,16 +69,40 @@ The plugin automatically maps SmartThings capabilities to HomeKit accessories. A
 | **Valves** | Smart water valves |
 | **Battery** | Reported as a companion characteristic on supported devices |
 
-For the full SmartThings-capability → HomeKit-service mapping, see [Supported Devices and Capabilities](https://github.com/aziz66/homebridge-smartthings/wiki/Supported-Devices-and-Capabilities) on the wiki.
+For the full SmartThings-capability → HomeKit-service mapping, see [Supported Devices and Capabilities](https://github.com/aziz66/homebridge-smartthings/wiki/Supported-Devices-and-Capabilities) on the original project's wiki.
 
-## Quick Start
+## Installing this fork
 
-1. **Install the plugin** in the Homebridge UI: search for `Homebridge Smartthings oAuth Plugin` in the Plugins tab and click Install.
-2. **Create a SmartThings OAuth app** with the [SmartThings CLI](https://github.com/SmartThingsCommunity/smartthings-cli#readme) (`smartthings apps:create`). Save the Client ID and Client Secret. The wizard expects the redirect URI `https://httpbin.org/get` by default — a public third-party echo service that simply displays the authorization code so you can copy it, which avoids needing a tunnel. If httpbin.org is unavailable, register a different redirect URI you control and enter it in the wizard instead.
-3. **Open the OAuth Setup Wizard** from the plugin settings and follow the four wizard steps.
-4. **Restart Homebridge** — your SmartThings devices appear in HomeKit.
+The fork is installed from source on the machine that runs Homebridge (Homebridge UI → Terminal, or SSH):
 
-> **Full walkthrough with screenshots, prompt-by-prompt CLI guidance, and the authorization-code copy step:** [Installation and OAuth Setup](https://github.com/aziz66/homebridge-smartthings/wiki/Installation-and-OAuth-Setup).
+```bash
+# 1. Download the source
+cd ~
+git clone https://github.com/TasleG/homebridge-smartthings.git
+cd homebridge-smartthings
+
+# 2. Build it and package it
+npm ci
+npm run build
+npm pack        # creates homebridge-smartthings-oauth-<version>.tgz
+
+# 3. Install it into Homebridge
+sudo npm --prefix /var/lib/homebridge install ~/homebridge-smartthings/homebridge-smartthings-oauth-*.tgz
+```
+
+`/var/lib/homebridge` is the usual Homebridge folder on Raspberry Pi and Linux installs; on Docker it is usually `/homebridge`. Then restart Homebridge.
+
+The fork uses the same package name as the original plugin, so it replaces an existing `homebridge-smartthings-oauth` install and keeps your settings and SmartThings login. To update later, run `git pull` in the source folder and repeat steps 2 and 3.
+
+## First-time setup
+
+If you have never used the plugin before, set up SmartThings access after installing:
+
+1. **Create a SmartThings OAuth app** with the [SmartThings CLI](https://github.com/SmartThingsCommunity/smartthings-cli#readme) (`smartthings apps:create`). Save the Client ID and Client Secret. The wizard expects the redirect URI `https://httpbin.org/get` by default — a public third-party echo service that simply displays the authorization code so you can copy it, which avoids needing a tunnel. If httpbin.org is unavailable, register a different redirect URI you control and enter it in the wizard instead.
+2. **Open the OAuth Setup Wizard** from the plugin settings and follow the four wizard steps.
+3. **Restart Homebridge** — your SmartThings devices appear in HomeKit.
+
+> **Full walkthrough with screenshots, prompt-by-prompt CLI guidance, and the authorization-code copy step:** [Installation and OAuth Setup](https://github.com/aziz66/homebridge-smartthings/wiki/Installation-and-OAuth-Setup) on the original project's wiki.
 
 ## Optional Features
 
@@ -91,17 +114,20 @@ For the full SmartThings-capability → HomeKit-service mapping, see [Supported 
 
 ## Configuration
 
-All configuration is done through the Homebridge UI form, which has inline descriptions for every field. For a single-page reference of every setting (type, default, when to use it), see [Configuration Reference](https://github.com/aziz66/homebridge-smartthings/wiki/Configuration-Reference).
+All configuration is done through the Homebridge UI form, which has inline descriptions for every field. For a single-page reference of every setting (type, default, when to use it), see [Configuration Reference](https://github.com/aziz66/homebridge-smartthings/wiki/Configuration-Reference) on the original project's wiki.
 
 ## Troubleshooting & Help
 
 - **Common problems** (OAuth, missing devices, webhook setup, Frame TV pairing): [Troubleshooting](https://github.com/aziz66/homebridge-smartthings/wiki/Troubleshooting)
-- **Bug reports**: [GitHub Issues](https://github.com/aziz66/homebridge-smartthings/issues) remain open, but since the project is no longer maintained, responses are not guaranteed and new features will not be added. Please redact secrets and tokens before pasting any config or logs.
+- **Bug reports for this fork**: [GitHub Issues](https://github.com/TasleG/homebridge-smartthings/issues). Please don't report fork-specific problems to the original project. Redact secrets and tokens before pasting any config or logs.
 
 ## Changelog
 
-See [CHANGELOG.md](./CHANGELOG.md) for version history and detailed release notes.
+See [CHANGELOG.md](./CHANGELOG.md) for version history and detailed release notes. Changes made in this fork are listed under **Unreleased**.
 
 ## Credits
 
-This is a fork of the original [homebridge-smartthings](https://github.com/iklein99/homebridge-smartthings) plugin by [@iklein99](https://github.com/iklein99/), enhanced with OAuth support, automatic token refresh, and the OAuth Setup Wizard.
+- [@aziz66](https://github.com/aziz66) — the original [homebridge-smartthings](https://github.com/aziz66/homebridge-smartthings) OAuth plugin (up to 1.0.68) that this fork is based on, with OAuth support, automatic token refresh and the OAuth Setup Wizard, plus everyone who contributed to it.
+- [@iklein99](https://github.com/iklein99/) — the original [homebridge-smartthings](https://github.com/iklein99/homebridge-smartthings) plugin that aziz66's version was forked from.
+
+Licensed under the [Apache-2.0 license](./LICENSE), the same as the original project.

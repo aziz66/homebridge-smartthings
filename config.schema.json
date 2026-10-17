@@ -22,14 +22,14 @@
         "title": "Client ID",
         "type": "string",
         "required": true,
-        "description": "OAuth2 Client ID from SmartThings. Obtained using the SmartThings CLI 'apps:create' command. See [Setup Instructions](https://github.com/aziz66/homebridge-smartthings?tab=readme-ov-file#quick-start) for details."
+        "description": "OAuth2 Client ID from SmartThings. Obtained using the SmartThings CLI 'apps:create' command. See [Setup Instructions](https://github.com/TasleG/homebridge-smartthings?tab=readme-ov-file#first-time-setup) for details."
       },
       "client_secret": {
         "title": "Client Secret",
         "type": "string",
         "required": true,
         "format": "password",
-        "description": "OAuth2 Client Secret from SmartThings. Obtained using the SmartThings CLI 'apps:create' command. Save this value securely! See [Setup Instructions](https://github.com/aziz66/homebridge-smartthings?tab=readme-ov-file#quick-start) for details."
+        "description": "OAuth2 Client Secret from SmartThings. Obtained using the SmartThings CLI 'apps:create' command. Save this value securely! See [Setup Instructions](https://github.com/TasleG/homebridge-smartthings?tab=readme-ov-file#first-time-setup) for details."
       },
       "server_url": {
         "title": "Server URL (Optional)",

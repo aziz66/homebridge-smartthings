@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **Samsung AC display light (LED) can now be switched from HomeKit.** When the AC supports the `execute` capability, tapping the "Display Light" tile sends `execute` on `mode/vs/0` with `x.com.samsung.da.options` (`Light_Off` = display on, `Light_On` = display off), which works on models that ignore `samsungce.airConditionerLighting` on/off. ACs without `execute` keep the old command. Requires `ExposeACDisplayLight`.
+
 ## [1.0.68] - Final release
 
 > **This is the final release; the project is no longer actively maintained** (see the README). It consolidates everything from `1.0.68-beta.0` to `1.0.68-beta.4` (the beta entries below list those changes in detail) and adds a full audit pass over the whole plugin: crash fixes, reliability hardening, security fixes and corrected device behaviour. Requires **Node.js 20.19+, 22.12+ or 24** and works with **Homebridge 1.6+ and 2.x**. No configuration changes are needed to upgrade.

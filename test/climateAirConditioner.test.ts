@@ -59,6 +59,24 @@ test('AC lighting reads do not force a status refresh', async () => {
   assert.equal(msa.counters.forceNextStatusRefresh, 0);
 });
 
+test('AC lighting uses the execute command (inverted options) when the AC supports it', async () => {
+  const caps = ['samsungce.airConditionerLighting', 'execute'];
+  const { service, msa } = createClimateService(ACLightingService, caps, {});
+  await service.setLightState(true);
+  await service.setLightState(false);
+  const sent = msa.commands.map(c => (c as Array<{ capability: string; command: string; arguments: unknown[] }>)[0]);
+  assert.deepEqual(sent.map(c => [c.capability, c.command]), [['execute', 'execute'], ['execute', 'execute']]);
+  assert.deepEqual(sent[0].arguments, ['mode/vs/0', { 'x.com.samsung.da.options': ['Light_Off'] }]);
+  assert.deepEqual(sent[1].arguments, ['mode/vs/0', { 'x.com.samsung.da.options': ['Light_On'] }]);
+});
+
+test('AC lighting falls back to samsungce.airConditionerLighting on/off without execute', async () => {
+  const { service, msa } = createClimateService(ACLightingService, ['samsungce.airConditionerLighting'], {});
+  await service.setLightState(true);
+  const sent = (msa.commands[0] as Array<{ capability: string; command: string }>)[0];
+  assert.deepEqual([sent.capability, sent.command], ['samsungce.airConditionerLighting', 'on']);
+});
+
 // --- #3: Fahrenheit ---
 
 function fahrenheitStatus() {

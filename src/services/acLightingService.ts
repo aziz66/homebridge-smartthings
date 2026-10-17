@@ -9,6 +9,13 @@ import { BaseService } from './baseService';
 const CAP = 'samsungce.airConditionerLighting';
 const ATTR = 'lighting';
 
+// Many Samsung ACs accept samsungce.airConditionerLighting on/off but ignore it. The OCF
+// execute command on mode/vs/0 works on those models. Note the option names are inverted:
+// 'Light_Off' turns the display ON and 'Light_On' turns it OFF.
+const EXECUTE_CAP = 'execute';
+const EXECUTE_HREF = 'mode/vs/0';
+const EXECUTE_OPTIONS_KEY = 'x.com.samsung.da.options';
+
 export class ACLightingService extends BaseService {
   constructor(
     platform: IKHomeBridgeHomebridgePlatform,
@@ -71,7 +78,19 @@ export class ACLightingService extends BaseService {
   private async setLightState(value: CharacteristicValue): Promise<void> {
     const cmd = value ? 'on' : 'off';
     this.log.info(`[${this.name}] Setting AC lighting to: ${cmd}`);
-    await this.sendCommandsOrFail([new Command(this.componentId, CAP, cmd, [])]);
+    if (this.componentHasCapability(EXECUTE_CAP)) {
+      const option = value ? 'Light_Off' : 'Light_On';
+      await this.sendCommandsOrFail([
+        new Command(this.componentId, EXECUTE_CAP, 'execute', [EXECUTE_HREF, { [EXECUTE_OPTIONS_KEY]: [option] }]),
+      ]);
+    } else {
+      await this.sendCommandsOrFail([new Command(this.componentId, CAP, cmd, [])]);
+    }
+  }
+
+  private componentHasCapability(capability: string): boolean {
+    return this.multiServiceAccessory.components
+      .find(c => c.componentId === this.componentId)?.capabilities.includes(capability) ?? false;
   }
 
   // Handle events from SmartThings

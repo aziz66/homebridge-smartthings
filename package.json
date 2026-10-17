@@ -7,12 +7,12 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/aziz66/homebridge-smartthings.git"
+    "url": "https://github.com/TasleG/homebridge-smartthings.git"
   },
   "bugs": {
-    "url": "https://github.com/aziz66/homebridge-smartthings/issues"
+    "url": "https://github.com/TasleG/homebridge-smartthings/issues"
   },
-  "homepage": "https://github.com/aziz66/homebridge-smartthings#readme",
+  "homepage": "https://github.com/TasleG/homebridge-smartthings#readme",
   "engines": {
     "node": "^20.19.0 || ^22.12.0 || >=24.0.0",
     "homebridge": "^1.6.0 || ^2.0.0-beta.0"
@@ -56,9 +56,5 @@
     "rimraf": "^5.0.0",
     "ts-node": "^10.3.0",
     "typescript": "^5.0.0"
-  },
-  "funding": {
-    "type": "ko-fi",
-    "url": "https://ko-fi.com/aziz66"
   }
 }
